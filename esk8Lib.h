@@ -42,6 +42,8 @@ class esk8Lib
 		void updateSlavePacket(int newValue);
 		void updateMasterPacket(int32_t newValue);
 
+		void saveBoardPacket(String msg);
+
 		void serviceEvents();
 
 		MasterStruct masterPacket;

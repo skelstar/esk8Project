@@ -27,6 +27,10 @@ void esk8Lib::begin(int role) {
 //---------------------------------------------------------------------------------
 void esk8Lib::serviceEvents() {
 }
+//---------------------------------------------------------------------------------
+void esk8Lib::saveBoardPacket(String msg) {
+	Serial.println("saveBoardPacket();");
+}
 //--------------------------------------------------------------
 void sendPacketToSlave() {
 

@@ -1,6 +1,4 @@
 
-#include <SPI.h>
-#include "RF24.h"
 #include <esk8Lib.h>
 #include "esk8ControllerDatatypes.h"
 #include <Rotary.h>
@@ -11,7 +9,7 @@
 #include <stdlib.h>
 
 #include <FastLED.h>
-#include <TaskScheduler.h>
+#include <painlessMesh.h>
 
 #include <ESP8266VESC.h>
 #include "VescUart.h"
@@ -44,26 +42,16 @@ const char compile_date[] = __DATE__ " " __TIME__;
 #define DEADMAN_SWITCH_PIN	25
 
 #define	PIXEL_PIN			5
-	
-#define SPI_CE				33	// white/purple
-#define SPI_CS				26  // green
 
-//--------------------------------------------------------------------------------
-bool radioNumber = 1;
-
-/* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
-RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
-
-#define 	ROLE_MASTER		1
-#define 	ROLE_SLAVE		0
 //--------------------------------------------------------------------------------
 
 esk8Lib esk8;
 
-long lastPacketFromMaster = 0;
+#define 	ROLE_MASTER 1
+#define 	ROLE_SLAVE 	0
 
 // if this is set to 100 then goes offline every 3 seconds (because that's when VESC comms to myVESC)
-#define 	COMMS_TIMEOUT_PERIOD	200 
+#define 	COMMS_TIMEOUT_PERIOD	1200
 
 //--------------------------------------------------------------------------------
 
@@ -81,7 +69,53 @@ CRGB COLOUR_WHITE = CRGB::White;
 
 //--------------------------------------------------------------------------------
 
-Scheduler runner;
+#define   MESH_SSID       "whateverYouLike"
+#define   MESH_PASSWORD   "somethingSneaky"
+#define   MESH_PORT       5555
+
+painlessMesh  mesh;
+
+Scheduler 	userScheduler; // to control your personal task
+
+void sendMessage(); 
+Task taskSendMessage( TASK_MILLISECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
+
+volatile uint32_t otherNode;
+// volatile long lastSlavePacketTime = 0;
+volatile float packetData = 0.1;
+volatile bool receivedBoardData = false;
+volatile long lastPacketFromBoardTime = 0;
+bool calc_delay =false;
+#define SEND_CONTROLLER_DATA_INTERVAL	200
+
+//--------------------------------------------------------------
+void sendMessage() {
+
+	String msg = "Sending controller data ";
+	msg +=  packetData;
+	mesh.sendBroadcast(msg);
+	Serial.printf("Sending message: %s\n", msg.c_str());
+
+	packetData += 0.1;
+
+	if (calc_delay) {
+		mesh.startDelayMeas(otherNode);
+	}
+}
+//--------------------------------------------------------------
+void receivedCallback(uint32_t from, String &msg) {
+	otherNode = from;
+	lastPacketFromBoardTime = millis();
+	esk8.saveBoardPacket(msg);
+	// Serial.printf("startHere: Received from %u msg=%s since: %ums\n", otherNode, msg.c_str(), millis()-lastSlavePacketTime);
+	// lastSlavePacketTime = millis();
+	receivedBoardData = true;
+}
+//--------------------------------------------------------------
+void delayReceivedCallback(uint32_t from, int32_t delay) {
+	Serial.printf("Delay to node %u is %d us\n", from, delay);
+}
+//--------------------------------------------------------------------------------
 
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
@@ -189,9 +223,6 @@ myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEv
 	// TR_POWER_OFF
 	// ST_POWER_OFF
 
-
-
-
 void powerupEvent(int state) {
 
 	switch (state) {
@@ -235,6 +266,7 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 int encoderCounter = 0;
 bool encoderChanged = false;
+volatile bool queueSlavePacket = false;
 
 void encoderInterruptHandler() {
 	unsigned char result = rotary.process();
@@ -244,18 +276,18 @@ void encoderInterruptHandler() {
 	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
-
 			int throttleValue = getThrottleValue();
 			esk8.updateSlavePacket(throttleValue);
+			queueSlavePacket = true;
 			Serial.println(throttleValue);
 		}
 	}
 	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
-
 			int throttleValue = getThrottleValue();
 			esk8.updateSlavePacket(throttleValue);
+			queueSlavePacket = true;
 			Serial.println(throttleValue);
 		}
 	}
@@ -282,12 +314,21 @@ void setup() {
 
 	serviceLedRing();
 
-	runner.init();
-	runner.addTask(tFlashLeds);
+	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
+	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
+	mesh.setDebugMsgTypes( ERROR | DEBUG | CONNECTION );  // set before init() so that you can see startup messages
 
-	radio.begin();
+	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
+	mesh.onReceive(&receivedCallback);
+	mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-	esk8.begin(&radio, ROLE_SLAVE, radioNumber);
+	// userScheduler.addTask( taskSendMessage );
+	// taskSendMessage.enable();
+
+	// userScheduler.init();
+	userScheduler.addTask(tFlashLeds);
+
+	esk8.begin(ROLE_SLAVE);
 
 	// encoder
 	setupEncoder();
@@ -302,23 +343,34 @@ void loop() {
 	deadmanSwitch.serviceEvents();
 	dialButton.serviceEvents();
 
+	userScheduler.execute();
+	mesh.update();
+
+	if (queueSlavePacket) {
+		queueSlavePacket = false;
+		sendMessage();
+	}
+
 	powerButton.serviceButton(true);
 
 	if (powerButton.isRunning()) {
 
-		int result = esk8.pollMasterForPacket();	// || digitalRead(TEST_PIN) == 0;
-		if (result == true) {
-			lastPacketFromMaster = millis();
-			// response from Master
-			Serial.printf("Master battery: %d \n", esk8.masterPacket.batteryVoltage);
-		}
-		else {
+		if (receivedBoardData) {
+			receivedBoardData = false;
+			Serial.printf("startHere: Received from %u since: %ums\n", otherNode, millis()-lastPacketFromBoardTime);
+
+		// int result = esk8.pollMasterForPacket();	// || digitalRead(TEST_PIN) == 0;
+		// if (result == true) {
+		// 	lastPacketFromBoardTime = millis();
+		// 	// response from Master
+		// 	Serial.printf("Master battery: %d \n", esk8.masterPacket.batteryVoltage);
+		// }
+		// else {
+		// }
 		}
 	}
 	else {
 	}
-
-	runner.execute();
 
 	serviceCommsState();
 
@@ -352,7 +404,7 @@ void initOLED() {
 //--------------------------------------------------------------------------------
 void serviceCommsState() {
 
-	bool timedOut = millis() - lastPacketFromMaster > COMMS_TIMEOUT_PERIOD;
+	bool timedOut = millis() - lastPacketFromBoardTime > COMMS_TIMEOUT_PERIOD;
 
 	if (commsState == COMMS_ONLINE && timedOut) {
 		setCommsState(COMMS_OFFLINE);
