@@ -12,8 +12,8 @@
 #define ROLE_MASTER		1
 #define ROLE_SLAVE		0
 
-//int role = ROLE_MASTER;
-int role = ROLE_SLAVE;
+int role = ROLE_MASTER;
+//int role = ROLE_SLAVE;
 
 int sendIntervalMs = 200;
 
@@ -41,9 +41,11 @@ volatile long lastRxMillis = 0;
 
 //--------------------------------------------------------------
 void sendMessage() {
-	String msg = "Hello from node ";
-	msg += mesh.getNodeId();
+	String msg = "Payload = ";
+	msg +=  packetData;
 	mesh.sendBroadcast(msg);
+
+	packetData += 0.1;
 
 	if (calc_delay) {
 		mesh.startDelayMeas(otherNode);
