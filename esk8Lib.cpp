@@ -4,15 +4,6 @@
 #define 	ROLE_MASTER		1
 #define 	ROLE_SLAVE		0
 
-
-#define   MESH_SSID       "whateverYouLike"
-#define   MESH_PASSWORD   "somethingSneaky"
-#define   MESH_PORT       5555
-
-void sendPacketToSlave();
-
-Task taskSendMessage;	//( TASK_MILLISECOND * 1, TASK_FOREVER, &sendPacketToSlave );
-
 volatile long _lastRxMillis;
 
 //--------------------------------------------------------------------------------
@@ -22,7 +13,6 @@ esk8Lib::esk8Lib() {}
 //--------------------------------------------------------------------------------
 void esk8Lib::begin(int role) {
 
-	// _mesh = mesh;
 	_role = role;
 
 	Serial.println(F("esk8Lib begin()"));

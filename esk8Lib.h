@@ -2,8 +2,6 @@
 #define Esk8Lib_h
 
 #include <Arduino.h>
-// #include <SPI.h>
-#include <painlessMesh.h>
 
 //--------------------------------------------------------------------------------
 
@@ -52,11 +50,7 @@ class esk8Lib
 		// VESC_DATA vescdata;
 
 	private:
-		painlessMesh _mesh;
 		int _role;
-		Scheduler _userScheduler;
-		//void sendPacketToSlave();
-
 };
 
 #endif
