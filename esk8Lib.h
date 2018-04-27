@@ -2,8 +2,8 @@
 #define Esk8Lib_h
 
 #include <Arduino.h>
-#include <SPI.h>
-#include "RF24.h"
+// #include <SPI.h>
+#include <painlessMesh.h>
 
 //--------------------------------------------------------------------------------
 
@@ -23,7 +23,7 @@
 // #define SLAVE_ROLE	0
 
 struct MasterStruct{
-	int32_t rpm;
+	// int32_t rpm;
 	float batteryVoltage;
 };
 
@@ -36,14 +36,15 @@ class esk8Lib
 {
 	public:
 		esk8Lib();
-		void begin(RF24 *radio, int role, int radioNumber);
+		void begin(int role);
 		float getSendDataChecksum(MasterStruct *data);
 		float getSlaveChecksum();
 
-		int sendPacketToSlave();
 		int pollMasterForPacket();
 		void updateSlavePacket(int newValue);
 		void updateMasterPacket(int32_t newValue);
+
+		void serviceEvents();
 
 		MasterStruct masterPacket;
 		SlaveStruct slavePacket;
@@ -51,8 +52,11 @@ class esk8Lib
 		// VESC_DATA vescdata;
 
 	private:
-		RF24 *_radio;
+		painlessMesh _mesh;
 		int _role;
+		Scheduler _userScheduler;
+		//void sendPacketToSlave();
+
 };
 
 #endif

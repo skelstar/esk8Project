@@ -1,0 +1,2 @@
+
+void changeStatus(Statuses newStatus);
