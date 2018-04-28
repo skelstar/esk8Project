@@ -22,7 +22,7 @@ void esk8Lib::serviceEvents() {
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::parseBoardPacket(String &msg) {
-	DynamicJsonBuffer jsonBuffer;
+	DynamicJsonBuffer jsonBuffer(100);
 	JsonObject& root = jsonBuffer.parseObject(msg);
 	if (root.containsKey("batteryVoltage")) {
 		masterPacket.batteryVoltage = root["batteryVoltage"];
@@ -34,7 +34,7 @@ void esk8Lib::parseBoardPacket(String &msg) {
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::parseControllerPacket(String &msg) {
-	DynamicJsonBuffer jsonBuffer;
+	DynamicJsonBuffer jsonBuffer(100);
 	JsonObject& root = jsonBuffer.parseObject(msg);
 	if (root.containsKey("throttle")) {
 		slavePacket.throttle = root["throttle"];
@@ -46,21 +46,26 @@ void esk8Lib::parseControllerPacket(String &msg) {
 }
 //---------------------------------------------------------------------------------
 String esk8Lib::encodeControllerPacket() {
-	DynamicJsonBuffer jsonBuffer;
-	JsonObject& msg = jsonBuffer.createObject();
-	msg["throttle"] = slavePacket.throttle;
+	char buff[50];
+	sprintf(buff, "throttle:%d", slavePacket.throttle);
+	// DynamicJsonBuffer jsonBuffer;
+	// JsonObject& msg = jsonBuffer.createObject();
+	// msg["throttle"] = slavePacket.throttle;
 
-	String str;
-	msg.printTo(str);
-	return str;
-}//---------------------------------------------------------------------------------
+	// String str;
+	// msg.printTo(str);
+	return buff;
+}
+//---------------------------------------------------------------------------------
 String esk8Lib::encodeBoardPacket() {
-	DynamicJsonBuffer jsonBuffer;
-	JsonObject& msg = jsonBuffer.createObject();
-	msg["batteryVoltage"] = masterPacket.batteryVoltage;
+	char buff[50];
+	sprintf(buff, "batteryVoltage:%.1f", masterPacket.batteryVoltage);
+	// DynamicJsonBuffer jsonBuffer;
+	// JsonObject& msg = jsonBuffer.createObject();
+	// msg["batteryVoltage"] = masterPacket.batteryVoltage;
 
-	String str;
-	msg.printTo(str);
+	// String str;
+	// msg.printTo(str);
 	return str;
 }
 //--------------------------------------------------------------------------------

@@ -12,8 +12,8 @@
 #define ROLE_MASTER		1
 #define ROLE_SLAVE		0
 
-int role = ROLE_MASTER;
-//int role = ROLE_SLAVE;
+//int role = ROLE_MASTER;
+int role = ROLE_SLAVE;
 
 int sendIntervalMs = 200;
 

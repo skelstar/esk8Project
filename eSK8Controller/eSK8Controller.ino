@@ -37,7 +37,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 #define ENCODER_PIN_A		4
 #define ENCODER_PIN_B		16
 
-#define TEST_PIN			12
+#define TESTATE_PIN			12
 
 #define POWER_UP_BUTTON		ENCODER_BUTTON_PIN
 	
@@ -91,6 +91,7 @@ volatile bool receivedBoardData = false;
 volatile long lastPacketFromBoardTime = 0;
 bool calc_delay =false;
 #define SEND_CONTROLLER_DATA_INTERVAL	200
+volatile char receivedMessage[100];
 
 //--------------------------------------------------------------
 void sendMessage() {
@@ -110,12 +111,13 @@ void sendMessage() {
 //--------------------------------------------------------------
 void receivedCallback(uint32_t from, String &msg) {
 	otherNode = from;
-	long timeSinceLastPacket = millis() - lastPacketFromBoardTime;
-	lastPacketFromBoardTime = millis();
 
-	esk8.parseBoardPacket(msg);
-	debug.message(d_COMMUNICATION, "Received (BOARD) batteryVoltage=%.1f since: %ums\n", esk8.masterPacket.batteryVoltage, timeSinceLastPacket);
+	debug.message(d_DEBUG, "Received data from board");
+	//esk8.parseBoardPacket(msg);
 	receivedBoardData = true;
+
+	// long timeSinceLastPacket = millis() - lastPacketFromBoardTime;
+	// lastPacketFromBoardTime = millis();
 }
 //--------------------------------------------------------------
 void delayReceivedCallback(uint32_t from, int32_t delay) {
@@ -128,29 +130,27 @@ void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
 
 CRGB tFlashLedsColour = COLOUR_RED;
+bool fFlashLeds_On = false;
 
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	setPixels(tFlashLedsColour, 0);
-	Serial.println("tFlashLeds_onEnable");
+	fFlashLeds_On = true;
 	tFlashLeds.enable();
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	setPixels(tFlashLedsColour, 0);
-	Serial.println("tFlashLedsOn_callback");
+	fFlashLeds_On = true;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	setPixels(COLOUR_OFF, 0);
-	Serial.println("tFlashLedsOff_callback");
+	fFlashLeds_On = false;
 }
 
 //--------------------------------------------------------------------------------
 
-#define     OLED_CONTRAST_HIGH	100        // 256 highest
-#define     OLED_CONTRAST_LOW	20
+#define     OLED_CONTRASTATE_HIGH	100        // 256 highest
+#define     OLED_CONTRASTATE_LOW	20
 U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, OLED_SCL, OLED_SDA, U8X8_PIN_NONE);
 
 //--------------------------------------------------------------------------------
@@ -216,43 +216,43 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 
 myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
 
-	// TR_POWERING_UP = 0,
-	// ST_POWERING_UP,
-	// TR_POWERED_UP_WAIT_RELEASE,
-	// ST_POWERED_UP_WAIT_RELEASE,
-	// TR_RUNNING,
-	// ST_RUNNING,
-	// TR_POWERING_DOWN,
-	// ST_POWERING_DOWN,
-	// TR_POWERING_DOWN_WAIT_RELEASE,
-	// ST_POWERING_DOWN_WAIT_RELEASE,
-	// TR_POWER_OFF
-	// ST_POWER_OFF
+/*
+TN_TO_POWERING_UP
+STATE_POWERING_UP
+TN_TO_POWERED_UP_WAIT_RELEASE
+STATE_POWERED_UP_WAIT_RELEASE
+TN_TO_RUNNING
+STATE_RUNNING
+TN_TO_POWERING_DOWN
+STATE_POWERING_DOWN
+TN_TO_POWERING_DOWN_WAIT_RELEASE
+STATE_POWERING_DOWN_WAIT_RELEASE
+TN_TO_POWER_OFF
+STATE_POWER_OFF
+*/
 
 void powerupEvent(int state) {
 
 	switch (state) {
-		case powerButton.TR_POWERING_UP:
+		case powerButton.TN_TO_POWERING_UP:
 			message("Powering Up");
 			break;
-		case powerButton.TR_POWERED_UP_WAIT_RELEASE:
+		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
 			// skip this and go straighht to RUNNING
-			powerButton.setState(powerButton.TR_RUNNING);
+			powerButton.setState(powerButton.TN_TO_RUNNING);
 			break;
-		case powerButton.TR_RUNNING:
+		case powerButton.TN_TO_RUNNING:
 			break;
-		case powerButton.ST_RUNNING:
-			break;
-		case powerButton.TR_POWERING_DOWN:
+		case powerButton.TN_TO_POWERING_DOWN:
 			message("Powering Down");
 			break;
-		case powerButton.TR_POWERING_DOWN_WAIT_RELEASE:
+		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
 			u8g2.clearBuffer();
 			u8g2.sendBuffer();	// clear screen
 			setPixels(COLOUR_OFF, 0);
-			powerButton.setState(powerButton.TR_POWER_OFF);
+			powerButton.setState(powerButton.TN_TO_POWER_OFF);
 			break;
-		case powerButton.TR_POWER_OFF:
+		case powerButton.TN_TO_POWER_OFF:
 			delay(100);
 			esp_deep_sleep_start();
 			Serial.println("This will never be printed");
@@ -275,7 +275,7 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 int encoderCounter = 0;
 bool encoderChanged = false;
-volatile bool queueSlavePacket = false;
+volatile bool packetReadyToBeSent = false;
 
 void encoderInterruptHandler() {
 	unsigned char result = rotary.process();
@@ -287,7 +287,7 @@ void encoderInterruptHandler() {
 			encoderCounter++;
 			int throttleValue = getThrottleValue();
 			esk8.updateSlavePacket(throttleValue);
-			queueSlavePacket = true;
+			packetReadyToBeSent = true;
 			Serial.println(throttleValue);
 		}
 	}
@@ -296,7 +296,7 @@ void encoderInterruptHandler() {
 			encoderCounter--;
 			int throttleValue = getThrottleValue();
 			esk8.updateSlavePacket(throttleValue);
-			queueSlavePacket = true;
+			packetReadyToBeSent = true;
 			Serial.println(throttleValue);
 		}
 	}
@@ -322,7 +322,6 @@ void setup() {
 	while (powerButton.isRunning() == false) {
 		powerButton.serviceButton(true);
 		serviceLedRing();
-		delay(50);
 	}
 
 	serviceLedRing();
@@ -330,7 +329,7 @@ void setup() {
 	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
 	mesh.setDebugMsgTypes( ERROR | DEBUG );  // set before init() so that you can see startup messages
 
-	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, STA_ONLY);
+	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
 	mesh.onReceive(&receivedCallback);
 	mesh.onNodeDelayReceived(&delayReceivedCallback);
 
@@ -350,7 +349,13 @@ void setup() {
 	serviceLedRing();
 }
 //--------------------------------------------------------------------------------
+
+
+int i = 0;
+
 void loop() {
+
+	debug.message(d_DEBUG, "Loop: %d", i++);
 
 	deadmanSwitch.serviceEvents();
 	dialButton.serviceEvents();
@@ -358,9 +363,14 @@ void loop() {
 	userScheduler.execute();
 	mesh.update();
 
-	if (queueSlavePacket) {
-		queueSlavePacket = false;
+	if (packetReadyToBeSent) {
+		packetReadyToBeSent = false;
 		sendMessage();
+	}
+
+	if (receivedBoardData) {
+		receivedBoardData = false;
+		debug.message(d_COMMUNICATION, "Received (from BOARD) batteryVoltage=%.1f \n", esk8.masterPacket.batteryVoltage);
 	}
 
 	powerButton.serviceButton(true);
@@ -370,7 +380,7 @@ void loop() {
 		if (receivedBoardData) {
 			receivedBoardData = false;
 
-		// int result = esk8.pollMasterForPacket();	// || digitalRead(TEST_PIN) == 0;
+		// int result = esk8.pollMasterForPacket();	// || digitalRead(TESTATE_PIN) == 0;
 		// if (result == true) {
 		// 	lastPacketFromBoardTime = millis();
 		// 	// response from Master
@@ -388,8 +398,6 @@ void loop() {
 	serviceOLED();
 
 	serviceLedRing();
-
-	delay(50);
 }
 //--------------------------------------------------------------------------------
 void serviceOLED() {
@@ -410,7 +418,7 @@ void initOLED() {
 	delay(100);	// settle
 
 	u8g2.begin();
-	u8g2.setContrast(OLED_CONTRAST_LOW);
+	u8g2.setContrast(OLED_CONTRASTATE_LOW);
 }
 //--------------------------------------------------------------------------------
 void serviceCommsState() {
@@ -435,13 +443,13 @@ void setCommsState(CommsStateType newState) {
 		// start leds flashing
 		tFlashLedsColour = COLOUR_RED;
 		setPixels(tFlashLedsColour, 0);
-		tFlashLeds.enable();
+		// tFlashLeds.enable();
 	}
 	else if (newState == COMMS_ONLINE) {
 		Serial.println("Setting commsState: COMMS_ONLINE");
 		commsState = COMMS_ONLINE;
 		// stop leds flashing
-		tFlashLeds.disable();
+		// tFlashLeds.disable();
 		setPixels(COLOUR_OFF, 0);
 	}
 }
@@ -469,18 +477,25 @@ void serviceLedRing() {
 
 	switch (powerButton.getState()) {
 
-		case powerButton.ST_POWERING_UP:
-		case powerButton.ST_POWERED_UP_WAIT_RELEASE:
-		case powerButton.TR_RUNNING:
-		case powerButton.ST_POWERING_DOWN:
-		case powerButton.ST_POWERING_DOWN_WAIT_RELEASE:
-		case powerButton.ST_POWER_OFF:
+		case powerButton.STATE_POWERING_UP:
+		case powerButton.STATE_POWERED_UP_WAIT_RELEASE:
+		case powerButton.TN_TO_RUNNING:
+		case powerButton.STATE_POWERING_DOWN:
+		case powerButton.STATE_POWERING_DOWN_WAIT_RELEASE:
 			setPixels(COLOUR_GREEN, 0);
 			break;
 
-		case powerButton.ST_RUNNING:
+		case powerButton.STATE_RUNNING:
 			if (commsState == COMMS_ONLINE) {
 
+			}
+			else if (commsState == COMMS_OFFLINE) {
+				if (fFlashLeds_On == true) {
+					setPixels(tFlashLedsColour, 0);
+				}
+				else {
+					setPixels(COLOUR_OFF, 0);
+				}
 			}
 			break;
 	}
