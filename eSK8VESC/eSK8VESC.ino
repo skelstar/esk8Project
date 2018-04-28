@@ -70,7 +70,7 @@ void sendMessage() {
 	bool success = getVescValues();
 
 	if (success) {
-		debug.message(d_COMMUNICATION, "VESC online\n");
+		debug.print(d_COMMUNICATION, "VESC online\n");
 	}
 	else {
 		esk8.masterPacket.batteryVoltage = packetData;
@@ -79,7 +79,7 @@ void sendMessage() {
 		String msg = esk8.encodeBoardPacket();
 		mesh.sendBroadcast(msg);
 
-		debug.message(d_DEBUG, "Sending message: %s\n", msg.c_str());
+		debug.print(d_DEBUG, "Sending message: %s\n", msg.c_str());
 	}
 
 	if (calc_delay) {
@@ -92,7 +92,7 @@ void sendMessage() {
 void receivedCallback(uint32_t from, String & msg) {
 	otherNode = from;
 	esk8.parseControllerPacket(msg);
-	debug.message(d_COMMUNICATION, "Received (from CONTROLLER) throttle=%d \n", esk8.slavePacket.throttle);
+	debug.print(d_COMMUNICATION, "Received (from CONTROLLER) throttle=%d \n", esk8.slavePacket.throttle);
 	lastSlavePacketTime = millis();
 }
 //--------------------------------------------------------------
@@ -123,7 +123,7 @@ void setup()
 
     Serial.begin(9600);
 
-	debug.message(d_STARTUP, compile_date);
+	debug.print(d_STARTUP, compile_date);
 
     // Setup serial connection to VESC
     Serial1.begin(9600);
@@ -248,7 +248,7 @@ bool getVescValues() {
 	else
 	{
 		vescConnected = false;
-		debug.message(d_COMMUNICATION, "The VESC values could not be read!\n");
+		debug.print(d_COMMUNICATION, "The VESC values could not be read!\n");
 	}
 	return vescConnected;
 }

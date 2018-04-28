@@ -2,6 +2,8 @@
 // Based on "startHere.ino" in painlessMesh library
 //************************************************************
 #include <painlessMesh.h>
+#include <debugHelper.h>
+#include <Rotary.h>
 
 #define   MESH_SSID       "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -19,6 +21,51 @@ int sendIntervalMs = 200;
 
 //--------------------------------------------------------------
 
+#define ENCODER_BUTTON_PIN		34
+#define ENCODER_PIN_A		4
+#define ENCODER_PIN_B		16
+
+debugHelper debug;
+
+Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
+
+// lower number = more coarse
+#define ENCODER_COUNTER_MIN	-18 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_COUNTER_MAX	12 		// acceleration (ie 15 divides 127-255 into 15)
+
+#define DEADMAN_SWITCH_USED		1
+
+int encoderCounter = 0;
+bool encoderChanged = false;
+volatile bool packetReadyToBeSent = false;
+
+void encoderInterruptHandler() {
+	unsigned char result = rotary.process();
+
+	bool canAccelerate = true;	// deadmanSwitch.isPressed() || DEADMAN_SWITCH_USED == 0;
+
+	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
+		if (encoderCounter < ENCODER_COUNTER_MAX) {
+
+			encoderCounter++;
+			//int throttleValue = getThrottleValue();
+			//esk8.updateSlavePacket(throttleValue);
+			packetReadyToBeSent = true;
+			debug.print(d_DEBUG, "encoderCounter: %d \n", encoderCounter);
+		}
+	}
+	else if (result == DIR_CCW) {
+		if (encoderCounter > ENCODER_COUNTER_MIN) {
+			encoderCounter--;
+			//int throttleValue = getThrottleValue();
+			//esk8.updateSlavePacket(throttleValue);
+			packetReadyToBeSent = true;
+			debug.print(d_DEBUG, "encoderCounter: %d \n", encoderCounter);
+		}
+	}
+}
+
+//--------------------------------------------------------------
 
 // Prototypes
 void sendMessage(); 
@@ -68,6 +115,9 @@ void delayReceivedCallback(uint32_t from, int32_t delay) {
 //--------------------------------------------------------------
 
 void setup() {
+
+	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
+
 	Serial.begin(9600);
 
 	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
@@ -78,14 +128,23 @@ void setup() {
 	mesh.onReceive(&receivedCallback);
 	mesh.onNodeDelayReceived(&delayReceivedCallback);
 
-	userScheduler.addTask( taskSendMessage );
-
-	if (role == ROLE_MASTER) {
-		taskSendMessage.enable();
-	}
+	// encoder
+	setupEncoder();
 }
 
 void loop() {
 	userScheduler.execute(); // it will run mesh scheduler as well
 	mesh.update();
 }
+//----------------------------------------------------------------
+void setupEncoder() {
+
+	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+
+	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
+	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
+
+	// esk8.slavePacket.throttle = getThrottleValue();
+}
+//--------------------------------------------------------------------------------
