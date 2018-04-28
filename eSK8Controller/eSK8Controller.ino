@@ -1,4 +1,5 @@
 
+#include <painlessMesh.h>
 #include <esk8Lib.h>
 #include "esk8ControllerDatatypes.h"
 #include <Rotary.h>
@@ -6,14 +7,15 @@
 
 #include <myPushButton.h>
 #include <myPowerButtonManager.h>
+#include <debugHelper.h>
 #include <stdlib.h>
 
 #include <FastLED.h>
-#include <painlessMesh.h>
 
 #include <ESP8266VESC.h>
 #include "VescUart.h"
 #include "datatypes.h"
+#include <stdarg.h>
 //--------------------------------------------------------------------------------
 // https://sandhansblog.wordpress.com/2017/04/16/interfacing-displaying-a-custom-graphic-on-an-0-96-i2c-oled/
 static const unsigned char wifiicon14x10 [] PROGMEM = {
@@ -47,8 +49,8 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 esk8Lib esk8;
 
-#define 	ROLE_MASTER 1
-#define 	ROLE_SLAVE 	0
+// #define 	ROLE_BOARD 			1
+// #define 	ROLE_CONTROLLER 	0
 
 // if this is set to 100 then goes offline every 3 seconds (because that's when VESC comms to myVESC)
 #define 	COMMS_TIMEOUT_PERIOD	1200
@@ -75,10 +77,12 @@ CRGB COLOUR_WHITE = CRGB::White;
 
 painlessMesh  mesh;
 
+debugHelper debug;
+
 Scheduler 	userScheduler; // to control your personal task
 
-void sendMessage(); 
-Task taskSendMessage( TASK_MILLISECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
+// void sendMessage(); 
+// Task taskSendMessage( TASK_MILLISECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
 
 volatile uint32_t otherNode;
 // volatile long lastSlavePacketTime = 0;
@@ -91,12 +95,13 @@ bool calc_delay =false;
 //--------------------------------------------------------------
 void sendMessage() {
 
-	String msg = "Sending controller data ";
-	msg +=  packetData;
-	mesh.sendBroadcast(msg);
-	Serial.printf("Sending message: %s\n", msg.c_str());
-
-	packetData += 0.1;
+	String msg = esk8.encodeControllerPacket();
+	if (mesh.sendBroadcast(msg) ==  false) {
+		debug.message(d_DEBUG, "sendBroadcast() failed... maybe no nodes?");
+	}
+	else {
+		debug.message(d_DEBUG, "Sent message: %s\n", msg.c_str());
+	}
 
 	if (calc_delay) {
 		mesh.startDelayMeas(otherNode);
@@ -105,10 +110,11 @@ void sendMessage() {
 //--------------------------------------------------------------
 void receivedCallback(uint32_t from, String &msg) {
 	otherNode = from;
+	long timeSinceLastPacket = millis() - lastPacketFromBoardTime;
 	lastPacketFromBoardTime = millis();
-	esk8.saveBoardPacket(msg);
-	// Serial.printf("startHere: Received from %u msg=%s since: %ums\n", otherNode, msg.c_str(), millis()-lastSlavePacketTime);
-	// lastSlavePacketTime = millis();
+
+	esk8.parseBoardPacket(msg);
+	debug.message(d_COMMUNICATION, "Received (BOARD) batteryVoltage=%.1f since: %ums\n", esk8.masterPacket.batteryVoltage, timeSinceLastPacket);
 	receivedBoardData = true;
 }
 //--------------------------------------------------------------
@@ -256,6 +262,9 @@ void powerupEvent(int state) {
 
 //--------------------------------------------------------------------------------
 
+
+//--------------------------------------------------------------------------------
+
 Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // lower number = more coarse
@@ -296,9 +305,13 @@ void encoderInterruptHandler() {
 //--------------------------------------------------------------------------------
 void setup() {
 
+	esk8.begin();
+
+	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
+
 	Serial.begin(9600);
 
-	Serial.println(compile_date);
+	debug.message(d_STARTUP, compile_date);
 
 	initOLED();
 
@@ -315,20 +328,19 @@ void setup() {
 	serviceLedRing();
 
 	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
-	mesh.setDebugMsgTypes( ERROR | DEBUG | CONNECTION );  // set before init() so that you can see startup messages
+	mesh.setDebugMsgTypes( ERROR | DEBUG );  // set before init() so that you can see startup messages
 
-	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
+	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, STA_ONLY);
 	mesh.onReceive(&receivedCallback);
 	mesh.onNodeDelayReceived(&delayReceivedCallback);
+
+	mesh.update();
 
 	// userScheduler.addTask( taskSendMessage );
 	// taskSendMessage.enable();
 
 	// userScheduler.init();
 	userScheduler.addTask(tFlashLeds);
-
-	esk8.begin(ROLE_SLAVE);
 
 	// encoder
 	setupEncoder();
@@ -357,7 +369,6 @@ void loop() {
 
 		if (receivedBoardData) {
 			receivedBoardData = false;
-			Serial.printf("startHere: Received from %u since: %ums\n", otherNode, millis()-lastPacketFromBoardTime);
 
 		// int result = esk8.pollMasterForPacket();	// || digitalRead(TEST_PIN) == 0;
 		// if (result == true) {

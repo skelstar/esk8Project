@@ -1,8 +1,8 @@
 #include "Arduino.h"
 #include "esk8Lib.h"
 
-#define 	ROLE_MASTER		1
-#define 	ROLE_SLAVE		0
+#define 	ROLE_BOARD		1
+#define 	ROLE_CONTROLLER	0
 
 volatile long _lastRxMillis;
 
@@ -11,36 +11,57 @@ volatile long _lastRxMillis;
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(int role) {
-
-	_role = role;
+void esk8Lib::begin() {
 
 	Serial.println(F("esk8Lib begin()"));
-	Serial.print("Role: "); Serial.println(role);
 
-	if (role == ROLE_SLAVE) {
-
-		slavePacket.throttle = 127;
-
-	}
+	slavePacket.throttle = 127;
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::serviceEvents() {
 }
 //---------------------------------------------------------------------------------
-void esk8Lib::saveBoardPacket(String msg) {
-	Serial.println("saveBoardPacket();");
+void esk8Lib::parseBoardPacket(String &msg) {
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& root = jsonBuffer.parseObject(msg);
+	if (root.containsKey("batteryVoltage")) {
+		masterPacket.batteryVoltage = root["batteryVoltage"];
+		Serial.printf("masterPacket() batteryVoltage: %d\n", masterPacket.batteryVoltage);
+	}
+	else {
+		Serial.printf("parseBoardPacket(): Error parsing %s", msg);
+	}
 }
-//--------------------------------------------------------------
-void sendPacketToSlave() {
-
+//---------------------------------------------------------------------------------
+void esk8Lib::parseControllerPacket(String &msg) {
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& root = jsonBuffer.parseObject(msg);
+	if (root.containsKey("throttle")) {
+		slavePacket.throttle = root["throttle"];
+		Serial.printf("saveBoardPacket() throttle: %d\n", slavePacket.throttle);
+	}
+	else {
+		Serial.printf("parseControllerPacket(): Error parsing %s", msg);
+	}
 }
-//--------------------------------------------------------------------------------
-int esk8Lib::pollMasterForPacket() {
+//---------------------------------------------------------------------------------
+String esk8Lib::encodeControllerPacket() {
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& msg = jsonBuffer.createObject();
+	msg["throttle"] = slavePacket.throttle;
 
-	byte rxData;
+	String str;
+	msg.printTo(str);
+	return str;
+}//---------------------------------------------------------------------------------
+String esk8Lib::encodeBoardPacket() {
+	DynamicJsonBuffer jsonBuffer;
+	JsonObject& msg = jsonBuffer.createObject();
+	msg["batteryVoltage"] = masterPacket.batteryVoltage;
 
-	return true;
+	String str;
+	msg.printTo(str);
+	return str;
 }
 //--------------------------------------------------------------------------------
 void esk8Lib::updateMasterPacket(int32_t newValue) {

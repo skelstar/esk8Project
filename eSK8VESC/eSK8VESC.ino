@@ -1,4 +1,5 @@
 
+#include <painlessMesh.h>
 #include <esk8Lib.h>
 
 #include <ESP8266VESC.h>
@@ -7,8 +8,8 @@
 #include "datatypes.h"
 #include <U8g2lib.h>
 #include <myPushButton.h>
+#include <debugHelper.h>
 
-#include <painlessMesh.h>
 
 
 /*--------------------------------------------------------------------------------
@@ -37,11 +38,20 @@ const char compile_date[] = __DATE__ " " __TIME__;
 // MyWifiHelper wifiHelper(WIFI_HOSTNAME);
 
 
+esk8Lib esk8;
+
+#define 	ROLE_MASTER 1
+#define 	ROLE_SLAVE 	0
+
+//--------------------------------------------------------------------------------
+
 #define   MESH_SSID       "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
 #define   MESH_PORT       5555
 
 painlessMesh  mesh;
+
+debugHelper debug;
 
 Scheduler 	userScheduler; // to control your personal task
 
@@ -60,29 +70,29 @@ void sendMessage() {
 	bool success = getVescValues();
 
 	if (success) {
-		Serial.printf("VESC online\n");
-
+		debug.message(d_COMMUNICATION, "VESC online\n");
 	}
 	else {
-		String msg = "VESC offline ";
-		msg +=  packetData;
-		mesh.sendBroadcast(msg);
-		Serial.printf("Sending message: %s\n", msg.c_str());
-	}
+		esk8.masterPacket.batteryVoltage = packetData;
+		packetData += 0.1;
 
-	packetData += 0.1;
+		String msg = esk8.encodeBoardPacket();
+		mesh.sendBroadcast(msg);
+
+		debug.message(d_DEBUG, "Sending message: %s\n", msg.c_str());
+	}
 
 	if (calc_delay) {
 		mesh.startDelayMeas(otherNode);
 	}
-
 
 	taskSendMessage.setInterval( GET_VESC_DATA_INTERVAL );
 }
 //--------------------------------------------------------------
 void receivedCallback(uint32_t from, String & msg) {
 	otherNode = from;
-	Serial.printf("startHere: Received from %u msg=%s since: %ums\n", otherNode, msg.c_str(), millis()-lastSlavePacketTime);
+	esk8.parseControllerPacket(msg);
+	debug.message(d_COMMUNICATION, "Received (from CONTROLLER) throttle=%d \n", esk8.slavePacket.throttle);
 	lastSlavePacketTime = millis();
 }
 //--------------------------------------------------------------
@@ -107,19 +117,13 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_
 #define 	OLED_CONTRAST_HIGH	100		// 256 highest
 //--------------------------------------------------------------------------------
 
-esk8Lib esk8;
-
-#define 	ROLE_MASTER 1
-#define 	ROLE_SLAVE 	0
-
-//--------------------------------------------------------------------------------
-
 void setup()
 {
-    // Debug output
+	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
+
     Serial.begin(9600);
 
-    Serial.println(compile_date);
+	debug.message(d_STARTUP, compile_date);
 
     // Setup serial connection to VESC
     Serial1.begin(9600);
@@ -128,7 +132,7 @@ void setup()
 	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
 	mesh.setDebugMsgTypes( ERROR | DEBUG | CONNECTION );  // set before init() so that you can see startup messages
 
-	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
+	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, AP_ONLY);
 	mesh.onReceive(&receivedCallback);
 	mesh.onNodeDelayReceived(&delayReceivedCallback);
 
@@ -137,7 +141,7 @@ void setup()
 
     initOLED();
 
-	esk8.begin(ROLE_MASTER);
+	esk8.begin();
 }
 //--------------------------------------------------------------------------------
 
@@ -244,7 +248,7 @@ bool getVescValues() {
 	else
 	{
 		vescConnected = false;
-		Serial.println("The VESC values could not be read!");
+		debug.message(d_COMMUNICATION, "The VESC values could not be read!\n");
 	}
 	return vescConnected;
 }
