@@ -2,8 +2,11 @@
 // Based on "startHere.ino" in painlessMesh library
 //************************************************************
 #include <painlessMesh.h>
-#include <debugHelper.h>
 #include <Rotary.h>
+
+#include <myPushButton.h>
+#include <debugHelper.h>
+
 
 #define   MESH_SSID       "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -21,19 +24,59 @@ int sendIntervalMs = 200;
 
 //--------------------------------------------------------------
 
-#define ENCODER_BUTTON_PIN		34
+#define ENCODER_BUTTON_PIN	34
 #define ENCODER_PIN_A		4
 #define ENCODER_PIN_B		16
+	
+#define DEADMAN_SWITCH_PIN	25
+
+#define	PIXEL_PIN			5
+
+//--------------------------------------------------------------
 
 debugHelper debug;
 
 Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
+
+//--------------------------------------------------------------------------------
+
+#define 	OFF_STATE_HIGH		HIGH
+#define 	OFF_STATE_LOW       0
+#define 	PULLUP              true
+
+void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam );
+myPushButton deadmanSwitch(DEADMAN_SWITCH_PIN, PULLUP, OFF_STATE_HIGH, listener_deadmanSwitch);
+void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
+
+	switch (eventCode) {
+
+		case deadmanSwitch.EV_BUTTON_PRESSED:
+			// if (esk8.slavePacket.throttle > 127) {
+			// 	//zeroThrottle();
+			// }
+			debug.print(d_DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
+			break;
+		
+		case deadmanSwitch.EV_RELEASED:
+			// if (esk8.slavePacket.throttle > 127) {
+			// 	//zeroThrottle();
+			// }
+			debug.print(d_DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
+			break;
+		
+		case deadmanSwitch.EV_HELD_SECONDS:
+			//Serial.printf("EV_BUTTON_HELD (DEADMAN): %d \n", eventParam);
+			break;
+	}
+}
 
 // lower number = more coarse
 #define ENCODER_COUNTER_MIN	-18 	// decceleration (ie -20 divides 0-127 into 20)
 #define ENCODER_COUNTER_MAX	12 		// acceleration (ie 15 divides 127-255 into 15)
 
 #define DEADMAN_SWITCH_USED		1
+
+//--------------------------------------------------------------
 
 int encoderCounter = 0;
 bool encoderChanged = false;
@@ -42,7 +85,7 @@ volatile bool packetReadyToBeSent = false;
 void encoderInterruptHandler() {
 	unsigned char result = rotary.process();
 
-	bool canAccelerate = true;	// deadmanSwitch.isPressed() || DEADMAN_SWITCH_USED == 0;
+	bool canAccelerate = deadmanSwitch.isPressed();	// || DEADMAN_SWITCH_USED == 0;
 
 	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
@@ -90,8 +133,6 @@ void sendMessage() {
 	msg +=  encoderCounter;
 	mesh.sendBroadcast(msg);
 
-	packetData += 0.1;
-
 	if (calc_delay) {
 		mesh.startDelayMeas(otherNode);
 	}
@@ -124,7 +165,7 @@ void setup() {
 	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
 	mesh.setDebugMsgTypes( ERROR | DEBUG | CONNECTION );  // set before init() so that you can see startup messages
 
-	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
+	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, AP_ONLY);
 	mesh.onReceive(&receivedCallback);
 	mesh.onNodeDelayReceived(&delayReceivedCallback);
 
@@ -135,6 +176,7 @@ void setup() {
 void loop() {
 	userScheduler.execute(); // it will run mesh scheduler as well
 	mesh.update();
+	deadmanSwitch.serviceEvents();
 
 	if (packetReadyToBeSent) {
 		packetReadyToBeSent = false;
