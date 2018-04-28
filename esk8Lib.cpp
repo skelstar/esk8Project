@@ -22,51 +22,39 @@ void esk8Lib::serviceEvents() {
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::parseBoardPacket(String &msg) {
-	DynamicJsonBuffer jsonBuffer(100);
-	JsonObject& root = jsonBuffer.parseObject(msg);
-	if (root.containsKey("batteryVoltage")) {
-		masterPacket.batteryVoltage = root["batteryVoltage"];
-		Serial.printf("masterPacket() batteryVoltage: %d\n", masterPacket.batteryVoltage);
+	if (strstr(msg.c_str(), "batteryVoltage") == NULL) {
+		Serial.printf("parseBoardPacket(): Error parsing %s \n", msg);
 	}
 	else {
-		Serial.printf("parseBoardPacket(): Error parsing %s", msg);
+		char* pch;
+		pch = strtok((char*)msg.c_str(), ":");
+		masterPacket.batteryVoltage = atof(strtok(NULL, ":"));
+		Serial.printf("masterPacket() batteryVoltage: %d (%s)\n", masterPacket.batteryVoltage, msg);
 	}
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::parseControllerPacket(String &msg) {
-	DynamicJsonBuffer jsonBuffer(100);
-	JsonObject& root = jsonBuffer.parseObject(msg);
-	if (root.containsKey("throttle")) {
-		slavePacket.throttle = root["throttle"];
-		Serial.printf("saveBoardPacket() throttle: %d\n", slavePacket.throttle);
+	if (strstr(msg.c_str(), "throttle") == NULL) {
+		Serial.printf("parseControllerPacket(): Error parsing %s \n", msg);
 	}
 	else {
-		Serial.printf("parseControllerPacket(): Error parsing %s", msg);
+		char* pch;
+		pch = strtok((char*)msg.c_str(), ":");
+		slavePacket.throttle = atoi(strtok(NULL, ":"));
+		Serial.printf("slavePacket() throttle: %d (%s)\n", slavePacket.throttle, msg);
 	}
 }
 //---------------------------------------------------------------------------------
 String esk8Lib::encodeControllerPacket() {
 	char buff[50];
 	sprintf(buff, "throttle:%d", slavePacket.throttle);
-	// DynamicJsonBuffer jsonBuffer;
-	// JsonObject& msg = jsonBuffer.createObject();
-	// msg["throttle"] = slavePacket.throttle;
-
-	// String str;
-	// msg.printTo(str);
 	return buff;
 }
 //---------------------------------------------------------------------------------
 String esk8Lib::encodeBoardPacket() {
 	char buff[50];
 	sprintf(buff, "batteryVoltage:%.1f", masterPacket.batteryVoltage);
-	// DynamicJsonBuffer jsonBuffer;
-	// JsonObject& msg = jsonBuffer.createObject();
-	// msg["batteryVoltage"] = masterPacket.batteryVoltage;
-
-	// String str;
-	// msg.printTo(str);
-	return str;
+	return buff;
 }
 //--------------------------------------------------------------------------------
 void esk8Lib::updateMasterPacket(int32_t newValue) {
