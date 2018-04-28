@@ -88,8 +88,8 @@ volatile long lastRxMillis = 0;
 
 //--------------------------------------------------------------
 void sendMessage() {
-	String msg = "Payload = ";
-	msg +=  packetData;
+	String msg = "throttle:";
+	msg +=  encoderCounter;
 	mesh.sendBroadcast(msg);
 
 	packetData += 0.1;
@@ -98,7 +98,7 @@ void sendMessage() {
 		mesh.startDelayMeas(otherNode);
 	}
 
-	Serial.printf("Sending message: %s\n", msg.c_str());
+	debug.print(d_COMMUNICATION, "Sending message: '%s'\n", msg.c_str());
 
 	taskSendMessage.setInterval( sendIntervalMs );
 }
@@ -135,6 +135,11 @@ void setup() {
 void loop() {
 	userScheduler.execute(); // it will run mesh scheduler as well
 	mesh.update();
+
+	if (packetReadyToBeSent) {
+		packetReadyToBeSent = false;
+		sendMessage();
+	}
 }
 //----------------------------------------------------------------
 void setupEncoder() {
