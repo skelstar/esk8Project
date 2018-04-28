@@ -70,9 +70,7 @@ void encoderInterruptHandler() {
 // Prototypes
 void sendMessage(); 
 
-bool calc_delay = true;
-SimpleList<uint32_t> nodes;
-float packetData = 0.1;
+bool calc_delay = false;
 
 //--------------------------------------------------------------
 
@@ -105,7 +103,9 @@ void sendMessage() {
 //--------------------------------------------------------------
 void receivedCallback(uint32_t from, String & msg) {
 	otherNode = from;
-	Serial.printf("startHere: Received from %u msg=%s since: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
+	//debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
+	//Serial.printf("Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
+	debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", msg.c_str(), millis()-lastRxMillis);
 	lastRxMillis = millis();
 }
 //--------------------------------------------------------------

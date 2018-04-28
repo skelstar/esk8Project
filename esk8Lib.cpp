@@ -29,7 +29,6 @@ void esk8Lib::parseBoardPacket(String &msg) {
 		char* pch;
 		pch = strtok((char*)msg.c_str(), ":");
 		masterPacket.batteryVoltage = atof(strtok(NULL, ":"));
-		Serial.printf("masterPacket() batteryVoltage: %d (%s)\n", masterPacket.batteryVoltage, msg);
 	}
 }
 //---------------------------------------------------------------------------------
@@ -41,7 +40,6 @@ void esk8Lib::parseControllerPacket(String &msg) {
 		char* pch;
 		pch = strtok((char*)msg.c_str(), ":");
 		slavePacket.throttle = atoi(strtok(NULL, ":"));
-		Serial.printf("slavePacket() throttle: %d (%s)\n", slavePacket.throttle, msg);
 	}
 }
 //---------------------------------------------------------------------------------
