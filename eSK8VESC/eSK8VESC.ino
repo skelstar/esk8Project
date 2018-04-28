@@ -132,7 +132,7 @@ void setup()
 	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
 	mesh.setDebugMsgTypes( ERROR | DEBUG | CONNECTION );  // set before init() so that you can see startup messages
 
-	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT);
+	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, STA_ONLY);
 	mesh.onReceive(&receivedCallback);
 	mesh.onNodeDelayReceived(&delayReceivedCallback);
 

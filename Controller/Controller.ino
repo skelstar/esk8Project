@@ -6,6 +6,7 @@
 
 #include <myPushButton.h>
 #include <debugHelper.h>
+#include <myPowerButtonManager.h>
 
 
 #define   MESH_SSID       "whateverYouLike"
@@ -155,15 +156,56 @@ void delayReceivedCallback(uint32_t from, int32_t delay) {
 }
 //--------------------------------------------------------------
 
+myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
+
+void powerupEvent(int state) {
+
+	switch (state) {
+		case powerButton.TN_TO_POWERING_UP:
+			debug.print(d_STARTUP, "TN_TO_POWERING_UP");
+			// message("Powering Up");
+			break;
+		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
+			debug.print(d_STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE");
+			// skip this and go straighht to RUNNING
+			powerButton.setState(powerButton.TN_TO_RUNNING);
+			break;
+		case powerButton.TN_TO_RUNNING:
+			debug.print(d_STARTUP, "TN_TO_RUNNING");
+			break;
+		case powerButton.TN_TO_POWERING_DOWN:
+			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN");
+			// message("Powering Down");
+			break;
+		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
+			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE");
+			// u8g2.clearBuffer();
+			// u8g2.sendBuffer();	// clear screen
+			// setPixels(COLOUR_OFF, 0);
+			powerButton.setState(powerButton.TN_TO_POWER_OFF);
+			break;
+		case powerButton.TN_TO_POWER_OFF:
+			debug.print(d_STARTUP, "TN_TO_POWER_OFF");
+			delay(100);
+			esp_deep_sleep_start();
+			Serial.println("This will never be printed");
+			break;
+	}
+}
+
+//--------------------------------------------------------------------------------
+
 void setup() {
 
 	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
 
 	Serial.begin(9600);
 
+	powerButton.begin();
+
 	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
 	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
-	mesh.setDebugMsgTypes( ERROR | DEBUG | CONNECTION );  // set before init() so that you can see startup messages
+	mesh.setDebugMsgTypes( ERROR | STARTUP| DEBUG | CONNECTION );  // set before init() so that you can see startup messages
 
 	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, AP_ONLY);
 	mesh.onReceive(&receivedCallback);
@@ -174,9 +216,12 @@ void setup() {
 }
 
 void loop() {
+
 	userScheduler.execute(); // it will run mesh scheduler as well
 	mesh.update();
 	deadmanSwitch.serviceEvents();
+
+	powerButton.serviceButton(true);
 
 	if (packetReadyToBeSent) {
 		packetReadyToBeSent = false;
