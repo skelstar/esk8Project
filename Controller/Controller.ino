@@ -2,7 +2,9 @@
 // Based on "startHere.ino" in painlessMesh library
 //************************************************************
 #include <painlessMesh.h>
+
 #include <Rotary.h>
+#include <FastLED.h>
 
 #include <myPushButton.h>
 #include <debugHelper.h>
@@ -109,6 +111,20 @@ void encoderInterruptHandler() {
 	}
 }
 
+//--------------------------------------------------------------------------------
+
+#define 	NUM_PIXELS 		8
+
+CRGB leds[NUM_PIXELS];
+
+#define BRIGHTNESS	20
+
+CRGB COLOUR_OFF = CRGB::Black;
+CRGB COLOUR_RED = CRGB::Red;
+CRGB COLOUR_GREEN = CRGB::Green;
+CRGB COLOUR_BLUE = CRGB::Blue;
+CRGB COLOUR_WHITE = CRGB::White;
+
 //--------------------------------------------------------------
 
 // Prototypes
@@ -162,30 +178,32 @@ void powerupEvent(int state) {
 
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
-			debug.print(d_STARTUP, "TN_TO_POWERING_UP");
-			// message("Powering Up");
+			debug.print(d_STARTUP, "TN_TO_POWERING_UP \n");
+			//setPixels(COLOUR_GREEN, 0);
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
-			debug.print(d_STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE");
+			debug.print(d_STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
 			// skip this and go straighht to RUNNING
 			powerButton.setState(powerButton.TN_TO_RUNNING);
 			break;
 		case powerButton.TN_TO_RUNNING:
-			debug.print(d_STARTUP, "TN_TO_RUNNING");
+			//setPixels(COLOUR_OFF, 0);
+			debug.print(d_STARTUP, "TN_TO_RUNNING\n");
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
-			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN");
-			// message("Powering Down");
+			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN \n");
+			//setPixels(COLOUR_GREEN, 0);
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
-			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE");
+			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
 			// u8g2.clearBuffer();
 			// u8g2.sendBuffer();	// clear screen
 			// setPixels(COLOUR_OFF, 0);
 			powerButton.setState(powerButton.TN_TO_POWER_OFF);
 			break;
 		case powerButton.TN_TO_POWER_OFF:
-			debug.print(d_STARTUP, "TN_TO_POWER_OFF");
+			debug.print(d_STARTUP, "TN_TO_POWER_OFF \n");
+			//setPixels(COLOUR_OFF, 0);
 			delay(100);
 			esp_deep_sleep_start();
 			Serial.println("This will never be printed");
@@ -198,6 +216,8 @@ void powerupEvent(int state) {
 void setup() {
 
 	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
+
+	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
 
 	Serial.begin(9600);
 
@@ -238,5 +258,17 @@ void setupEncoder() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
 
 	// esk8.slavePacket.throttle = getThrottleValue();
+}
+//--------------------------------------------------------------------------------
+void setPixels(CRGB c, uint8_t wait) {
+	for (uint16_t i=0; i<NUM_PIXELS; i++) {
+		leds[i] = c;
+		if (wait > 0) {
+			FastLED.show();
+			delay(wait);
+		}
+		mesh.update();
+	}
+	FastLED.show();
 }
 //--------------------------------------------------------------------------------
