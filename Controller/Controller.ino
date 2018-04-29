@@ -4,8 +4,8 @@
 // #include <painlessMesh.h>
 
 #include <Rotary.h>
-// #include <FastLED.h>
-#include <Adafruit_NeoPixel.h>
+#include <FastLED.h>
+//#include <Adafruit_NeoPixel.h>
 
 #include <myPushButton.h>
 #include <debugHelper.h>
@@ -16,12 +16,6 @@
 const char compile_date[] = __DATE__ " " __TIME__;
 
 //--------------------------------------------------------------------------------
-
-#define   MESH_SSID       "whateverYouLike"
-#define   MESH_PASSWORD   "somethingSneaky"
-#define   MESH_PORT       5555
-
-//--------------------------------------------------------------
 
 #define ROLE_MASTER		1
 #define ROLE_SLAVE		0
@@ -121,15 +115,16 @@ void encoderInterruptHandler() {
 
 #define 	NUM_PIXELS 		8
 
-//CRGB leds[NUM_PIXELS];
-Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+CRGB leds[NUM_PIXELS];
+//Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 #define BRIGHTNESS	20
 
-uint32_t COLOUR_OFF = leds.Color(0, 0, 0);
-uint32_t COLOUR_RED = leds.Color(BRIGHTNESS, 0, 0);
-uint32_t COLOUR_GREEN = leds.Color(0, BRIGHTNESS, 0);
-uint32_t COLOUR_BLUE = leds.Color(0, 0, BRIGHTNESS);
+CRGB COLOUR_OFF = CRGB::Black;
+CRGB COLOUR_RED = CRGB::Red;
+CRGB COLOUR_GREEN = CRGB::Green;
+CRGB COLOUR_BLUE = CRGB::Blue;
+CRGB COLOUR_WHITE = CRGB::White;
 
 //--------------------------------------------------------------
 
@@ -184,38 +179,29 @@ void powerupEvent(int state) {
 
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
-			debug.print(d_STARTUP, "TN_TO_POWERING_UP \n");
 			setPixels(COLOUR_GREEN, 0);
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
-			debug.print(d_STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
 			setPixels(COLOUR_OFF, 0);
 			// skip this and go straighht to RUNNING
 			powerButton.setState(powerButton.TN_TO_RUNNING);
 			break;
 		case powerButton.TN_TO_RUNNING:
 			setPixels(COLOUR_OFF, 0);
-			debug.print(d_STARTUP, "TN_TO_RUNNING\n");
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
-			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN \n");
 			setPixels(COLOUR_GREEN, 0);
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE: {
-				debug.print(d_STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
 				// u8g2.clearBuffer();
 				// u8g2.sendBuffer();	// clear screen
 				setPixels(COLOUR_OFF, 0);
 				long pixelTime = millis();
-				while (millis()-pixelTime < 100) {
-					// mesh.update();
-				}	// wait for pixels to react
 				powerButton.setState(powerButton.TN_TO_POWER_OFF);
 			}
 			break;
 		case powerButton.TN_TO_POWER_OFF:
-			debug.print(d_STARTUP, "TN_TO_POWER_OFF \n");
-			//setPixels(COLOUR_OFF, 0);
+			setPixels(COLOUR_OFF, 0);
 			delay(100);
 			esp_deep_sleep_start();
 			Serial.println("This will never be printed");
@@ -231,10 +217,9 @@ void setup() {
 
 	debug.print(d_STARTUP, "%s \n", compile_date);
 
-//	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
+	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
 
-	leds.begin();
-	leds.show();
+	FastLED.show();
 
 	Serial.begin(9600);
 
@@ -277,15 +262,14 @@ void setupEncoder() {
 	// esk8.slavePacket.throttle = getThrottleValue();
 }
 //--------------------------------------------------------------------------------
-void setPixels(uint32_t c, uint8_t wait) {
+void setPixels(CRGB c, uint8_t wait) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		leds.setPixelColor(i, c);
+		leds[i] = c;
 		if (wait > 0) {
-			leds.show();
+			FastLED.show();
 			delay(wait);
 		}
-		// mesh.update();
 	}
-	leds.show();
+	FastLED.show();
 }
 //--------------------------------------------------------------------------------
