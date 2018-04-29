@@ -4,12 +4,18 @@
 #include <painlessMesh.h>
 
 #include <Rotary.h>
-#include <FastLED.h>
+// #include <FastLED.h>
+#include <Adafruit_NeoPixel.h>
 
 #include <myPushButton.h>
 #include <debugHelper.h>
 #include <myPowerButtonManager.h>
 
+//--------------------------------------------------------------------------------
+
+const char compile_date[] = __DATE__ " " __TIME__;
+
+//--------------------------------------------------------------------------------
 
 #define   MESH_SSID       "whateverYouLike"
 #define   MESH_PASSWORD   "somethingSneaky"
@@ -115,15 +121,15 @@ void encoderInterruptHandler() {
 
 #define 	NUM_PIXELS 		8
 
-CRGB leds[NUM_PIXELS];
+//CRGB leds[NUM_PIXELS];
+Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 #define BRIGHTNESS	20
 
-CRGB COLOUR_OFF = CRGB::Black;
-CRGB COLOUR_RED = CRGB::Red;
-CRGB COLOUR_GREEN = CRGB::Green;
-CRGB COLOUR_BLUE = CRGB::Blue;
-CRGB COLOUR_WHITE = CRGB::White;
+uint32_t COLOUR_OFF = leds.Color(0, 0, 0);
+uint32_t COLOUR_RED = leds.Color(BRIGHTNESS, 0, 0);
+uint32_t COLOUR_GREEN = leds.Color(0, BRIGHTNESS, 0);
+uint32_t COLOUR_BLUE = leds.Color(0, 0, BRIGHTNESS);
 
 //--------------------------------------------------------------
 
@@ -179,27 +185,33 @@ void powerupEvent(int state) {
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
 			debug.print(d_STARTUP, "TN_TO_POWERING_UP \n");
-			//setPixels(COLOUR_GREEN, 0);
+			setPixels(COLOUR_GREEN, 0);
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
 			debug.print(d_STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
+			setPixels(COLOUR_OFF, 0);
 			// skip this and go straighht to RUNNING
 			powerButton.setState(powerButton.TN_TO_RUNNING);
 			break;
 		case powerButton.TN_TO_RUNNING:
-			//setPixels(COLOUR_OFF, 0);
+			setPixels(COLOUR_OFF, 0);
 			debug.print(d_STARTUP, "TN_TO_RUNNING\n");
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
 			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN \n");
-			//setPixels(COLOUR_GREEN, 0);
+			setPixels(COLOUR_GREEN, 0);
 			break;
-		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
-			debug.print(d_STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
-			// u8g2.clearBuffer();
-			// u8g2.sendBuffer();	// clear screen
-			// setPixels(COLOUR_OFF, 0);
-			powerButton.setState(powerButton.TN_TO_POWER_OFF);
+		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE: {
+				debug.print(d_STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
+				// u8g2.clearBuffer();
+				// u8g2.sendBuffer();	// clear screen
+				setPixels(COLOUR_OFF, 0);
+				long pixelTime = millis();
+				while (millis()-pixelTime < 100) {
+					mesh.update();
+				}	// wait for pixels to react
+				powerButton.setState(powerButton.TN_TO_POWER_OFF);
+			}
 			break;
 		case powerButton.TN_TO_POWER_OFF:
 			debug.print(d_STARTUP, "TN_TO_POWER_OFF \n");
@@ -217,11 +229,16 @@ void setup() {
 
 	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
 
-	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
+	debug.print(d_STARTUP, "%s \n", compile_date);
+
+//	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
+
+	leds.begin();
+	leds.show();
 
 	Serial.begin(9600);
 
-	powerButton.begin();
+	powerButton.begin(DEBUG);
 
 	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
 	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
@@ -241,7 +258,7 @@ void loop() {
 	mesh.update();
 	deadmanSwitch.serviceEvents();
 
-	powerButton.serviceButton(true);
+	powerButton.serviceButton();
 
 	if (packetReadyToBeSent) {
 		packetReadyToBeSent = false;
@@ -260,15 +277,15 @@ void setupEncoder() {
 	// esk8.slavePacket.throttle = getThrottleValue();
 }
 //--------------------------------------------------------------------------------
-void setPixels(CRGB c, uint8_t wait) {
+void setPixels(uint32_t c, uint8_t wait) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		leds[i] = c;
+		leds.setPixelColor(i, c);
 		if (wait > 0) {
-			FastLED.show();
+			leds.show();
 			delay(wait);
 		}
 		mesh.update();
 	}
-	FastLED.show();
+	leds.show();
 }
 //--------------------------------------------------------------------------------
