@@ -1,7 +1,7 @@
 //************************************************************
 // Based on "startHere.ino" in painlessMesh library
 //************************************************************
-#include <painlessMesh.h>
+// #include <painlessMesh.h>
 
 #include <Rotary.h>
 // #include <FastLED.h>
@@ -140,42 +140,42 @@ bool calc_delay = false;
 
 //--------------------------------------------------------------
 
-painlessMesh  mesh;
+// painlessMesh  mesh;
 
-Scheduler     userScheduler; // to control your personal task
+// Scheduler     userScheduler; // to control your personal task
 
 // void sendMessage() ; // Prototype
-Task taskSendMessage( TASK_MILLISECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
+// Task taskSendMessage( TASK_MILLISECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
 
 volatile uint32_t otherNode;
 volatile long lastRxMillis = 0;
 
 //--------------------------------------------------------------
 void sendMessage() {
-	String msg = "throttle:";
-	msg +=  encoderCounter;
-	mesh.sendBroadcast(msg);
+	// String msg = "throttle:";
+	// msg +=  encoderCounter;
+	// mesh.sendBroadcast(msg);
 
-	if (calc_delay) {
-		mesh.startDelayMeas(otherNode);
-	}
+	// if (calc_delay) {
+	// 	mesh.startDelayMeas(otherNode);
+	// }
 
-	debug.print(d_COMMUNICATION, "Sending message: '%s'\n", msg.c_str());
+	// debug.print(d_COMMUNICATION, "Sending message: '%s'\n", msg.c_str());
 
-	taskSendMessage.setInterval( sendIntervalMs );
+	// taskSendMessage.setInterval( sendIntervalMs );
 }
 //--------------------------------------------------------------
-void receivedCallback(uint32_t from, String & msg) {
-	otherNode = from;
-	//debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
-	//Serial.printf("Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
-	debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", msg.c_str(), millis()-lastRxMillis);
-	lastRxMillis = millis();
-}
-//--------------------------------------------------------------
-void delayReceivedCallback(uint32_t from, int32_t delay) {
-	Serial.printf("Delay to node %u is %d us\n", from, delay);
-}
+// void receivedCallback(uint32_t from, String & msg) {
+// 	otherNode = from;
+// 	//debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
+// 	//Serial.printf("Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
+// 	debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", msg.c_str(), millis()-lastRxMillis);
+// 	lastRxMillis = millis();
+// }
+// //--------------------------------------------------------------
+// void delayReceivedCallback(uint32_t from, int32_t delay) {
+// 	Serial.printf("Delay to node %u is %d us\n", from, delay);
+// }
 //--------------------------------------------------------------
 
 myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
@@ -208,7 +208,7 @@ void powerupEvent(int state) {
 				setPixels(COLOUR_OFF, 0);
 				long pixelTime = millis();
 				while (millis()-pixelTime < 100) {
-					mesh.update();
+					// mesh.update();
 				}	// wait for pixels to react
 				powerButton.setState(powerButton.TN_TO_POWER_OFF);
 			}
@@ -238,15 +238,15 @@ void setup() {
 
 	Serial.begin(9600);
 
-	powerButton.begin(DEBUG);
+	powerButton.begin(d_DEBUG);
 
 	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
 	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
-	mesh.setDebugMsgTypes( ERROR | STARTUP| DEBUG | CONNECTION );  // set before init() so that you can see startup messages
+	// mesh.setDebugMsgTypes( ERROR | STARTUP| DEBUG | CONNECTION );  // set before init() so that you can see startup messages
 
-	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, AP_ONLY);
-	mesh.onReceive(&receivedCallback);
-	mesh.onNodeDelayReceived(&delayReceivedCallback);
+	// mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, AP_ONLY);
+	// mesh.onReceive(&receivedCallback);
+	// mesh.onNodeDelayReceived(&delayReceivedCallback);
 
 	// encoder
 	setupEncoder();
@@ -254,8 +254,8 @@ void setup() {
 
 void loop() {
 
-	userScheduler.execute(); // it will run mesh scheduler as well
-	mesh.update();
+	// userScheduler.execute(); // it will run mesh scheduler as well
+	// mesh.update();
 	deadmanSwitch.serviceEvents();
 
 	powerButton.serviceButton();
@@ -284,7 +284,7 @@ void setPixels(uint32_t c, uint8_t wait) {
 			leds.show();
 			delay(wait);
 		}
-		mesh.update();
+		// mesh.update();
 	}
 	leds.show();
 }
