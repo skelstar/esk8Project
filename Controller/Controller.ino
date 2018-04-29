@@ -10,6 +10,7 @@
 #include <myPushButton.h>
 #include <debugHelper.h>
 #include <myPowerButtonManager.h>
+#include <esk8Lib.h>
 
 //--------------------------------------------------------------------------------
 
@@ -40,6 +41,8 @@ int sendIntervalMs = 200;
 debugHelper debug;
 
 Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
+
+esk8Lib esk8;
 
 //--------------------------------------------------------------------------------
 
@@ -213,6 +216,8 @@ void powerupEvent(int state) {
 
 void setup() {
 
+	esk8.begin();
+
 	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
 
 	debug.print(d_STARTUP, "%s \n", compile_date);
@@ -225,22 +230,12 @@ void setup() {
 
 	powerButton.begin(d_DEBUG);
 
-	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
-	// mesh.setDebugMsgTypes( ERROR | STARTUP| DEBUG | CONNECTION );  // set before init() so that you can see startup messages
-
-	// mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, AP_ONLY);
-	// mesh.onReceive(&receivedCallback);
-	// mesh.onNodeDelayReceived(&delayReceivedCallback);
-
 	// encoder
 	setupEncoder();
 }
 
 void loop() {
 
-	// userScheduler.execute(); // it will run mesh scheduler as well
-	// mesh.update();
 	deadmanSwitch.serviceEvents();
 
 	powerButton.serviceButton();
