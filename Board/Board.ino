@@ -4,34 +4,17 @@
 #include <esk8Lib.h>
 
 #include <ESP8266VESC.h>
-// #include <myWifiHelper.h>
 #include "VescUart.h"
 #include "datatypes.h"
 #include <U8g2lib.h>
 #include <myPushButton.h>
 #include <debugHelper.h>
 
-
-
-/*--------------------------------------------------------------------------------
-
-REMEMBER: hold GPIO0 to put into OTA mode
-
---------------------------------------------------------------------------------*/
+/*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
 //--------------------------------------------------------------------------------
-
-
-//--------------------------------------------------------------------------------
-
-// #define WIFI_HOSTNAME "esk8VESC"
-// #define WIFI_OTA_NAME "esk8VESC-OTA"
-
-// MyWifiHelper wifiHelper(WIFI_HOSTNAME);
-
-// #define		WIFI_HOSTNAME		"/esk8/base"
 
 #define 	OLED_GND		12
 #define 	OLED_PWR		27
@@ -49,6 +32,8 @@ esk8Lib esk8;
 #define 	ROLE_BOARD 		1
 #define 	ROLE_CONTROLLER 0
 
+#define GET_VESC_DATA_INTERVAL	1000
+
 //--------------------------------------------------------------------------------
 
 debugHelper debug;
@@ -57,7 +42,6 @@ volatile uint32_t otherNode;
 volatile long lastControllerPacketTime = 0;
 volatile float packetData = 0.1;
 bool calc_delay =false;
-#define GET_VESC_DATA_INTERVAL	1000
 
 //--------------------------------------------------------------
 void loadPacketForController(bool gotDataFromVesc) {
@@ -72,15 +56,12 @@ void loadPacketForController(bool gotDataFromVesc) {
 
 		debug.print(d_DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
-
-	// bool result = esk8.loadPacketForController();
-	// taskSendMessage.setInterval( GET_VESC_DATA_INTERVAL );
 }
 //--------------------------------------------------------------------------------
-//SoftwareSerial softwareSerial = SoftwareSerial(VESC_UART_RX, VESC_UART_TX); // ESP8266 (NodeMCU): RX (D5), TX (D6 / GPIO12)
-// Serial1(2)
+
 #define 	VESC_UART_RX	16	// orange - VESC 5
 #define 	VESC_UART_TX	17	// green - VESC 6
+
 HardwareSerial Serial1(2);
 
 ESP8266VESC esp8266VESC = ESP8266VESC(Serial1);
@@ -89,8 +70,10 @@ bool vescConnected = false;
 bool controllerHasBeenOnline = false;
 
 //--------------------------------------------------------------------------------
+
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
 #define 	OLED_CONTRAST_HIGH	100		// 256 highest
+
 //--------------------------------------------------------------------------------
 
 void setup()
@@ -132,8 +115,10 @@ void loop() {
 	}
 
 	bool haveControllerData = esk8.checkForPacket();
-	if (haveControllerData) {
-		debug.print(d_COMMUNICATION, "Throttle: %d \n", esk8.controllerPacket.throttle);
+	bool controllerDataChanged = esk8.packetChanged();
+
+	if (haveControllerData && controllerDataChanged) {
+		debug.print(d_COMMUNICATION, "sendDataToVesc(); Throttle: %d \n", esk8.controllerPacket.throttle);
 		sendDataToVesc(controllerOnline, controllerHasBeenOnline);
 	}
 

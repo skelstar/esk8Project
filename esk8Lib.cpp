@@ -142,6 +142,8 @@ int esk8Lib::checkForPacket() {
 		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
 		while ( _radio->available() ) {                          	// While there is data ready
 			if (_role == ROLE_BOARD) {
+				// save current throttle data
+				_oldControllerPacket.throttle = controllerPacket.throttle;
 				_radio->read( &controllerPacket, sizeof(controllerPacket) );         	// Get the payload
 			}
 			else if (_role == ROLE_CONTROLLER) {
@@ -160,6 +162,20 @@ int esk8Lib::checkForPacket() {
 		return true;
 	}
 	return false;
+}
+//---------------------------------------------------------------------------------
+int esk8Lib::packetChanged() {
+
+	bool changed = false;
+	
+	switch (_role) {
+		case ROLE_BOARD:
+			changed = _oldControllerPacket.throttle != controllerPacket.throttle;
+			break;
+		default:
+			changed = false;
+	}
+	return changed;
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::sendThenReadPacket() {

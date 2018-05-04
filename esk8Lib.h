@@ -26,11 +26,8 @@ class esk8Lib
 
 		int sendPacketToBoard();
 
-		// int checkForPacketFromController();
-		// int checkForPacketFromBoard();
-		// int sendPacketToController();
-
 		int checkForPacket();
+		int packetChanged();
 		int sendThenReadPacket();
 
 		BoardStruct boardPacket;
@@ -44,6 +41,7 @@ class esk8Lib
 		RF24 *_radio;
 		int _role;
 		debugHelper *_debug;
+		ControllerStruct _oldControllerPacket;
 
 };
 
