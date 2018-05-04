@@ -1,11 +1,10 @@
-//************************************************************
-// Based on "startHere.ino" in painlessMesh library
-//************************************************************
-// #include <painlessMesh.h>
-
+#include <SPI.h>
+#include "RF24.h"
 #include <Rotary.h>
 #include <FastLED.h>
-//#include <Adafruit_NeoPixel.h>
+#include <U8g2lib.h>
+
+#include <TaskScheduler.h>
 
 #include <myPushButton.h>
 #include <debugHelper.h>
@@ -16,27 +15,48 @@
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
+// https://sandhansblog.wordpress.com/2017/04/16/interfacing-displaying-a-custom-graphic-on-an-0-96-i2c-oled/
+static const unsigned char wifiicon14x10 [] PROGMEM = {
+   0xf0, 0x03, 0xfc, 0x0f, 0x1e, 0x1c, 0xc7, 0x39, 0xf3, 0x33, 0x38, 0x06, 0x1c, 0x0c, 0xc8, 0x04, 0xe0, 0x01, 0xc0, 0x00 
+};
+
 //--------------------------------------------------------------------------------
 
-#define ROLE_MASTER		1
-#define ROLE_SLAVE		0
-
-//int role = ROLE_MASTER;
-int role = ROLE_SLAVE;
-
-int sendIntervalMs = 200;
-
-//--------------------------------------------------------------
-
-#define ENCODER_BUTTON_PIN	34
-#define ENCODER_PIN_A		4
-#define ENCODER_PIN_B		16
+#define ENCODER_BUTTON_PIN	34	// 36 didn't work
+#define ENCODER_PIN_A		16
+#define ENCODER_PIN_B		17
 	
 #define DEADMAN_SWITCH_PIN	25
 
 #define	PIXEL_PIN			5
+	
+#define SPI_CE				33	// white/purple
+#define SPI_CS				26  // green
+
+#define OLED_SCL        	22    // std ESP32 (22)
+#define OLED_SDA        	21    // std ESP32 (23??)
 
 //--------------------------------------------------------------
+
+#define ROLE_BOARD		1
+#define ROLE_CONTROLLER	0
+
+//int role = ROLE_MASTER;
+int role = ROLE_CONTROLLER;
+bool radioNumber = 1;
+
+int sendIntervalMs = 200;
+bool updateOled = false;
+
+/* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
+RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
+//--------------------------------------------------------------
+
+#define     OLED_CONTRAST_HIGH	100        // 256 highest
+#define     OLED_CONTRAST_LOW	20
+U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, OLED_SCL, OLED_SDA, U8X8_PIN_NONE);
+
+//--------------------------------------------------------------------------------
 
 debugHelper debug;
 
@@ -57,16 +77,16 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 	switch (eventCode) {
 
 		case deadmanSwitch.EV_BUTTON_PRESSED:
-			// if (esk8.slavePacket.throttle > 127) {
-			// 	//zeroThrottle();
-			// }
+			if (esk8.slavePacket.throttle > 127) {
+			 	//zeroThrottleReadyToSend();
+			}
 			debug.print(d_DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
 			break;
 		
 		case deadmanSwitch.EV_RELEASED:
-			// if (esk8.slavePacket.throttle > 127) {
-			// 	//zeroThrottle();
-			// }
+			if (esk8.slavePacket.throttle > 127) {
+			 	zeroThrottleReadyToSend();
+			}
 			debug.print(d_DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
 		
@@ -87,9 +107,12 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 int encoderCounter = 0;
 bool encoderChanged = false;
 volatile bool packetReadyToBeSent = false;
+volatile long lastPacketFromMaster = 0;
 
 void encoderInterruptHandler() {
 	unsigned char result = rotary.process();
+
+	// debug.print(d_DEBUG, "Encoder event \n");
 
 	bool canAccelerate = deadmanSwitch.isPressed();	// || DEADMAN_SWITCH_USED == 0;
 
@@ -97,19 +120,19 @@ void encoderInterruptHandler() {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 
 			encoderCounter++;
-			//int throttleValue = getThrottleValue();
-			//esk8.updateSlavePacket(throttleValue);
+			int throttle = getThrottleValue(encoderCounter);
+			esk8.slavePacket.throttle = throttle;
 			packetReadyToBeSent = true;
-			debug.print(d_DEBUG, "encoderCounter: %d \n", encoderCounter);
+			debug.print(d_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
-			//int throttleValue = getThrottleValue();
-			//esk8.updateSlavePacket(throttleValue);
+			int throttle = getThrottleValue(encoderCounter);
+			esk8.slavePacket.throttle = throttle;
 			packetReadyToBeSent = true;
-			debug.print(d_DEBUG, "encoderCounter: %d \n", encoderCounter);
+			debug.print(d_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 }
@@ -129,6 +152,43 @@ CRGB COLOUR_GREEN = CRGB::Green;
 CRGB COLOUR_BLUE = CRGB::Blue;
 CRGB COLOUR_WHITE = CRGB::White;
 
+//--------------------------------------------------------------------------------
+
+Scheduler runner;
+
+bool tFlashLeds_onEnable();
+void tFlashLedsOn_callback();
+void tFlashLedsOff_callback();
+
+CRGB tFlashLedsColour = COLOUR_RED;
+
+Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
+
+bool tFlashLeds_onEnable() {
+	setPixels(tFlashLedsColour, 0);
+	Serial.println("tFlashLeds_onEnable");
+	tFlashLeds.enable();
+}
+void tFlashLedsOn_callback() {
+	tFlashLeds.setCallback(&tFlashLedsOff_callback);
+	setPixels(tFlashLedsColour, 0);
+	Serial.println("tFlashLedsOn_callback");
+}
+void tFlashLedsOff_callback() {
+	tFlashLeds.setCallback(&tFlashLedsOn_callback);
+	setPixels(COLOUR_OFF, 0);
+	Serial.println("tFlashLedsOff_callback");
+}
+
+Task tSendControllerValues(500, TASK_FOREVER, &tSendControllerValues_callback);
+
+void tSendControllerValues_callback() {
+	if (esk8.sendThenReadPacket() == true) {
+		lastPacketFromMaster = millis();
+		updateOled = true;
+	}
+	debug.print(d_COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f \n", esk8.masterPacket.batteryVoltage);
+}
 //--------------------------------------------------------------
 
 // Prototypes
@@ -138,44 +198,19 @@ bool calc_delay = false;
 
 //--------------------------------------------------------------
 
-// painlessMesh  mesh;
-
-// Scheduler     userScheduler; // to control your personal task
-
-// void sendMessage() ; // Prototype
-// Task taskSendMessage( TASK_MILLISECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
-
 volatile uint32_t otherNode;
 volatile long lastRxMillis = 0;
+#define COMMS_TIMEOUT_PERIOD 	1000
 
 //--------------------------------------------------------------
 void sendMessage() {
-	// String msg = "throttle:";
-	// msg +=  encoderCounter;
-	// mesh.sendBroadcast(msg);
-
-	// if (calc_delay) {
-	// 	mesh.startDelayMeas(otherNode);
-	// }
-
-	// debug.print(d_COMMUNICATION, "Sending message: '%s'\n", msg.c_str());
-
-	// taskSendMessage.setInterval( sendIntervalMs );
+	if (esk8.sendPacketToBoard()) {
+		lastPacketFromMaster = millis();
+		updateOled = true;
+	}
+	debug.print(d_COMMUNICATION, "Sending message: throttle:%d \n", esk8.slavePacket.throttle);
 }
 //--------------------------------------------------------------
-// void receivedCallback(uint32_t from, String & msg) {
-// 	otherNode = from;
-// 	//debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
-// 	//Serial.printf("Received msg=%s, took: %ums\n", otherNode, msg.c_str(), millis()-lastRxMillis);
-// 	debug.print(d_COMMUNICATION, "Received msg=%s, took: %ums\n", msg.c_str(), millis()-lastRxMillis);
-// 	lastRxMillis = millis();
-// }
-// //--------------------------------------------------------------
-// void delayReceivedCallback(uint32_t from, int32_t delay) {
-// 	Serial.printf("Delay to node %u is %d us\n", from, delay);
-// }
-//--------------------------------------------------------------
-
 myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
 
 void powerupEvent(int state) {
@@ -193,7 +228,8 @@ void powerupEvent(int state) {
 			setPixels(COLOUR_OFF, 0);
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
-			setPixels(COLOUR_GREEN, 0);
+			zeroThrottleReadyToSend();
+			setPixels(COLOUR_RED, 0);
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE: {
 				// u8g2.clearBuffer();
@@ -214,19 +250,37 @@ void powerupEvent(int state) {
 
 //--------------------------------------------------------------------------------
 
+#define COMMS_ONLINE 		1
+#define COMMS_OFFLINE		0
+#define COMMS_UNKNOWN_STATE	-1
+
+volatile int commsState = COMMS_UNKNOWN_STATE;
+
+//--------------------------------------------------------------
 void setup() {
 
-	esk8.begin();
+	Serial.begin(9600);
+
+	initOLED();
+
+	radio.begin();
 
 	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
 
 	debug.print(d_STARTUP, "%s \n", compile_date);
 
+	esk8.begin(&radio, role, radioNumber, &debug);
+
 	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
 
 	FastLED.show();
 
-	Serial.begin(9600);
+	runner.startNow();
+	runner.addTask(tFlashLeds);
+	runner.addTask(tSendControllerValues);
+	tSendControllerValues.enable();
+	// runner.addTask(tSendTest);
+	// tSendTest.enable();
 
 	powerButton.begin(d_DEBUG);
 
@@ -240,10 +294,16 @@ void loop() {
 
 	powerButton.serviceButton();
 
-	if (packetReadyToBeSent) {
-		packetReadyToBeSent = false;
-		sendMessage();
-	}
+	runner.execute();
+
+	// if (packetReadyToBeSent) {
+	// 	packetReadyToBeSent = false;
+	// 	sendMessage();
+	// }
+
+	serviceOLED();
+
+	delay(10);
 }
 //----------------------------------------------------------------
 void setupEncoder() {
@@ -253,9 +313,62 @@ void setupEncoder() {
 
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
-
-	// esk8.slavePacket.throttle = getThrottleValue();
 }
+//--------------------------------------------------------------------------------
+void serviceOLED() {
+
+	if (powerButton.isRunning()) {
+
+		if (updateOled == true) {
+			updateOled = false;
+			u8g2.clearBuffer();
+			drawOnline(commsState == COMMS_ONLINE);
+			drawBatteryVoltage(esk8.masterPacket.batteryVoltage);
+			drawThrottle(esk8.slavePacket.throttle, deadmanSwitch.isPressed());
+			u8g2.sendBuffer();
+		}
+	}
+}
+//--------------------------------------------------------------------------------
+void serviceCommsState() {
+
+	bool timedOut = millis() - lastPacketFromMaster > COMMS_TIMEOUT_PERIOD;
+
+	if (commsState == COMMS_ONLINE && timedOut) {
+		setCommsState(COMMS_OFFLINE);
+	}
+	else if (commsState == COMMS_OFFLINE && !timedOut) {
+		setCommsState(COMMS_ONLINE);
+	}
+	else if (commsState == COMMS_UNKNOWN_STATE) {
+		setCommsState(timedOut ? COMMS_OFFLINE : COMMS_ONLINE);
+	}
+}
+//--------------------------------------------------------------------------------
+void setCommsState(int newState) {
+	if (newState == COMMS_OFFLINE) {
+		commsState = COMMS_OFFLINE;
+		Serial.println("Setting commsState: COMMS_OFFLINE");
+		// start leds flashing
+		tFlashLedsColour = COLOUR_RED;
+		setPixels(tFlashLedsColour, 0);
+		tFlashLeds.enable();
+	}
+	else if (newState == COMMS_ONLINE) {
+		Serial.println("Setting commsState: COMMS_ONLINE");
+		commsState = COMMS_ONLINE;
+		// stop leds flashing
+		tFlashLeds.disable();
+		setPixels(COLOUR_OFF, 0);
+	}
+}
+//--------------------------------------------------------------------------------
+void initOLED() {
+
+	u8g2.begin();
+	u8g2.setContrast(OLED_CONTRAST_LOW);
+}
+
 //--------------------------------------------------------------------------------
 void setPixels(CRGB c, uint8_t wait) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
@@ -266,5 +379,59 @@ void setPixels(CRGB c, uint8_t wait) {
 		}
 	}
 	FastLED.show();
+}
+//--------------------------------------------------------------------------------
+int getThrottleValue(int raw) {
+	int mappedThrottle = 0;
+
+	if (raw >= 0) {
+		mappedThrottle = map(raw, 0, ENCODER_COUNTER_MAX, 127, 255);
+	}
+	else {
+		mappedThrottle = map(raw, ENCODER_COUNTER_MIN, 0, 0, 127);
+	}
+
+	return mappedThrottle;
+}
+//--------------------------------------------------------------------------------
+void zeroThrottleReadyToSend() {
+	encoderCounter = 0;
+	esk8.slavePacket.throttle = 127;
+	packetReadyToBeSent = true;
+}
+//--------------------------------------------------------------
+#define ONLINE_SYMBOL_WIDTH 	14
+
+void drawOnline(bool online) {
+	if (online) {
+		u8g2.drawXBMP(0, 0, ONLINE_SYMBOL_WIDTH, 10, wifiicon14x10);
+	}
+	else {
+		u8g2.setDrawColor(0);
+		u8g2.drawBox(0, 0, ONLINE_SYMBOL_WIDTH, 20);
+		u8g2.setDrawColor(1);
+	}
+	// u8g2.sendBuffer();
+}
+//--------------------------------------------------------------------------------
+void drawBatteryVoltage(float voltage) {
+	u8g2.setCursor(ONLINE_SYMBOL_WIDTH+5, 10);
+	u8g2.setFont(u8g2_font_helvR08_tf);
+	u8g2.print(voltage, 1);
+	u8g2.print("v");
+}
+//--------------------------------------------------------------------------------
+void drawThrottle(int throttleValue, bool show) {
+
+	if (show) {
+		char val[4];
+		itoa(throttleValue, val, 10);
+		int strWidth = u8g2.getStrWidth(val);
+
+	  	u8g2.setFont(u8g2_font_courB18_tf);
+		u8g2.setCursor(0, 32);
+		u8g2.print(val);
+		//u8g2.drawStr(128-strWidth, 32, val);
+	}
 }
 //--------------------------------------------------------------------------------

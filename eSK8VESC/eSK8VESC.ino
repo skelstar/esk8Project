@@ -1,5 +1,6 @@
 
-#include <painlessMesh.h>
+#include <SPI.h>
+#include "RF24.h"
 #include <esk8Lib.h>
 
 #include <ESP8266VESC.h>
@@ -22,13 +23,6 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 //--------------------------------------------------------------------------------
 
-// #define		WIFI_HOSTNAME		"/esk8/base"
-
-#define 	OLED_GND		12
-#define 	OLED_PWR		27
-#define 	OLED_SCL		25	// std ESP32
-#define 	OLED_SDA		32	// std ESP32
-#define 	OLED_ADDR		0x3c
 
 //--------------------------------------------------------------------------------
 
@@ -37,26 +31,27 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 // MyWifiHelper wifiHelper(WIFI_HOSTNAME);
 
+// #define		WIFI_HOSTNAME		"/esk8/base"
+
+#define 	OLED_GND		12
+#define 	OLED_PWR		27
+#define 	OLED_SCL		25	// std ESP32
+#define 	OLED_SDA		32	// std ESP32
+#define 	OLED_ADDR		0x3c
+
+bool radioNumber = 0;
+#define 	SPI_CE			33 //22//25//4 	// white - do we need it?
+#define 	SPI_CS			26 //5//32//5	// green
+RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 
 esk8Lib esk8;
 
-#define 	ROLE_MASTER 1
-#define 	ROLE_SLAVE 	0
+#define 	ROLE_BOARD 		1
+#define 	ROLE_CONTROLLER 0
 
 //--------------------------------------------------------------------------------
 
-#define   MESH_SSID       "whateverYouLike"
-#define   MESH_PASSWORD   "somethingSneaky"
-#define   MESH_PORT       5555
-
-painlessMesh  mesh;
-
 debugHelper debug;
-
-Scheduler 	userScheduler; // to control your personal task
-
-void sendMessage(); 
-Task taskSendMessage( TASK_MILLISECOND * 1, TASK_FOREVER, &sendMessage ); // start with a one second interval
 
 volatile uint32_t otherNode;
 volatile long lastSlavePacketTime = 0;
@@ -65,41 +60,22 @@ bool calc_delay =false;
 #define GET_VESC_DATA_INTERVAL	1000
 
 //--------------------------------------------------------------
-void sendMessage() {
+void loadPacketForController(bool gotDataFromVesc) {
 
-	bool success = getVescValues();
-
-	if (success) {
+	if (gotDataFromVesc) {
 		debug.print(d_COMMUNICATION, "VESC online\n");
 	}
 	else {
+		// dummy data
 		esk8.masterPacket.batteryVoltage = packetData;
 		packetData += 0.1;
 
-		String msg = esk8.encodeBoardPacket();
-		mesh.sendBroadcast(msg);
-
-		debug.print(d_DEBUG, "Sending message: %s\n", msg.c_str());
+		debug.print(d_DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.masterPacket.batteryVoltage);
 	}
 
-	if (calc_delay) {
-		mesh.startDelayMeas(otherNode);
-	}
-
-	taskSendMessage.setInterval( GET_VESC_DATA_INTERVAL );
+	// bool result = esk8.loadPacketForController();
+	// taskSendMessage.setInterval( GET_VESC_DATA_INTERVAL );
 }
-//--------------------------------------------------------------
-void receivedCallback(uint32_t from, String & msg) {
-	otherNode = from;
-	esk8.parseControllerPacket(msg);
-	debug.print(d_COMMUNICATION, "Received (from CONTROLLER) throttle=%d \n", esk8.slavePacket.throttle);
-	lastSlavePacketTime = millis();
-}
-//--------------------------------------------------------------
-void delayReceivedCallback(uint32_t from, int32_t delay) {
-	Serial.printf("Delay to node %u is %d us\n", from, delay);
-}
-
 //--------------------------------------------------------------------------------
 //SoftwareSerial softwareSerial = SoftwareSerial(VESC_UART_RX, VESC_UART_TX); // ESP8266 (NodeMCU): RX (D5), TX (D6 / GPIO12)
 // Serial1(2)
@@ -128,60 +104,49 @@ void setup()
     // Setup serial connection to VESC
     Serial1.begin(9600);
 
-	//mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-	//mesh.setDebugMsgTypes(ERROR | DEBUG | CONNECTION | COMMUNICATION);  // set before init() so that you can see startup messages
-	mesh.setDebugMsgTypes( ERROR | DEBUG | CONNECTION );  // set before init() so that you can see startup messages
-
-	mesh.init(MESH_SSID, MESH_PASSWORD, &userScheduler, MESH_PORT, STA_ONLY);
-	mesh.onReceive(&receivedCallback);
-	mesh.onNodeDelayReceived(&delayReceivedCallback);
-
-	userScheduler.addTask( taskSendMessage );
-	taskSendMessage.enable();
-
     initOLED();
 
-	esk8.begin();
+    radio.begin();
+
+	esk8.begin(&radio, ROLE_BOARD, radioNumber, &debug);
 }
-//--------------------------------------------------------------------------------
 
 long periodStarts = 0;
-#define METADATA_UPDATE_PERIOD	3000
+#define METADATA_UPDATE_PERIOD	1000
 #define LOOP_DELAY				5
 #define SLAVE_TIMEOUT_PERIOD_MS	300
 
 void loop() {
 
-	userScheduler.execute(); // it will run mesh scheduler as well
-	mesh.update();
+	if (millis() - periodStarts > METADATA_UPDATE_PERIOD) {
+		periodStarts = millis();
+		// update slave
+		bool success = getVescValues();
+		loadPacketForController(success);
+	}
 
-	// if (millis() - periodStarts > METADATA_UPDATE_PERIOD) {
-	// 	periodStarts = millis();
-	// 	// update slave
-	// 	bool success = getVescValues();
-	// }
+	bool controllerOnline = controllerIsOnline();	//esk8.sendPacketToSlave() == true;
 
-	// esk8.updateMasterPacket(vescRpm);
-
-	bool slaveOnline = slaveIsOnline();	//esk8.sendPacketToSlave() == true;
-
-	if (slaveHasBeenOnline == false && slaveOnline) {
+	if (slaveHasBeenOnline == false && controllerOnline) {
 		slaveHasBeenOnline = true;
 	}
 
-	sendToVESC(slaveOnline, slaveHasBeenOnline);
+	bool haveControllerData = esk8.checkForPacket();
+	if (haveControllerData) {
+		debug.print(d_COMMUNICATION, "Throttle: %d \n", esk8.slavePacket.throttle);
+		sendDataToVesc(controllerOnline, slaveHasBeenOnline);
+	}
 
-	updateOLED(slaveOnline);
-    
-    // delay(LOOP_DELAY);
+	updateOLED(controllerOnline);
 }
 //--------------------------------------------------------------------------------
-bool slaveIsOnline() {
+bool controllerIsOnline() {
 	return millis() - lastSlavePacketTime < SLAVE_TIMEOUT_PERIOD_MS;
 }
 //--------------------------------------------------------------------------------
-void sendToVESC(bool slaveOnline, bool slaveHasBeenOnline) {
-	if (slaveOnline) {
+void sendDataToVesc(bool controllerOnline, bool slaveHasBeenOnline) {
+	debug.print(d_COMMUNICATION, "Sending data to VESC \n");
+	if (controllerOnline) {
 		esp8266VESC.setNunchukValues(127, esk8.slavePacket.throttle, 0, 0);
 	}
 	else if (slaveHasBeenOnline) {
@@ -270,7 +235,7 @@ void initOLED() {
 	u8g2.sendBuffer();
 }
 //--------------------------------------------------------------------------------
-void updateOLED(bool slaveOnline) {
+void updateOLED(bool controllerOnline) {
 
 	int y = 0;
 
@@ -295,7 +260,7 @@ void updateOLED(bool slaveOnline) {
 	}
 
 	y = 64/2+12+2+12;
-	if (slaveOnline) {
+	if (controllerOnline) {
 		u8g2.drawStr(0, y, "CTRL: Connected");
 	}
 	else {

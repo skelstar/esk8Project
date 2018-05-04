@@ -3,25 +3,10 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <RF24.h>
+#include <debugHelper.h>
 
 //--------------------------------------------------------------------------------
-
-
-// typedef struct VESC_DATA {
-// 	float batteryVoltage;
-// 	long t;
-// };
-
-// typedef struct CONTROLLER_DATA { 
-// 	int zButton;
-// 	int cButton;
-// 	int joyY;
-// };
-
-// #define MASTER_ROLE 1
-// #define SLAVE_ROLE	0
-
-
 
 struct MasterStruct{
 	// int32_t rpm;
@@ -37,26 +22,29 @@ class esk8Lib
 {
 	public:
 		esk8Lib();
-		void begin();
-		float getSendDataChecksum(MasterStruct *data);
-		float getSlaveChecksum();
+		void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
 
-		void updateSlavePacket(int newValue);
-		void updateMasterPacket(int32_t newValue);
+		int sendPacketToBoard();
 
-		void parseBoardPacket(String &msg);
-		void parseControllerPacket(String &msg);
-		String encodeControllerPacket();
-		String encodeBoardPacket();
+		int checkForPacketFromController();
+		int checkForPacketFromBoard();
+		int sendPacketToController();
 
-		void serviceEvents();
+		int checkForPacket();
+		int sendThenReadPacket();
 
 		MasterStruct masterPacket;
 		SlaveStruct slavePacket;
 
 		// VESC_DATA vescdata;
 
+
+
 	private:
+		RF24 *_radio;
+		int _role;
+		debugHelper *_debug;
+
 };
 
 #endif
