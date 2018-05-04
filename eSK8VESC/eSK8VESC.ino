@@ -54,7 +54,7 @@ esk8Lib esk8;
 debugHelper debug;
 
 volatile uint32_t otherNode;
-volatile long lastSlavePacketTime = 0;
+volatile long lastControllerPacketTime = 0;
 volatile float packetData = 0.1;
 bool calc_delay =false;
 #define GET_VESC_DATA_INTERVAL	1000
@@ -67,10 +67,10 @@ void loadPacketForController(bool gotDataFromVesc) {
 	}
 	else {
 		// dummy data
-		esk8.masterPacket.batteryVoltage = packetData;
+		esk8.boardPacket.batteryVoltage = packetData;
 		packetData += 0.1;
 
-		debug.print(d_DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.masterPacket.batteryVoltage);
+		debug.print(d_DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
 
 	// bool result = esk8.loadPacketForController();
@@ -86,7 +86,7 @@ HardwareSerial Serial1(2);
 ESP8266VESC esp8266VESC = ESP8266VESC(Serial1);
 
 bool vescConnected = false;
-bool slaveHasBeenOnline = false;
+bool controllerHasBeenOnline = false;
 
 //--------------------------------------------------------------------------------
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
@@ -114,43 +114,43 @@ void setup()
 long periodStarts = 0;
 #define METADATA_UPDATE_PERIOD	1000
 #define LOOP_DELAY				5
-#define SLAVE_TIMEOUT_PERIOD_MS	300
+#define CONTROLLER_TIMEOUT_PERIOD_MS	300
 
 void loop() {
 
 	if (millis() - periodStarts > METADATA_UPDATE_PERIOD) {
 		periodStarts = millis();
-		// update slave
+		// update controller
 		bool success = getVescValues();
 		loadPacketForController(success);
 	}
 
-	bool controllerOnline = controllerIsOnline();	//esk8.sendPacketToSlave() == true;
+	bool controllerOnline = controllerIsOnline();	//esk8.sendPacketTocontroller() == true;
 
-	if (slaveHasBeenOnline == false && controllerOnline) {
-		slaveHasBeenOnline = true;
+	if (controllerHasBeenOnline == false && controllerOnline) {
+		controllerHasBeenOnline = true;
 	}
 
 	bool haveControllerData = esk8.checkForPacket();
 	if (haveControllerData) {
-		debug.print(d_COMMUNICATION, "Throttle: %d \n", esk8.slavePacket.throttle);
-		sendDataToVesc(controllerOnline, slaveHasBeenOnline);
+		debug.print(d_COMMUNICATION, "Throttle: %d \n", esk8.controllerPacket.throttle);
+		sendDataToVesc(controllerOnline, controllerHasBeenOnline);
 	}
 
 	updateOLED(controllerOnline);
 }
 //--------------------------------------------------------------------------------
 bool controllerIsOnline() {
-	return millis() - lastSlavePacketTime < SLAVE_TIMEOUT_PERIOD_MS;
+	return millis() - lastControllerPacketTime < CONTROLLER_TIMEOUT_PERIOD_MS;
 }
 //--------------------------------------------------------------------------------
-void sendDataToVesc(bool controllerOnline, bool slaveHasBeenOnline) {
+void sendDataToVesc(bool controllerOnline, bool controllerHasBeenOnline) {
 	debug.print(d_COMMUNICATION, "Sending data to VESC \n");
 	if (controllerOnline) {
-		esp8266VESC.setNunchukValues(127, esk8.slavePacket.throttle, 0, 0);
+		esp8266VESC.setNunchukValues(127, esk8.controllerPacket.throttle, 0, 0);
 	}
-	else if (slaveHasBeenOnline) {
-		// in case slave has been connected but then drops for some reason
+	else if (controllerHasBeenOnline) {
+		// in case controller has been connected but then drops for some reason
 		esp8266VESC.setNunchukValues(127, 127, 0, 0);
 	}
 	else {
@@ -188,7 +188,7 @@ bool getVescValues() {
 
 	if (esp8266VESC.getVESCValues(vescValues) == true) {
 		vescConnected = true;
-		esk8.masterPacket.batteryVoltage = vescValues.inputVoltage;
+		esk8.boardPacket.batteryVoltage = vescValues.inputVoltage;
 		// Serial.println("Average motor current = " + String(vescValues.avgMotorCurrent) + "A");
 		// Serial.println("Average battery current = " + String(vescValues.avgInputCurrent) + "A");
 		// Serial.println("Duty cycle = " + String(vescValues.dutyCycleNow) + "%");
@@ -243,7 +243,7 @@ void updateOLED(bool controllerOnline) {
 	// throttle
 	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
 	char buff[5];
-	itoa(esk8.slavePacket.throttle, buff, 10);
+	itoa(esk8.controllerPacket.throttle, buff, 10);
 	u8g2.drawStr(0, 26, buff);
 
 	// vesc connected
@@ -252,7 +252,7 @@ void updateOLED(bool controllerOnline) {
 	if (vescConnected) {
 		u8g2.setCursor(0, y);
 		u8g2.print("VESC: ");
-		u8g2.print(esk8.masterPacket.batteryVoltage, 1);
+		u8g2.print(esk8.boardPacket.batteryVoltage, 1);
 		//u8g2.drawStr(0, y, "VESC: Connected");
 	}
 	else {

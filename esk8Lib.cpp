@@ -43,98 +43,98 @@ void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) 
 		_radio->openReadingPipe(PIPE_NUMBER, addresses[RADIO_1]);
 	}
 
-	slavePacket.throttle = 127;
+	controllerPacket.throttle = 127;
 	
 	if (role == ROLE_BOARD) {
 		_radio->startListening();
-		_radio->writeAckPayload(PIPE_NUMBER, &slavePacket, sizeof(slavePacket));
+		_radio->writeAckPayload(PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket));
 	}
 
 	_radio->printDetails();
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::sendPacketToBoard() {
+// int esk8Lib::sendPacketToBoard() {
 
-	_radio->stopListening();
+// 	_radio->stopListening();
 
-	bool sendOk = _radio->write(&slavePacket, sizeof(slavePacket));
+// 	bool sendOk = _radio->write(&controllerPacket, sizeof(controllerPacket));
 
-	if (sendOk == false) {
-		_debug->print(d_ERROR, "sendPacketToBoard(); return (sendOK=false) \n");
-		return false;
-	}
+// 	if (sendOk == false) {
+// 		_debug->print(d_ERROR, "sendPacketToBoard(); return (sendOK=false) \n");
+// 		return false;
+// 	}
 
-	bool timedOut = false;
-	long startedWaiting = millis();
-	_radio->startListening();
-	while (_radio->available() == false) {
-		if (millis()-startedWaiting > 200) {
-			timedOut = true;
-			_debug->print(d_COMMUNICATION, "sendPacketToBoard(); timeout \n");
-			return false;
-		}
-	}
-	// _radio->read(&masterPacket, sizeof(masterPacket));
+// 	bool timedOut = false;
+// 	long startedWaiting = millis();
+// 	_radio->startListening();
+// 	while (_radio->available() == false) {
+// 		if (millis()-startedWaiting > 200) {
+// 			timedOut = true;
+// 			_debug->print(d_COMMUNICATION, "sendPacketToBoard(); timeout \n");
+// 			return false;
+// 		}
+// 	}
+// 	// _radio->read(&boardPacket, sizeof(boardPacket));
 
-	return true;
-}
-//---------------------------------------------------------------------------------
-int esk8Lib::sendPacketToController() {
+// 	return true;
+// }
+// //---------------------------------------------------------------------------------
+// int esk8Lib::sendPacketToController() {
 
-	_radio->stopListening();
+// 	_radio->stopListening();
 
-	bool sendOk = _radio->write(&masterPacket, sizeof(masterPacket));
+// 	bool sendOk = _radio->write(&boardPacket, sizeof(boardPacket));
 
-	if (sendOk == false) {
-		_debug->print(d_ERROR, "sendPacketToController(); return (sendOK=false) \n");
-		return false;
-	}
+// 	if (sendOk == false) {
+// 		_debug->print(d_ERROR, "sendPacketToController(); return (sendOK=false) \n");
+// 		return false;
+// 	}
 
-	bool timedOut = false;
-	long startedWaiting = millis();
-	_radio->startListening();
-	while (_radio->available() == false) {
-		if (millis()-startedWaiting > 200) {
-			timedOut = true;
-			_debug->print(d_COMMUNICATION, "sendPacketToController(); timeout \n");
-			return false;
-		}
-	}
-	// _radio->read(&masterPacket, sizeof(masterPacket));
-	return true;
-}
-//---------------------------------------------------------------------------------
-int esk8Lib::checkForPacketFromBoard() {
+// 	bool timedOut = false;
+// 	long startedWaiting = millis();
+// 	_radio->startListening();
+// 	while (_radio->available() == false) {
+// 		if (millis()-startedWaiting > 200) {
+// 			timedOut = true;
+// 			_debug->print(d_COMMUNICATION, "sendPacketToController(); timeout \n");
+// 			return false;
+// 		}
+// 	}
+// 	// _radio->read(&boardPacket, sizeof(boardPacket));
+// 	return true;
+// }
+// //---------------------------------------------------------------------------------
+// int esk8Lib::checkForPacketFromBoard() {
 
-	if( _radio->available() ) {
-		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
-		while (_radio->available()) {                          	// While there is data ready
-			_radio->read( &masterPacket, sizeof(masterPacket) );         	// Get the payload
-		}
+// 	if( _radio->available() ) {
+// 		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
+// 		while (_radio->available()) {                          	// While there is data ready
+// 			_radio->read( &boardPacket, sizeof(boardPacket) );         	// Get the payload
+// 		}
 
-		// This can be commented out to send empty payloads.
-		_radio->writeAckPayload( PIPE_NUMBER, &slavePacket, sizeof(slavePacket) );  			
+// 		// This can be commented out to send empty payloads.
+// 		_radio->writeAckPayload( PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket) );  			
 
-		return true;
-	}
-	return false;
-}
-//---------------------------------------------------------------------------------
-int esk8Lib::checkForPacketFromController() {
+// 		return true;
+// 	}
+// 	return false;
+// }
+// //---------------------------------------------------------------------------------
+// int esk8Lib::checkForPacketFromController() {
 
-	if( _radio->available() ) {
-		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
-		while (_radio->available()) {                          	// While there is data ready
-			_radio->read( &slavePacket, sizeof(slavePacket) );         	// Get the payload
-		}
+// 	if( _radio->available() ) {
+// 		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
+// 		while (_radio->available()) {                          	// While there is data ready
+// 			_radio->read( &controllerPacket, sizeof(controllerPacket) );         	// Get the payload
+// 		}
 
-		// This can be commented out to send empty payloads.
-		_radio->writeAckPayload( PIPE_NUMBER, &masterPacket, sizeof(masterPacket) );  			
+// 		// This can be commented out to send empty payloads.
+// 		_radio->writeAckPayload( PIPE_NUMBER, &boardPacket, sizeof(boardPacket) );  			
 
-		return true;
-	}
-	return false;
-}
+// 		return true;
+// 	}
+// 	return false;
+// }
 //---------------------------------------------------------------------------------
 int esk8Lib::checkForPacket() {
 
@@ -142,19 +142,19 @@ int esk8Lib::checkForPacket() {
 		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
 		while ( _radio->available() ) {                          	// While there is data ready
 			if (_role == ROLE_BOARD) {
-				_radio->read( &slavePacket, sizeof(slavePacket) );         	// Get the payload
+				_radio->read( &controllerPacket, sizeof(controllerPacket) );         	// Get the payload
 			}
 			else if (_role == ROLE_CONTROLLER) {
-				_radio->read( &masterPacket, sizeof(masterPacket) );         	// Get the payload
+				_radio->read( &boardPacket, sizeof(boardPacket) );         	// Get the payload
 			}
 		}
 
 		// This can be commented out to send empty payloads.
 		if (_role == ROLE_BOARD) {
-			_radio->writeAckPayload( PIPE_NUMBER, &masterPacket, sizeof(masterPacket) );  			
+			_radio->writeAckPayload( PIPE_NUMBER, &boardPacket, sizeof(boardPacket) );  			
 		}
 		else if (_role == ROLE_CONTROLLER) {
-			_radio->writeAckPayload( PIPE_NUMBER, &slavePacket, sizeof(slavePacket) );  			
+			_radio->writeAckPayload( PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket) );  			
 		}
 
 		return true;
@@ -169,10 +169,10 @@ int esk8Lib::sendThenReadPacket() {
 	bool sendOk;
 
 	if (_role == ROLE_BOARD) {
-		sendOk = _radio->write(&masterPacket, sizeof(masterPacket));
+		sendOk = _radio->write(&boardPacket, sizeof(boardPacket));
 	}
 	else if (_role == ROLE_CONTROLLER) {
-		sendOk = _radio->write(&slavePacket, sizeof(slavePacket));
+		sendOk = _radio->write(&controllerPacket, sizeof(controllerPacket));
 	}
 
 	if (sendOk == false) {
@@ -192,10 +192,10 @@ int esk8Lib::sendThenReadPacket() {
 	}
 
 	if (_role == ROLE_BOARD) {
-		_radio->read(&slavePacket, sizeof(slavePacket));
+		_radio->read(&controllerPacket, sizeof(controllerPacket));
 	}
 	else if (_role == ROLE_CONTROLLER) {
-		_radio->read(&masterPacket, sizeof(masterPacket));
+		_radio->read(&boardPacket, sizeof(boardPacket));
 	}
 
 	return true;

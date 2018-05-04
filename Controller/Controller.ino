@@ -77,14 +77,14 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 	switch (eventCode) {
 
 		case deadmanSwitch.EV_BUTTON_PRESSED:
-			if (esk8.slavePacket.throttle > 127) {
+			if (esk8.controllerPacket.throttle > 127) {
 			 	//zeroThrottleReadyToSend();
 			}
 			debug.print(d_DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
 			break;
 		
 		case deadmanSwitch.EV_RELEASED:
-			if (esk8.slavePacket.throttle > 127) {
+			if (esk8.controllerPacket.throttle > 127) {
 			 	zeroThrottleReadyToSend();
 			}
 			debug.print(d_DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
@@ -121,7 +121,7 @@ void encoderInterruptHandler() {
 
 			encoderCounter++;
 			int throttle = getThrottleValue(encoderCounter);
-			esk8.slavePacket.throttle = throttle;
+			esk8.controllerPacket.throttle = throttle;
 			packetReadyToBeSent = true;
 			debug.print(d_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
@@ -130,7 +130,7 @@ void encoderInterruptHandler() {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
 			int throttle = getThrottleValue(encoderCounter);
-			esk8.slavePacket.throttle = throttle;
+			esk8.controllerPacket.throttle = throttle;
 			packetReadyToBeSent = true;
 			debug.print(d_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
@@ -187,7 +187,7 @@ void tSendControllerValues_callback() {
 		lastPacketFromMaster = millis();
 		updateOled = true;
 	}
-	debug.print(d_COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f \n", esk8.masterPacket.batteryVoltage);
+	debug.print(d_COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f \n", esk8.boardPacket.batteryVoltage);
 }
 //--------------------------------------------------------------
 
@@ -208,7 +208,7 @@ void sendMessage() {
 		lastPacketFromMaster = millis();
 		updateOled = true;
 	}
-	debug.print(d_COMMUNICATION, "Sending message: throttle:%d \n", esk8.slavePacket.throttle);
+	debug.print(d_COMMUNICATION, "Sending message: throttle:%d \n", esk8.controllerPacket.throttle);
 }
 //--------------------------------------------------------------
 myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
@@ -279,8 +279,6 @@ void setup() {
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
-	// runner.addTask(tSendTest);
-	// tSendTest.enable();
 
 	powerButton.begin(d_DEBUG);
 
@@ -295,11 +293,6 @@ void loop() {
 	powerButton.serviceButton();
 
 	runner.execute();
-
-	// if (packetReadyToBeSent) {
-	// 	packetReadyToBeSent = false;
-	// 	sendMessage();
-	// }
 
 	serviceOLED();
 
@@ -323,8 +316,8 @@ void serviceOLED() {
 			updateOled = false;
 			u8g2.clearBuffer();
 			drawOnline(commsState == COMMS_ONLINE);
-			drawBatteryVoltage(esk8.masterPacket.batteryVoltage);
-			drawThrottle(esk8.slavePacket.throttle, deadmanSwitch.isPressed());
+			drawBatteryVoltage(esk8.boardPacket.batteryVoltage);
+			drawThrottle(esk8.controllerPacket.throttle, deadmanSwitch.isPressed());
 			u8g2.sendBuffer();
 		}
 	}
@@ -396,7 +389,7 @@ int getThrottleValue(int raw) {
 //--------------------------------------------------------------------------------
 void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
-	esk8.slavePacket.throttle = 127;
+	esk8.controllerPacket.throttle = 127;
 	packetReadyToBeSent = true;
 }
 //--------------------------------------------------------------

@@ -8,13 +8,13 @@
 
 //--------------------------------------------------------------------------------
 
-struct MasterStruct{
+struct BoardStruct{
 	// int32_t rpm;
 	float batteryVoltage;
 };
 
 
-struct SlaveStruct {
+struct ControllerStruct {
 	int throttle;
 };
 
@@ -26,15 +26,15 @@ class esk8Lib
 
 		int sendPacketToBoard();
 
-		int checkForPacketFromController();
-		int checkForPacketFromBoard();
-		int sendPacketToController();
+		// int checkForPacketFromController();
+		// int checkForPacketFromBoard();
+		// int sendPacketToController();
 
 		int checkForPacket();
 		int sendThenReadPacket();
 
-		MasterStruct masterPacket;
-		SlaveStruct slavePacket;
+		BoardStruct boardPacket;
+		ControllerStruct controllerPacket;
 
 		// VESC_DATA vescdata;
 
