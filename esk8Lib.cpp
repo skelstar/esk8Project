@@ -10,6 +10,9 @@ byte addresses[][6] = {"1Node","2Node"};
 #define		RADIO_0			0
 #define 	PIPE_NUMBER		1
 
+#define 	CONTROLLER_SEND_INTERVAL	200
+#define 	BOARD_SEND_INTERVAL			1150
+
 volatile long _lastRxMillis;
 
 //--------------------------------------------------------------------------------
@@ -53,89 +56,6 @@ void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) 
 	_radio->printDetails();
 }
 //---------------------------------------------------------------------------------
-// int esk8Lib::sendPacketToBoard() {
-
-// 	_radio->stopListening();
-
-// 	bool sendOk = _radio->write(&controllerPacket, sizeof(controllerPacket));
-
-// 	if (sendOk == false) {
-// 		_debug->print(d_ERROR, "sendPacketToBoard(); return (sendOK=false) \n");
-// 		return false;
-// 	}
-
-// 	bool timedOut = false;
-// 	long startedWaiting = millis();
-// 	_radio->startListening();
-// 	while (_radio->available() == false) {
-// 		if (millis()-startedWaiting > 200) {
-// 			timedOut = true;
-// 			_debug->print(d_COMMUNICATION, "sendPacketToBoard(); timeout \n");
-// 			return false;
-// 		}
-// 	}
-// 	// _radio->read(&boardPacket, sizeof(boardPacket));
-
-// 	return true;
-// }
-// //---------------------------------------------------------------------------------
-// int esk8Lib::sendPacketToController() {
-
-// 	_radio->stopListening();
-
-// 	bool sendOk = _radio->write(&boardPacket, sizeof(boardPacket));
-
-// 	if (sendOk == false) {
-// 		_debug->print(d_ERROR, "sendPacketToController(); return (sendOK=false) \n");
-// 		return false;
-// 	}
-
-// 	bool timedOut = false;
-// 	long startedWaiting = millis();
-// 	_radio->startListening();
-// 	while (_radio->available() == false) {
-// 		if (millis()-startedWaiting > 200) {
-// 			timedOut = true;
-// 			_debug->print(d_COMMUNICATION, "sendPacketToController(); timeout \n");
-// 			return false;
-// 		}
-// 	}
-// 	// _radio->read(&boardPacket, sizeof(boardPacket));
-// 	return true;
-// }
-// //---------------------------------------------------------------------------------
-// int esk8Lib::checkForPacketFromBoard() {
-
-// 	if( _radio->available() ) {
-// 		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
-// 		while (_radio->available()) {                          	// While there is data ready
-// 			_radio->read( &boardPacket, sizeof(boardPacket) );         	// Get the payload
-// 		}
-
-// 		// This can be commented out to send empty payloads.
-// 		_radio->writeAckPayload( PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket) );  			
-
-// 		return true;
-// 	}
-// 	return false;
-// }
-// //---------------------------------------------------------------------------------
-// int esk8Lib::checkForPacketFromController() {
-
-// 	if( _radio->available() ) {
-// 		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
-// 		while (_radio->available()) {                          	// While there is data ready
-// 			_radio->read( &controllerPacket, sizeof(controllerPacket) );         	// Get the payload
-// 		}
-
-// 		// This can be commented out to send empty payloads.
-// 		_radio->writeAckPayload( PIPE_NUMBER, &boardPacket, sizeof(boardPacket) );  			
-
-// 		return true;
-// 	}
-// 	return false;
-// }
-//---------------------------------------------------------------------------------
 int esk8Lib::checkForPacket() {
 
 	if( _radio->available() ) {
@@ -145,9 +65,11 @@ int esk8Lib::checkForPacket() {
 				// save current throttle data
 				_oldControllerPacket.throttle = controllerPacket.throttle;
 				_radio->read( &controllerPacket, sizeof(controllerPacket) );         	// Get the payload
+				_lastPacketReadTime = millis();
 			}
 			else if (_role == ROLE_CONTROLLER) {
 				_radio->read( &boardPacket, sizeof(boardPacket) );         	// Get the payload
+				_lastPacketReadTime = millis();
 			}
 		}
 
@@ -209,10 +131,31 @@ int esk8Lib::sendThenReadPacket() {
 
 	if (_role == ROLE_BOARD) {
 		_radio->read(&controllerPacket, sizeof(controllerPacket));
+		_lastPacketReadTime = millis();
 	}
 	else if (_role == ROLE_CONTROLLER) {
 		_radio->read(&boardPacket, sizeof(boardPacket));
+		_lastPacketReadTime = millis();
 	}
 
 	return true;
 }
+//---------------------------------------------------------------------------------
+int esk8Lib::getSendInterval() {
+	if (_role == ROLE_CONTROLLER) {
+		return CONTROLLER_SEND_INTERVAL;
+	}
+	else if (_role == ROLE_BOARD) {
+		return BOARD_SEND_INTERVAL;
+	}
+}
+//---------------------------------------------------------------------------------
+int esk8Lib::controllerOnline() {
+	return (millis()-_lastPacketReadTime) < (CONTROLLER_SEND_INTERVAL+100);
+}
+//---------------------------------------------------------------------------------
+int esk8Lib::boardOnline() {
+	_debug->print(d_DEBUG, "millis()-_lastPacketReadTime: %d \n", millis()-_lastPacketReadTime);
+	return (millis()-_lastPacketReadTime) < (CONTROLLER_SEND_INTERVAL+100);
+}
+//---------------------------------------------------------------------------------

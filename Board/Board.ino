@@ -23,8 +23,10 @@ const char compile_date[] = __DATE__ " " __TIME__;
 #define 	OLED_ADDR		0x3c
 
 bool radioNumber = 0;
-#define 	SPI_CE			33 //22//25//4 	// white - do we need it?
-#define 	SPI_CS			26 //5//32//5	// green
+// blank DEV board
+#define 	SPI_CE			22	// white - do we need it?
+#define 	SPI_CS			5	// green
+
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 
 esk8Lib esk8;
@@ -33,6 +35,7 @@ esk8Lib esk8;
 #define 	ROLE_CONTROLLER 0
 
 #define GET_VESC_DATA_INTERVAL	1000
+#define CONTROLLER_ONLINE_MS	500
 
 //--------------------------------------------------------------------------------
 
@@ -68,6 +71,7 @@ ESP8266VESC esp8266VESC = ESP8266VESC(Serial1);
 
 bool vescConnected = false;
 bool controllerHasBeenOnline = false;
+long intervalStarts = 0;
 
 //--------------------------------------------------------------------------------
 
@@ -94,21 +98,16 @@ void setup()
 	esk8.begin(&radio, ROLE_BOARD, radioNumber, &debug);
 }
 
-long periodStarts = 0;
-#define METADATA_UPDATE_PERIOD	1000
-#define LOOP_DELAY				5
-#define CONTROLLER_TIMEOUT_PERIOD_MS	300
-
 void loop() {
 
-	if (millis() - periodStarts > METADATA_UPDATE_PERIOD) {
-		periodStarts = millis();
+	if (millis() - intervalStarts > esk8.getSendInterval()) {
+		intervalStarts = millis();
 		// update controller
 		bool success = getVescValues();
 		loadPacketForController(success);
 	}
 
-	bool controllerOnline = controllerIsOnline();	//esk8.sendPacketTocontroller() == true;
+	bool controllerOnline = esk8.controllerOnline();
 
 	if (controllerHasBeenOnline == false && controllerOnline) {
 		controllerHasBeenOnline = true;
@@ -123,10 +122,6 @@ void loop() {
 	}
 
 	updateOLED(controllerOnline);
-}
-//--------------------------------------------------------------------------------
-bool controllerIsOnline() {
-	return millis() - lastControllerPacketTime < CONTROLLER_TIMEOUT_PERIOD_MS;
 }
 //--------------------------------------------------------------------------------
 void sendDataToVesc(bool controllerOnline, bool controllerHasBeenOnline) {

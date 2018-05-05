@@ -29,6 +29,9 @@ class esk8Lib
 		int checkForPacket();
 		int packetChanged();
 		int sendThenReadPacket();
+		int controllerOnline();
+		int boardOnline();
+		int getSendInterval();
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
@@ -40,6 +43,7 @@ class esk8Lib
 	private:
 		RF24 *_radio;
 		int _role;
+		long _lastPacketReadTime;
 		debugHelper *_debug;
 		ControllerStruct _oldControllerPacket;
 

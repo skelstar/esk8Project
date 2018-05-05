@@ -36,6 +36,7 @@ static const unsigned char wifiicon14x10 [] PROGMEM = {
 #define OLED_SCL        	22    // std ESP32 (22)
 #define OLED_SDA        	21    // std ESP32 (23??)
 
+#define SEND_TO_BOARD_INTERVAL_MS	200
 //--------------------------------------------------------------
 
 #define ROLE_BOARD		1
@@ -180,7 +181,7 @@ void tFlashLedsOff_callback() {
 	Serial.println("tFlashLedsOff_callback");
 }
 
-Task tSendControllerValues(500, TASK_FOREVER, &tSendControllerValues_callback);
+Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
 void tSendControllerValues_callback() {
 	if (esk8.sendThenReadPacket() == true) {
@@ -278,6 +279,7 @@ void setup() {
 	runner.startNow();
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
+	tSendControllerValues.setInterval(esk8.getSendInterval());
 	tSendControllerValues.enable();
 
 	powerButton.begin(d_DEBUG);
@@ -294,6 +296,8 @@ void loop() {
 
 	runner.execute();
 
+	serviceCommsState();
+	
 	serviceOLED();
 
 	delay(10);
@@ -325,30 +329,30 @@ void serviceOLED() {
 //--------------------------------------------------------------------------------
 void serviceCommsState() {
 
-	bool timedOut = millis() - lastPacketFromMaster > COMMS_TIMEOUT_PERIOD;
+	bool online = esk8.boardOnline();
 
-	if (commsState == COMMS_ONLINE && timedOut) {
+	if (commsState == COMMS_ONLINE && online == false) {
 		setCommsState(COMMS_OFFLINE);
 	}
-	else if (commsState == COMMS_OFFLINE && !timedOut) {
+	else if (commsState == COMMS_OFFLINE && online) {
 		setCommsState(COMMS_ONLINE);
 	}
 	else if (commsState == COMMS_UNKNOWN_STATE) {
-		setCommsState(timedOut ? COMMS_OFFLINE : COMMS_ONLINE);
+		setCommsState(online == false ? COMMS_OFFLINE : COMMS_ONLINE);
 	}
 }
 //--------------------------------------------------------------------------------
 void setCommsState(int newState) {
 	if (newState == COMMS_OFFLINE) {
 		commsState = COMMS_OFFLINE;
-		Serial.println("Setting commsState: COMMS_OFFLINE");
+		debug.print(d_DEBUG, "Setting commsState: COMMS_OFFLINE\n");
 		// start leds flashing
 		tFlashLedsColour = COLOUR_RED;
 		setPixels(tFlashLedsColour, 0);
 		tFlashLeds.enable();
 	}
 	else if (newState == COMMS_ONLINE) {
-		Serial.println("Setting commsState: COMMS_ONLINE");
+		debug.print(d_DEBUG, "Setting commsState: COMMS_ONLINE\n");
 		commsState = COMMS_ONLINE;
 		// stop leds flashing
 		tFlashLeds.disable();
