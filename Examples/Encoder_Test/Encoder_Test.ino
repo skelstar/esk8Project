@@ -69,6 +69,7 @@ void setup() {
 
 	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
 	debug.print(d_STARTUP, "Ready \n");
+	debug.print(d_STARTUP, __FILE__);
 
 	// encoder
 	setupEncoder();

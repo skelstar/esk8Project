@@ -229,6 +229,7 @@ void powerupEvent(int state) {
 			setPixels(COLOUR_OFF, 0);
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
+			tFlashLeds.disable();	// in case comms is offline
 			zeroThrottleReadyToSend();
 			setPixels(COLOUR_RED, 0);
 			break;
@@ -283,6 +284,10 @@ void setup() {
 	tSendControllerValues.enable();
 
 	powerButton.begin(d_DEBUG);
+
+	while (powerButton.isRunning() == false) {
+		powerButton.serviceButton();
+	}
 
 	// encoder
 	setupEncoder();
@@ -370,6 +375,7 @@ void initOLED() {
 void setPixels(CRGB c, uint8_t wait) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
 		leds[i] = c;
+		leds[i] /= 10;
 		if (wait > 0) {
 			FastLED.show();
 			delay(wait);
