@@ -155,7 +155,6 @@ int esk8Lib::controllerOnline() {
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::boardOnline() {
-	_debug->print(d_DEBUG, "millis()-_lastPacketReadTime: %d \n", millis()-_lastPacketReadTime);
 	return (millis()-_lastPacketReadTime) < (CONTROLLER_SEND_INTERVAL+100);
 }
 //---------------------------------------------------------------------------------

@@ -186,8 +186,8 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 void tSendControllerValues_callback() {
 	if (esk8.sendThenReadPacket() == true) {
 		lastPacketFromMaster = millis();
-		updateOled = true;
 	}
+	updateOled = true;
 	debug.print(d_COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f \n", esk8.boardPacket.batteryVoltage);
 }
 //--------------------------------------------------------------
