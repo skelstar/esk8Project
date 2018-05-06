@@ -50,7 +50,7 @@ void setup(){
   radio.startListening();                       // Start listening  
   
   radio.writeAckPayload(1,&counter,1);          // Pre-load an ack-paylod into the FIFO buffer for pipe 1
-  //radio.printDetails();
+  radio.printDetails();
 }
 
 //--------------------------------------------------------------
