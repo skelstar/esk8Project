@@ -13,7 +13,7 @@ const char* role_friendly_name[] = { "invalid", "Ping out", "Pong back"};  // Th
 
 //--------------------------------------------------------------
 // // WEMOS TTGO (BOARD)
-bool radioNumber = 1;
+bool radioNumber = 0;
 RF24 radio(33, 26);
 role_e role = role_pong_back;                                              // The role of the current running sketch
 //--------------------------------------------------------------
@@ -27,30 +27,29 @@ role_e role = role_pong_back;                                              // Th
 
 byte counter = 1;                                                          // A single byte to keep track of the data being sent back and forth
 
-
 //--------------------------------------------------------------
 void setup(){
-  Serial.begin(9600);
-  Serial.println(F("RF24/examples/GettingStarted_CallResponse"));
-  Serial.printf("radioNumber: %d \n", radioNumber);
-  Serial.println(F("*** PRESS 'T' to begin transmitting to the other node"));
- 
-  // Setup and configure radio
-  radio.begin();
-  radio.enableAckPayload();                     // Allow optional ack payloads
-  radio.enableDynamicPayloads();                // Ack payloads are dynamic payloads
-  
-  if(radioNumber){
-    radio.openWritingPipe(addresses[1]);        // Both radios listen on the same pipes by default, but opposite addresses
-    radio.openReadingPipe(1,addresses[0]);      // Open a reading pipe on address 0, pipe 1
-  }else{
-    radio.openWritingPipe(addresses[0]);
-    radio.openReadingPipe(1,addresses[1]);
-  }
-  radio.startListening();                       // Start listening  
-  
-  radio.writeAckPayload(1,&counter,1);          // Pre-load an ack-paylod into the FIFO buffer for pipe 1
-  radio.printDetails();
+	Serial.begin(9600);
+	Serial.println(F("RF24/examples/GettingStarted_CallResponse"));
+	Serial.printf("radioNumber: %d \n", radioNumber);
+	Serial.println(F("*** PRESS 'T' to begin transmitting to the other node"));
+
+	// Setup and configure radio
+	radio.begin();
+	radio.enableAckPayload();                     // Allow optional ack payloads
+	radio.enableDynamicPayloads();                // Ack payloads are dynamic payloads
+
+	if(radioNumber){
+		radio.openWritingPipe(addresses[1]);        // Both radios listen on the same pipes by default, but opposite addresses
+		radio.openReadingPipe(1,addresses[0]);      // Open a reading pipe on address 0, pipe 1
+	}else{
+		radio.openWritingPipe(addresses[0]);
+		radio.openReadingPipe(1,addresses[1]);
+	}
+	radio.startListening();                       // Start listening  
+
+	radio.writeAckPayload(1,&counter,1);          // Pre-load an ack-paylod into the FIFO buffer for pipe 1
+	radio.printDetails();
 }
 
 //--------------------------------------------------------------

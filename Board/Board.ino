@@ -24,14 +24,14 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 bool radioNumber = 0;
 // blank DEV board
-// #define 	SPI_CE			22	// white - do we need it?
-// #define 	SPI_CS			5	// green
-// const char boardSetup[] = "DEV Board";
+#define 	SPI_CE			22	// white - do we need it?
+#define 	SPI_CS			5	// green
+const char boardSetup[] = "DEV Board";
 
 // WEMOS TTGO
-#define 	SPI_CE			33	// white - do we need it?
-#define 	SPI_CS			26	// green
-const char boardSetup[] = "WEMOS TTGO Board";
+// #define 	SPI_CE			33	// white - do we need it?
+// #define 	SPI_CS			26	// green
+// const char boardSetup[] = "WEMOS TTGO Board";
 
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
@@ -46,11 +46,12 @@ esk8Lib esk8;
 
 //--------------------------------------------------------------------------------
 
-#define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
-#define COMMUNICATION 	1 << 4
+// #define	STARTUP 		1 << 0
+// #define WARNING 		1 << 1
+// #define ERROR 			1 << 2
+// #define DEBUG 			1 << 3
+// #define COMMUNICATION 	1 << 4
+// #define 
 
 debugHelper debug;
 
@@ -139,8 +140,9 @@ void loop() {
 
 	bool haveControllerData = esk8.checkForPacket();
 	bool controllerDataChanged = esk8.packetChanged();
+	bool sendDataToVescNow = haveControllerData;
 
-	if (haveControllerData && controllerDataChanged) {
+	if (sendDataToVescNow) {
 		debug.print(COMMUNICATION, "sendDataToVesc(); Throttle: %d \n", esk8.controllerPacket.throttle);
 		sendDataToVesc(controllerOnline, controllerHasBeenOnline);
 	}
@@ -149,7 +151,7 @@ void loop() {
 }
 //--------------------------------------------------------------------------------
 void sendDataToVesc(bool controllerOnline, bool controllerHasBeenOnline) {
-	debug.print(COMMUNICATION, "Sending data to VESC \n");
+	debug.print(COMMUNICATION, "sendDataToVesc(): throttle=%d \n", esk8.controllerPacket.throttle);
 	if (controllerOnline) {
 		esp8266VESC.setNunchukValues(127, esk8.controllerPacket.throttle, 0, 0);
 	}

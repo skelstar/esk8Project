@@ -18,6 +18,13 @@ struct ControllerStruct {
 	int throttle;
 };
 
+#define	STARTUP 		1 << 0
+#define WARNING 		1 << 1
+#define ERROR 			1 << 2
+#define DEBUG 			1 << 3
+#define COMMUNICATION 	1 << 4
+//#define VESC_COMMS		1 << 5
+
 class esk8Lib
 {
 	public:

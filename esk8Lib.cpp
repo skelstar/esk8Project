@@ -11,15 +11,15 @@ byte addresses[][6] = {"1Node","2Node"};
 #define 	PIPE_NUMBER		1
 
 #define 	CONTROLLER_SEND_INTERVAL	200
-#define 	BOARD_SEND_INTERVAL			1150
+#define 	BOARD_SEND_INTERVAL			4000
 
 volatile long _lastRxMillis;
 
-#define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
-#define COMMUNICATION 	1 << 4
+// #define	STARTUP 		1 << 0
+// #define WARNING 		1 << 1
+// #define ERROR 			1 << 2
+// #define DEBUG 			1 << 3
+// #define COMMUNICATION 	1 << 4
 
 //--------------------------------------------------------------------------------
 
