@@ -29,7 +29,12 @@ static const unsigned char wifiicon14x10 [] PROGMEM = {
 #define DEADMAN_SWITCH_PIN	25
 
 #define	PIXEL_PIN			5
-	
+
+
+// const char boardSetup[] = "DEV Board";
+// #define SPI_CE				22	// white/purple
+// #define SPI_CS				5  // green
+const char boardSetup[] = "WEMOS TTGO Board";
 #define SPI_CE				33	// white/purple
 #define SPI_CS				26  // green
 
@@ -49,7 +54,6 @@ bool radioNumber = 1;
 int sendIntervalMs = 200;
 bool updateOled = false;
 
-/* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 //--------------------------------------------------------------
 
@@ -58,6 +62,13 @@ RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, OLED_SCL, OLED_SDA, U8X8_PIN_NONE);
 
 //--------------------------------------------------------------------------------
+
+#define	STARTUP 		1 << 0
+#define WARNING 		1 << 1
+#define ERROR 			1 << 2
+#define DEBUG 			1 << 3
+#define COMMUNICATION 	1 << 4
+
 
 debugHelper debug;
 
@@ -81,14 +92,14 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 			if (esk8.controllerPacket.throttle > 127) {
 			 	//zeroThrottleReadyToSend();
 			}
-			debug.print(d_DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
+			debug.print(DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
 			break;
 		
 		case deadmanSwitch.EV_RELEASED:
 			if (esk8.controllerPacket.throttle > 127) {
 			 	zeroThrottleReadyToSend();
 			}
-			debug.print(d_DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
+			debug.print(DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
 		
 		case deadmanSwitch.EV_HELD_SECONDS:
@@ -113,7 +124,7 @@ volatile long lastPacketFromMaster = 0;
 void encoderInterruptHandler() {
 	unsigned char result = rotary.process();
 
-	// debug.print(d_DEBUG, "Encoder event \n");
+	// debug.print(DEBUG, "Encoder event \n");
 
 	bool canAccelerate = deadmanSwitch.isPressed();	// || DEADMAN_SWITCH_USED == 0;
 
@@ -124,7 +135,7 @@ void encoderInterruptHandler() {
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
 			packetReadyToBeSent = true;
-			debug.print(d_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			debug.print(DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 	else if (result == DIR_CCW) {
@@ -133,7 +144,7 @@ void encoderInterruptHandler() {
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
 			packetReadyToBeSent = true;
-			debug.print(d_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			debug.print(DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 }
@@ -188,7 +199,7 @@ void tSendControllerValues_callback() {
 		lastPacketFromMaster = millis();
 	}
 	updateOled = true;
-	debug.print(d_COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f \n", esk8.boardPacket.batteryVoltage);
+	debug.print(COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f \n", esk8.boardPacket.batteryVoltage);
 }
 //--------------------------------------------------------------
 
@@ -209,7 +220,7 @@ void sendMessage() {
 		lastPacketFromMaster = millis();
 		updateOled = true;
 	}
-	debug.print(d_COMMUNICATION, "Sending message: throttle:%d \n", esk8.controllerPacket.throttle);
+	debug.print(COMMUNICATION, "Sending message: throttle:%d \n", esk8.controllerPacket.throttle);
 }
 //--------------------------------------------------------------
 myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
@@ -234,8 +245,8 @@ void powerupEvent(int state) {
 			setPixels(COLOUR_RED, 0);
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE: {
-				// u8g2.clearBuffer();
-				// u8g2.sendBuffer();	// clear screen
+				u8g2.clearBuffer();
+				u8g2.sendBuffer();	// clear screen
 				setPixels(COLOUR_OFF, 0);
 				long pixelTime = millis();
 				powerButton.setState(powerButton.TN_TO_POWER_OFF);
@@ -267,9 +278,17 @@ void setup() {
 
 	radio.begin();
 
-	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
+	debug.init();
 
-	debug.print(d_STARTUP, "%s \n", compile_date);
+	debug.addOption(DEBUG, "DEBUG");
+	debug.addOption(STARTUP, "STARTUP");
+	debug.addOption(COMMUNICATION, "COMMUNICATION");
+	debug.addOption(ERROR, "ERROR");
+
+	debug.setFilter(DEBUG | STARTUP | COMMUNICATION | ERROR);
+
+	debug.print(STARTUP, "%s \n", compile_date);
+	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
 
 	esk8.begin(&radio, role, radioNumber, &debug);
 
@@ -283,7 +302,7 @@ void setup() {
 	tSendControllerValues.setInterval(esk8.getSendInterval());
 	tSendControllerValues.enable();
 
-	powerButton.begin(d_DEBUG);
+	powerButton.begin(DEBUG);
 
 	while (powerButton.isRunning() == false) {
 		powerButton.serviceButton();
@@ -350,14 +369,14 @@ void serviceCommsState() {
 void setCommsState(int newState) {
 	if (newState == COMMS_OFFLINE) {
 		commsState = COMMS_OFFLINE;
-		debug.print(d_DEBUG, "Setting commsState: COMMS_OFFLINE\n");
+		debug.print(DEBUG, "Setting commsState: COMMS_OFFLINE\n");
 		// start leds flashing
 		tFlashLedsColour = COLOUR_RED;
 		setPixels(tFlashLedsColour, 0);
 		tFlashLeds.enable();
 	}
 	else if (newState == COMMS_ONLINE) {
-		debug.print(d_DEBUG, "Setting commsState: COMMS_ONLINE\n");
+		debug.print(DEBUG, "Setting commsState: COMMS_ONLINE\n");
 		commsState = COMMS_ONLINE;
 		// stop leds flashing
 		tFlashLeds.disable();

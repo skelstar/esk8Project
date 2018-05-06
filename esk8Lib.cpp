@@ -15,6 +15,12 @@ byte addresses[][6] = {"1Node","2Node"};
 
 volatile long _lastRxMillis;
 
+#define	STARTUP 		1 << 0
+#define WARNING 		1 << 1
+#define ERROR 			1 << 2
+#define DEBUG 			1 << 3
+#define COMMUNICATION 	1 << 4
+
 //--------------------------------------------------------------------------------
 
 esk8Lib::esk8Lib() {}
@@ -22,15 +28,14 @@ esk8Lib::esk8Lib() {}
 //--------------------------------------------------------------------------------
 void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) {
 
-	Serial.println(F("esk8Lib begin()"));
-
 	_radio = radio;
 	_role = role;
+
 	_debug = debug;
 
-	Serial.println(F("esk8Lib begin(RF24)"));
-	Serial.print("Radio: "); Serial.println(radioNumber);
-	Serial.print("Role: "); Serial.println(role);
+	_debug->print(STARTUP, "esk8Lib begin(RF24) \n");
+	_debug->print(STARTUP, "Radio: %d \n", radioNumber);
+	_debug->print(STARTUP, "Role: %d \n ", role);
 
 	_radio->setPALevel(RF24_PA_MAX);
 
@@ -50,7 +55,7 @@ void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) 
 	
 	if (role == ROLE_BOARD) {
 		_radio->startListening();
-		_radio->writeAckPayload(PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket));
+		_radio->writeAckPayload(PIPE_NUMBER, &boardPacket, sizeof(boardPacket));
 	}
 
 	_radio->printDetails();
@@ -59,7 +64,6 @@ void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) 
 int esk8Lib::checkForPacket() {
 
 	if( _radio->available() ) {
-		_debug->print(d_COMMUNICATION, "_radio->available() == true \n");
 		while ( _radio->available() ) {                          	// While there is data ready
 			if (_role == ROLE_BOARD) {
 				// save current throttle data
@@ -75,6 +79,7 @@ int esk8Lib::checkForPacket() {
 
 		// This can be commented out to send empty payloads.
 		if (_role == ROLE_BOARD) {
+			_debug->print(COMMUNICATION, "checkForPacket():_radio->available() == true throttle=%d \n", controllerPacket.throttle);
 			_radio->writeAckPayload( PIPE_NUMBER, &boardPacket, sizeof(boardPacket) );  			
 		}
 		else if (_role == ROLE_CONTROLLER) {
@@ -114,7 +119,7 @@ int esk8Lib::sendThenReadPacket() {
 	}
 
 	if (sendOk == false) {
-		_debug->print(d_ERROR, "sendThenReadPacket(); return (sendOK=false) \n");
+		_debug->print(ERROR, "sendThenReadPacket(); return (sendOK=false) \n");
 		return false;
 	}
 
@@ -124,7 +129,7 @@ int esk8Lib::sendThenReadPacket() {
 	while (_radio->available() == false) {
 		if (millis()-startedWaiting > 200) {
 			timedOut = true;
-			_debug->print(d_COMMUNICATION, "sendThenReadPacket(); timeout \n");
+			_debug->print(COMMUNICATION, "sendThenReadPacket(); timeout \n");
 			return false;
 		}
 	}

@@ -24,8 +24,15 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 bool radioNumber = 0;
 // blank DEV board
-#define 	SPI_CE			22	// white - do we need it?
-#define 	SPI_CS			5	// green
+// #define 	SPI_CE			22	// white - do we need it?
+// #define 	SPI_CS			5	// green
+// const char boardSetup[] = "DEV Board";
+
+// WEMOS TTGO
+#define 	SPI_CE			33	// white - do we need it?
+#define 	SPI_CS			26	// green
+const char boardSetup[] = "WEMOS TTGO Board";
+
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 
@@ -39,6 +46,12 @@ esk8Lib esk8;
 
 //--------------------------------------------------------------------------------
 
+#define	STARTUP 		1 << 0
+#define WARNING 		1 << 1
+#define ERROR 			1 << 2
+#define DEBUG 			1 << 3
+#define COMMUNICATION 	1 << 4
+
 debugHelper debug;
 
 volatile uint32_t otherNode;
@@ -50,14 +63,14 @@ bool calc_delay =false;
 void loadPacketForController(bool gotDataFromVesc) {
 
 	if (gotDataFromVesc) {
-		debug.print(d_COMMUNICATION, "VESC online\n");
+		debug.print(COMMUNICATION, "VESC online\n");
 	}
 	else {
 		// dummy data
 		esk8.boardPacket.batteryVoltage = packetData;
 		packetData += 0.1;
 
-		debug.print(d_DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.boardPacket.batteryVoltage);
+		debug.print(DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
 }
 //--------------------------------------------------------------------------------
@@ -82,11 +95,19 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_
 
 void setup()
 {
-	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
 
     Serial.begin(9600);
 
-	debug.print(d_STARTUP, compile_date);
+	debug.init();
+
+	debug.addOption(DEBUG, "DEBUG");
+	debug.addOption(STARTUP, "STARTUP");
+	debug.addOption(COMMUNICATION, "COMMUNICATION");
+	debug.addOption(ERROR, "ERROR");
+	debug.setFilter(DEBUG | STARTUP | COMMUNICATION | ERROR);
+
+	debug.print(STARTUP, "%s\n", compile_date);
+	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
 
     // Setup serial connection to VESC
     Serial1.begin(9600);
@@ -104,6 +125,9 @@ void loop() {
 		intervalStarts = millis();
 		// update controller
 		bool success = getVescValues();
+		if (success == false) {
+			debug.print(COMMUNICATION, "VESC not responding\n");
+		}
 		loadPacketForController(success);
 	}
 
@@ -117,7 +141,7 @@ void loop() {
 	bool controllerDataChanged = esk8.packetChanged();
 
 	if (haveControllerData && controllerDataChanged) {
-		debug.print(d_COMMUNICATION, "sendDataToVesc(); Throttle: %d \n", esk8.controllerPacket.throttle);
+		debug.print(COMMUNICATION, "sendDataToVesc(); Throttle: %d \n", esk8.controllerPacket.throttle);
 		sendDataToVesc(controllerOnline, controllerHasBeenOnline);
 	}
 
@@ -125,7 +149,7 @@ void loop() {
 }
 //--------------------------------------------------------------------------------
 void sendDataToVesc(bool controllerOnline, bool controllerHasBeenOnline) {
-	debug.print(d_COMMUNICATION, "Sending data to VESC \n");
+	debug.print(COMMUNICATION, "Sending data to VESC \n");
 	if (controllerOnline) {
 		esp8266VESC.setNunchukValues(127, esk8.controllerPacket.throttle, 0, 0);
 	}
@@ -193,7 +217,7 @@ bool getVescValues() {
 	else
 	{
 		vescConnected = false;
-		debug.print(d_COMMUNICATION, "The VESC values could not be read!\n");
+		debug.print(COMMUNICATION, "The VESC values could not be read!\n");
 	}
 	return vescConnected;
 }
