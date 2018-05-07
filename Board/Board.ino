@@ -10,6 +10,8 @@
 #include <myPushButton.h>
 #include <debugHelper.h>
 
+#include <TaskScheduler.h>
+
 /*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
@@ -74,6 +76,7 @@ void loadPacketForController(bool gotDataFromVesc) {
 		debug.print(DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
 }
+
 //--------------------------------------------------------------------------------
 
 #define 	VESC_UART_RX	16	// orange - VESC 5
@@ -86,6 +89,23 @@ ESP8266VESC esp8266VESC = ESP8266VESC(Serial1);
 bool vescConnected = false;
 bool controllerHasBeenOnline = false;
 long intervalStarts = 0;
+
+//--------------------------------------------------------------------------------
+
+Scheduler runner;
+
+void tSendToVESC_callback();
+Task tSendToVESC(300, TASK_FOREVER, &tSendToVESC_callback);
+void tSendToVESC_callback() {
+
+	// Serial.printf("COMMUNICATION: sendDataToVesc(): throttle=%d (online=%d) \n", esk8.controllerPacket.throttle, esk8.controllerOnline);
+	Serial.println("Sending to VESC");
+	int throttle = esk8.controllerOnline()
+		? esk8.controllerPacket.throttle
+		: 127;
+
+	esp8266VESC.setNunchukValues(127, throttle, 0, 0);
+}
 
 //--------------------------------------------------------------------------------
 
@@ -118,6 +138,10 @@ void setup()
     radio.begin();
 
 	esk8.begin(&radio, ROLE_BOARD, radioNumber, &debug);
+
+	runner.startNow();
+	runner.addTask(tSendToVESC);
+	tSendToVESC.enable();
 }
 
 void loop() {
@@ -132,37 +156,39 @@ void loop() {
 		loadPacketForController(success);
 	}
 
-	bool controllerOnline = esk8.controllerOnline();
-
-	if (controllerHasBeenOnline == false && controllerOnline) {
-		controllerHasBeenOnline = true;
-	}
+	runner.execute();
 
 	bool haveControllerData = esk8.checkForPacket();
-	bool controllerDataChanged = esk8.packetChanged();
-	bool sendDataToVescNow = haveControllerData;
+	bool controllerOnline = esk8.controllerOnline();
 
-	if (sendDataToVescNow) {
-		debug.print(COMMUNICATION, "sendDataToVesc(); Throttle: %d \n", esk8.controllerPacket.throttle);
-		sendDataToVesc(controllerOnline, controllerHasBeenOnline);
-	}
+	// if (controllerHasBeenOnline == false && controllerOnline) {
+	// 	controllerHasBeenOnline = true;
+	// }
+
+	// bool controllerDataChanged = esk8.packetChanged();
+	// bool sendDataToVescNow = haveControllerData;
+
+	// if (sendDataToVescNow) {
+	// 	debug.print(COMMUNICATION, "sendDataToVesc(); Throttle: %d \n", esk8.controllerPacket.throttle);
+	// 	sendDataToVesc(controllerOnline, controllerHasBeenOnline);
+	// }
 
 	updateOLED(controllerOnline);
 }
 //--------------------------------------------------------------------------------
-void sendDataToVesc(bool controllerOnline, bool controllerHasBeenOnline) {
-	debug.print(COMMUNICATION, "sendDataToVesc(): throttle=%d \n", esk8.controllerPacket.throttle);
-	if (controllerOnline) {
-		esp8266VESC.setNunchukValues(127, esk8.controllerPacket.throttle, 0, 0);
-	}
-	else if (controllerHasBeenOnline) {
-		// in case controller has been connected but then drops for some reason
-		esp8266VESC.setNunchukValues(127, 127, 0, 0);
-	}
-	else {
-		// don't send (in case something else is controlling the VESC)
-	}
-}
+// void sendDataToVesc(bool controllerOnline, bool controllerHasBeenOnline) {
+// 	debug.print(COMMUNICATION, "sendDataToVesc(): throttle=%d \n", esk8.controllerPacket.throttle);
+// 	if (controllerOnline) {
+// 		esp8266VESC.setNunchukValues(127, esk8.controllerPacket.throttle, 0, 0);
+// 	}
+// 	else if (controllerHasBeenOnline) {
+// 		// in case controller has been connected but then drops for some reason
+// 		esp8266VESC.setNunchukValues(127, 127, 0, 0);
+// 	}
+// 	else {
+// 		// don't send (in case something else is controlling the VESC)
+// 	}
+// }
 //--------------------------------------------------------------------------------
 bool getVescValues() {
 
