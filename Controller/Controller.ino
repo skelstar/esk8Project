@@ -230,8 +230,10 @@ void powerupEvent(int state) {
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
 			setPixels(COLOUR_GREEN, 0);
+
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
+			drawMessage("Ready!");
 			setPixels(COLOUR_OFF, 0);
 			// skip this and go straighht to RUNNING
 			powerButton.setState(powerButton.TN_TO_RUNNING);
@@ -455,5 +457,14 @@ void drawThrottle(int throttleValue, bool show) {
 		u8g2.print(val);
 		//u8g2.drawStr(128-strWidth, 32, val);
 	}
+}
+//--------------------------------------------------------------------------------
+void drawMessage(char* msg) {
+	u8g2.clearBuffer();
+  	u8g2.setFont(u8g2_font_courB18_tf);
+	int strWidth = u8g2.getStrWidth(msg);
+	u8g2.setCursor(64-(strWidth/2), 16+9);
+	u8g2.print(msg);
+	u8g2.sendBuffer();
 }
 //--------------------------------------------------------------------------------
