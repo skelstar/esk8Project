@@ -230,6 +230,7 @@ void powerupEvent(int state) {
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
 			setPixels(COLOUR_GREEN, 0);
+			drawMessage("Booting...");
 
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
@@ -243,6 +244,7 @@ void powerupEvent(int state) {
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
 			tFlashLeds.disable();	// in case comms is offline
+			drawMessage("Power down!");
 			zeroThrottleReadyToSend();
 			setPixels(COLOUR_RED, 0);
 			break;

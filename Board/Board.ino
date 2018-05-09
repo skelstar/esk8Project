@@ -161,34 +161,8 @@ void loop() {
 	bool haveControllerData = esk8.checkForPacket();
 	bool controllerOnline = esk8.controllerOnline();
 
-	// if (controllerHasBeenOnline == false && controllerOnline) {
-	// 	controllerHasBeenOnline = true;
-	// }
-
-	// bool controllerDataChanged = esk8.packetChanged();
-	// bool sendDataToVescNow = haveControllerData;
-
-	// if (sendDataToVescNow) {
-	// 	debug.print(COMMUNICATION, "sendDataToVesc(); Throttle: %d \n", esk8.controllerPacket.throttle);
-	// 	sendDataToVesc(controllerOnline, controllerHasBeenOnline);
-	// }
-
 	updateOLED(controllerOnline);
 }
-//--------------------------------------------------------------------------------
-// void sendDataToVesc(bool controllerOnline, bool controllerHasBeenOnline) {
-// 	debug.print(COMMUNICATION, "sendDataToVesc(): throttle=%d \n", esk8.controllerPacket.throttle);
-// 	if (controllerOnline) {
-// 		esp8266VESC.setNunchukValues(127, esk8.controllerPacket.throttle, 0, 0);
-// 	}
-// 	else if (controllerHasBeenOnline) {
-// 		// in case controller has been connected but then drops for some reason
-// 		esp8266VESC.setNunchukValues(127, 127, 0, 0);
-// 	}
-// 	else {
-// 		// don't send (in case something else is controlling the VESC)
-// 	}
-// }
 //--------------------------------------------------------------------------------
 bool getVescValues() {
 
