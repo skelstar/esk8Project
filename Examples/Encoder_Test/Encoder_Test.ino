@@ -10,6 +10,12 @@
 #define ENCODER_PIN_B		17
 //--------------------------------------------------------------
 
+#define	STARTUP 		1 << 0
+#define WARNING 		1 << 1
+#define ERROR 			1 << 2
+#define DEBUG 			1 << 3
+#define COMMUNICATION 	1 << 4
+
 debugHelper debug;
 
 Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
@@ -26,13 +32,13 @@ void encoderInterruptHandler() {
 	
 	unsigned char result = rotary.process();
 
-	debug.print(d_DEBUG, "Encoder event \n");
+	// debug.print(DEBUG, "Encoder event \n");
 
 	if (result == DIR_CW) {
-		debug.print(d_DEBUG, "CW \n");
+		debug.print(DEBUG, "CW \n");
 	}
 	else if (result == DIR_CCW) {
-		debug.print(d_DEBUG, "CCW \n");
+		debug.print(DEBUG, "CCW \n");
 	}
 }
 
@@ -48,15 +54,15 @@ void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 	switch (eventCode) {
 
 		case encoderButton.EV_BUTTON_PRESSED:
-			debug.print(d_DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
+			debug.print(DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
 			break;
 		
 		case encoderButton.EV_RELEASED:
-			debug.print(d_DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
+			debug.print(DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
 		
 		case encoderButton.EV_HELD_SECONDS:
-			debug.print(d_DEBUG, "EV_BUTTON_HELD (DEADMAN): %d \n", eventParam);
+			debug.print(DEBUG, "EV_BUTTON_HELD (DEADMAN): %d \n", eventParam);
 			break;
 	}
 }
@@ -67,9 +73,15 @@ void setup() {
 
 	Serial.begin(9600);
 
-	debug.init(d_DEBUG | d_STARTUP | d_COMMUNICATION);
-	debug.print(d_STARTUP, "Ready \n");
-	debug.print(d_STARTUP, __FILE__);
+	debug.init();
+	debug.addOption(DEBUG, "DEBUG");
+	debug.addOption(STARTUP, "STARTUP");
+	debug.addOption(COMMUNICATION, "COMMUNICATION");
+	debug.addOption(ERROR, "ERROR");
+	debug.setFilter(DEBUG | STARTUP | COMMUNICATION | ERROR);
+
+	debug.print(STARTUP, "Ready \n");
+	debug.print(STARTUP, __FILE__);
 
 	// encoder
 	setupEncoder();

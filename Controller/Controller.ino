@@ -35,6 +35,9 @@ static const unsigned char wifiicon14x10 [] PROGMEM = {
 // #define SPI_CE				22	// white/purple
 // #define SPI_CS				5  // green
 const char boardSetup[] = "WEMOS TTGO Board";
+#define SPI_MOSI			23 // Blue
+#define SPI_MISO			19 // Orange
+#define SPI_CLK				18 // Yellow
 #define SPI_CE				33	// white/purple
 #define SPI_CS				26  // green
 
@@ -78,6 +81,27 @@ esk8Lib esk8;
 
 //--------------------------------------------------------------------------------
 
+#define 	NUM_PIXELS 		8
+
+CRGB leds[NUM_PIXELS];
+//Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+#define BRIGHTNESS	20
+
+CRGB COLOUR_OFF = CRGB::Black;
+CRGB COLOUR_RED = CRGB::Red;
+CRGB COLOUR_GREEN = CRGB::Green;
+CRGB COLOUR_BLUE = CRGB::Blue;
+CRGB COLOUR_PINK = CRGB::Pink;
+
+CRGB COLOUR_ACCELERATING = CRGB::Navy;
+CRGB COLOUR_DECELERATING = CRGB::OrangeRed;	//DeepPink;
+CRGB COLOUR_DEADMAN_OFF = CRGB::Black;
+
+CRGB COLOUR_WHITE = CRGB::White;
+
+//--------------------------------------------------------------------------------
+
 #define 	OFF_STATE_HIGH		HIGH
 #define 	OFF_STATE_LOW       0
 #define 	PULLUP              true
@@ -90,7 +114,6 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 
 		case deadmanSwitch.EV_BUTTON_PRESSED:
 			if (esk8.controllerPacket.throttle > 127) {
-			 	//zeroThrottleReadyToSend();
 			}
 			debug.print(DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
 			break;
@@ -98,6 +121,7 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 		case deadmanSwitch.EV_RELEASED:
 			if (esk8.controllerPacket.throttle > 127) {
 			 	zeroThrottleReadyToSend();
+			 	setPixels(COLOUR_DEADMAN_OFF, 0);
 			}
 			debug.print(DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
@@ -108,9 +132,11 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 	}
 }
 
+//--------------------------------------------------------------
+
 // lower number = more coarse
 #define ENCODER_COUNTER_MIN	-18 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX	12 		// acceleration (ie 15 divides 127-255 into 15)
+#define ENCODER_COUNTER_MAX	10 		// acceleration (ie 15 divides 127-255 into 15)
 
 #define DEADMAN_SWITCH_USED		1
 
@@ -147,22 +173,17 @@ void encoderInterruptHandler() {
 			debug.print(DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
+
+	if (encoderCounter > 0) {
+		setPixels(COLOUR_ACCELERATING, 0);
+	}
+	else if (encoderCounter < 0) {
+		setPixels(COLOUR_DECELERATING, 0);
+	}
+	else {
+		setPixels(COLOUR_DEADMAN_OFF, 0);
+	}
 }
-
-//--------------------------------------------------------------------------------
-
-#define 	NUM_PIXELS 		8
-
-CRGB leds[NUM_PIXELS];
-//Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
-
-#define BRIGHTNESS	20
-
-CRGB COLOUR_OFF = CRGB::Black;
-CRGB COLOUR_RED = CRGB::Red;
-CRGB COLOUR_GREEN = CRGB::Green;
-CRGB COLOUR_BLUE = CRGB::Blue;
-CRGB COLOUR_WHITE = CRGB::White;
 
 //--------------------------------------------------------------------------------
 
@@ -244,7 +265,7 @@ void powerupEvent(int state) {
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
 			tFlashLeds.disable();	// in case comms is offline
-			drawMessage("Power down!");
+			drawMessage("Power down");
 			zeroThrottleReadyToSend();
 			setPixels(COLOUR_RED, 0);
 			break;
@@ -398,7 +419,7 @@ void initOLED() {
 void setPixels(CRGB c, uint8_t wait) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
 		leds[i] = c;
-		leds[i] /= 10;
+		// leds[i] /= 10;
 		if (wait > 0) {
 			FastLED.show();
 			delay(wait);
