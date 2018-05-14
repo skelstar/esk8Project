@@ -10,6 +10,7 @@
 #include <debugHelper.h>
 #include <myPowerButtonManager.h>
 #include <esk8Lib.h>
+#include <WiiChuck.h>
 
 //--------------------------------------------------------------------------------
 
@@ -27,6 +28,9 @@ static const unsigned char wifiicon14x10 [] PROGMEM = {
 #define ENCODER_PIN_B		17
 	
 #define DEADMAN_SWITCH_PIN	25
+
+#define POWER_WAKE_BUTTON_PIN		DEADMAN_SWITCH_PIN
+#define POWER_OTHER_BUTTON_PIN		ENCODER_BUTTON_PIN
 
 #define	PIXEL_PIN			5
 
@@ -132,6 +136,23 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 	}
 }
 
+void listener_dialButton( int eventCode, int eventPin, int eventParam );
+myPushButton dialButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_dialButton);
+void listener_dialButton( int eventCode, int eventPin, int eventParam ) {
+
+	switch (eventCode) {
+
+		case dialButton.EV_BUTTON_PRESSED:
+			break;
+		
+		case dialButton.EV_RELEASED:
+			break;
+		
+		case dialButton.EV_HELD_SECONDS:
+			break;
+	}
+}
+
 //--------------------------------------------------------------
 
 // lower number = more coarse
@@ -224,6 +245,9 @@ void tSendControllerValues_callback() {
 }
 //--------------------------------------------------------------
 
+// Accessory chuk;
+
+//--------------------------------------------------------------	
 // Prototypes
 void sendMessage(); 
 
@@ -244,7 +268,16 @@ void sendMessage() {
 	debug.print(COMMUNICATION, "Sending message: throttle:%d \n", esk8.controllerPacket.throttle);
 }
 //--------------------------------------------------------------
-myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
+
+// int startButtonState = 0;
+
+int powerButtonIsPressed() {
+	return deadmanSwitch.isPressed() && 
+			dialButton.isPressed();
+}
+
+//myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
+myPowerButtonManager powerButton(POWER_WAKE_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent, powerButtonIsPressed);
 
 void powerupEvent(int state) {
 
@@ -298,6 +331,9 @@ volatile int commsState = COMMS_UNKNOWN_STATE;
 void setup() {
 
 	Serial.begin(9600);
+	
+	// chuk.begin();
+	// chuk.type = WIICLASSIC;
 
 	initOLED();
 
@@ -339,6 +375,11 @@ void setup() {
 
 void loop() {
 
+	// chuk.readData();    // Read inputs and update maps
+	// startButtonState = chuk.getButtonPlus();
+
+	dialButton.serviceEvents();
+	
 	deadmanSwitch.serviceEvents();
 
 	powerButton.serviceButton();
