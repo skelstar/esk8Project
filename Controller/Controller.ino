@@ -42,7 +42,6 @@ static const unsigned char wifiicon14x10 [] PROGMEM = {
 
 #define	PIXEL_PIN			5
 
-
 // const char boardSetup[] = "DEV Board";
 // #define SPI_CE				22	// white/purple
 // #define SPI_CS				5  // green
@@ -67,7 +66,6 @@ int role = ROLE_CONTROLLER;
 bool radioNumber = 1;
 
 int sendIntervalMs = 200;
-bool updateOled = false;
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 //--------------------------------------------------------------
@@ -84,7 +82,7 @@ RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 #define DEBUG 			1 << 3
 #define COMMUNICATION 	1 << 4
 #define THROTTLE_DEBUG	1 << 5
-#define REGISTER 		1 << 6
+#define TIMING			1 << 6
 
 
 debugHelper debug;
@@ -190,7 +188,7 @@ int encoderCounter = 0;
 bool encoderChanged = false;
 volatile bool statusChanged = true;
 volatile bool packetReadyToBeSent = false;
-volatile long lastPacketFromMaster = 0;
+volatile long lastPacketFromBoard = 0;
 #define THROTTLE_STATUS_ACCEL	1
 #define THROTTLE_STATUS_IDLE	0
 #define THROTTLE_STATUS_BRAKE	-1
@@ -221,6 +219,8 @@ void fastFlashLed() {
     tFastFlash.enable();
 }
 
+//------------------------------------------------------------------------------
+
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
@@ -245,15 +245,23 @@ void tFlashLedsOff_callback() {
 	Serial.println("tFlashLedsOff_callback");
 }
 
+//------------------------------------------------------------------------------
+
 void tSendControllerValues_callback() {
-	if (esk8.sendThenReadPacket() == true) {
-		lastPacketFromMaster = millis();
+	int result = esk8.sendThenReadPacket();
+
+	if (result == esk8.CODE_SUCCESS) {
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f since last packet: %ul \n", 
+			esk8.boardPacket.batteryVoltage, millis() - lastPacketFromBoard);
+		lastPacketFromBoard = millis();
 	}
-	updateOled = true;
-	debug.print(COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f lastPacketFromMaster: %ul \n", esk8.boardPacket.batteryVoltage, lastPacketFromMaster);
+	else if (result == esk8.ERR_NOT_SEND_OK) {
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+	}
+	else if (result == esk8.ERR_TIMEOUT) {
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_TIMEOUT \n");
+	}
 }
-
-
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
 //------------------------------------------------------------------------------
@@ -309,7 +317,6 @@ void encoderInterruptHandler() {
 
 //--------------------------------------------------------------
 // Prototypes
-void sendMessage();
 
 bool calc_delay = false;
 
@@ -319,14 +326,6 @@ volatile uint32_t otherNode;
 volatile long lastRxMillis = 0;
 #define COMMS_TIMEOUT_PERIOD 	1000
 
-//--------------------------------------------------------------
-void sendMessage() {
-	if (esk8.sendPacketToBoard()) {
-		lastPacketFromMaster = millis();
-		updateOled = true;
-	}
-	debug.print(COMMUNICATION, "Sending message: throttle:%d \n", esk8.controllerPacket.throttle);
-}
 //--------------------------------------------------------------
 
 void powerupEvent(int state);
@@ -401,10 +400,10 @@ void setup() {
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ERROR, "ERROR");
 	debug.addOption(THROTTLE_DEBUG, "THROTTLE_DEBUG");
-	debug.addOption(REGISTER, "REGISTER");
+	debug.addOption(TIMING, "TIMING");
 
     // debug.setFilter(STARTUP | THROTTLE_DEBUG | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
-    debug.setFilter(THROTTLE_DEBUG);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
+    debug.setFilter(THROTTLE_DEBUG | TIMING | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "Esk8 Controller/main.cpp \n");

@@ -26,15 +26,14 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 bool radioNumber = 0;
 // blank DEV board
-#define 	SPI_CE			22	// white - do we need it?
-#define 	SPI_CS			5	// green
-const char boardSetup[] = "DEV Board";
+// #define 	SPI_CE			22	// white - do we need it?
+// #define 	SPI_CS			5	// green
+// const char boardSetup[] = "DEV Board";
 
 // WEMOS TTGO
-// #define 	SPI_CE			33	// white - do we need it?
-// #define 	SPI_CS			26	// green
-// const char boardSetup[] = "WEMOS TTGO Board";
-
+#define 	SPI_CE			33	// white - do we need it?
+#define 	SPI_CS			26	// green
+const char boardSetup[] = "WEMOS TTGO Board";
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 
@@ -47,13 +46,6 @@ esk8Lib esk8;
 #define CONTROLLER_ONLINE_MS	500
 
 //--------------------------------------------------------------------------------
-
-// #define	STARTUP 		1 << 0
-// #define WARNING 		1 << 1
-// #define ERROR 			1 << 2
-// #define DEBUG 			1 << 3
-// #define COMMUNICATION 	1 << 4
-// #define 
 
 debugHelper debug;
 
@@ -165,6 +157,10 @@ void loop() {
 
 	bool haveControllerData = esk8.checkForPacket();
 	bool controllerOnline = esk8.controllerOnline();
+
+	if (controllerOnline == false) {
+		debug.print(COMMUNICATION, "Controller: OFFLINE \n");
+	}
 
 	updateOLED(controllerOnline);
 }
