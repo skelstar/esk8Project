@@ -10,8 +10,8 @@ const char compile_date[] = __DATE__ " " __TIME__;
 /****************** User Config ***************************/
 bool radioNumber = 0;
 // DEV Board
-#define SPI_CE		22	// white/purple
-#define SPI_CS		5 	// green
+#define SPI_CE		33	// white/purple
+#define SPI_CS		26 // green
 // WEMOS TTGO
 // #define SPI_CE		33	// white/purple
 // #define SPI_CS		26 	// green
@@ -23,7 +23,6 @@ bool radioNumber = 0;
 // #define 	SPI_CS			15 		green
 // #define 	SPI_CE			2
 
-/* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 7 & 8 */
 RF24 radio(SPI_CE, SPI_CS);
 
 #define 	ROLE_SLAVE		1
@@ -32,10 +31,10 @@ RF24 radio(SPI_CE, SPI_CS);
 esk8Lib esk8;
 
 /**********************************************************/
-                                                                           // Topology
-typedef enum { role_ping_out = 1, role_pong_back } role_e;                 // The various roles supported by this sketch
-const char* role_friendly_name[] = { "invalid", "Ping out", "Pong back"};  // The debug-friendly names of those roles
-role_e role = role_pong_back;                                              // The role of the current running sketch
+//                                                                            // Topology
+// typedef enum { role_ping_out = 1, role_pong_back } role_e;                 // The various roles supported by this sketch
+// const char* role_friendly_name[] = { "invalid", "Ping out", "Pong back"};  // The debug-friendly names of those roles
+// role_e role = role_pong_back;                                              // The role of the current running sketch
 
 byte counter = 1;                                                          // A single byte to keep track of the data being sent back and forth
 //--------------------------------------------------------------------------------
@@ -72,20 +71,36 @@ void setup(){
 long startTime = 0;
 #define SEND_PERIOD		2000
 float packetData = 0.0;
+bool reportedOffline = false;
 
 void loop(void) {
 
-	if (millis()-startTime > SEND_PERIOD) {
-		startTime = millis();
-		
-		esk8.boardPacket.batteryVoltage = packetData += 0.1;
+	bool haveMasterData = esk8.checkForPacket();
+	if (haveMasterData == true) {
+		Serial.printf("haveMasterData == true : %.1f\n", esk8.controllerPacket.throttle);
+	}
 
-		bool haveControllerData = esk8.checkForPacket();
-		if (haveControllerData == true) {
-			Serial.printf("haveControllerData == true : %.1f\n", esk8.controllerPacket.throttle);
-		}
-		else {
-			Serial.printf("haveControllerData == true\n");		
+	if (esk8.controllerOnline(1100) == false) {
+		if (reportedOffline == false) {
+			Serial.printf("Controller OFFLINE! \n");
+			reportedOffline = true;
 		}
 	}
+	else {
+		reportedOffline = false;	
+	}
+
+	// if (millis()-startTime > SEND_PERIOD) {
+	// 	startTime = millis();
+		
+	// 	esk8.boardPacket.batteryVoltage = packetData += 0.1;
+
+	// 	bool haveMasterData = esk8.checkForPacket();
+	// 	if (haveMasterData == true) {
+	// 		Serial.printf("haveMasterData == true : %.1f\n", esk8.controllerPacket.throttle);
+	// 	}
+	// 	else {
+	// 		Serial.printf("haveMasterData == false \n");		
+	// 	}
+	// }
 }	// loop

@@ -4,6 +4,9 @@
 #define 	ROLE_BOARD		1
 #define 	ROLE_CONTROLLER	0
 
+#define 	ROLE_SLAVE		1
+#define 	ROLE_MASTER		0
+
 byte addresses[][6] = {"1Node","2Node"};
 
 #define 	RADIO_1			1
@@ -35,7 +38,7 @@ void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) 
 
 	_debug->print(STARTUP, "esk8Lib begin(RF24) \n");
 	_debug->print(STARTUP, "Radio: %d \n", radioNumber);
-	_debug->print(STARTUP, "Role: %d \n ", role);
+	_debug->print(STARTUP, "Role: %s \n ", role == ROLE_CONTROLLER ? "MASTER" : "SLAVE");
 
 	_radio->setPALevel(RF24_PA_MAX);
 
@@ -79,8 +82,8 @@ int esk8Lib::checkForPacket() {
 
 		// This can be commented out to send empty payloads.
 		if (_role == ROLE_BOARD) {
-			_debug->print(COMMUNICATION, "checkForPacket():_radio->available() == true throttle=%d \n", controllerPacket.throttle);
 			_radio->writeAckPayload( PIPE_NUMBER, &boardPacket, sizeof(boardPacket) );  			
+			_debug->print(COMMUNICATION, "checkForPacket():_radio->available() == true throttle=%d \n", controllerPacket.throttle);
 		}
 		else if (_role == ROLE_CONTROLLER) {
 			_radio->writeAckPayload( PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket) );  			
@@ -158,6 +161,11 @@ int esk8Lib::getSendInterval() {
 int esk8Lib::controllerOnline() {
 	return (millis()-_lastPacketReadTime) < (CONTROLLER_SEND_INTERVAL+100);
 }
+
+int esk8Lib::controllerOnline(int period) {
+	return (millis()-_lastPacketReadTime) < period;
+}
+
 //---------------------------------------------------------------------------------
 int esk8Lib::boardOnline() {
 	return (millis()-_lastPacketReadTime) < (CONTROLLER_SEND_INTERVAL+100);

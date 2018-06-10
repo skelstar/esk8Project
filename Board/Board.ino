@@ -98,12 +98,15 @@ void tSendToVESC_callback();
 Task tSendToVESC(300, TASK_FOREVER, &tSendToVESC_callback);
 void tSendToVESC_callback() {
 
-	// Serial.printf("COMMUNICATION: sendDataToVesc(): throttle=%d (online=%d) \n", esk8.controllerPacket.throttle, esk8.controllerOnline);
-	Serial.println("Sending to VESC");
-	int throttle = esk8.controllerOnline()
-		? esk8.controllerPacket.throttle
-		: 127;
+	int throttle = 127;
 
+	if (esk8.controllerOnline()) {
+		debug.print(COMMUNICATION, "tSendToVESC: throttle=%d \n", esk8.controllerPacket.throttle);
+		throttle = esk8.controllerPacket.throttle;
+	}
+	else {
+		debug.print(COMMUNICATION, "tSendToVESC: Controller OFFLINE (127) \n");
+	}
 	esp8266VESC.setNunchukValues(127, throttle, 0, 0);
 }
 
@@ -146,7 +149,9 @@ void setup()
 
 void loop() {
 
-	if (millis() - intervalStarts > esk8.getSendInterval()) {
+	bool timeToUpdateController = millis() - intervalStarts > esk8.getSendInterval();
+
+	if (timeToUpdateController) {
 		intervalStarts = millis();
 		// update controller
 		bool success = getVescValues();

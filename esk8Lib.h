@@ -37,6 +37,7 @@ class esk8Lib
 		int packetChanged();
 		int sendThenReadPacket();
 		int controllerOnline();
+		int controllerOnline(int period);
 		int boardOnline();
 		int getSendInterval();
 
