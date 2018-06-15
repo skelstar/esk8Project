@@ -2,8 +2,6 @@
 #include "RF24.h"
 #include <Rotary.h>
 #include <FastLED.h>
-// #include <Adafruit_NeoPixel.h>
-// #include <U8g2lib.h>
 
 #include <TaskScheduler.h>
 
@@ -11,7 +9,6 @@
 #include <debugHelper.h>
 #include <myPowerButtonManager.h>
 #include <esk8Lib.h>
-// #include <WiiChuck.h>
 
 //--------------------------------------------------------------------------------
 
@@ -23,11 +20,7 @@ void setPixels(CRGB c) ;
 void setCommsState(int newState);
 void serviceCommsState();
 void servicePixels();
-
-// https://sandhansblog.wordpress.com/2017/04/16/interfacing-displaying-a-custom-graphic-on-an-0-96-i2c-oled/
-static const unsigned char wifiicon14x10 [] PROGMEM = {
-   0xf0, 0x03, 0xfc, 0x0f, 0x1e, 0x1c, 0xc7, 0x39, 0xf3, 0x33, 0x38, 0x06, 0x1c, 0x0c, 0xc8, 0x04, 0xe0, 0x01, 0xc0, 0x00
-};
+void zeroThrottleReadyToSend();
 
 //--------------------------------------------------------------------------------
 
@@ -43,10 +36,6 @@ static const unsigned char wifiicon14x10 [] PROGMEM = {
 #define	PIXEL_PIN			5
 
 
-// const char boardSetup[] = "DEV Board";
-// #define SPI_CE				22	// white/purple
-// #define SPI_CS				5  // green
-const char boardSetup[] = "WEMOS TTGO Board";
 #define SPI_MOSI			23 // Blue
 #define SPI_MISO			19 // Orange
 #define SPI_CLK				18 // Yellow
@@ -56,7 +45,6 @@ const char boardSetup[] = "WEMOS TTGO Board";
 #define OLED_SCL        	22    // std ESP32 (22)
 #define OLED_SDA        	21    // std ESP32 (23??)
 
-#define SEND_TO_BOARD_INTERVAL_MS	200
 //--------------------------------------------------------------
 
 #define ROLE_BOARD		1
@@ -70,26 +58,24 @@ int sendIntervalMs = 200;
 bool updateOled = false;
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
+
+
 //--------------------------------------------------------------
-
-// #define     OLED_CONTRAST_HIGH	100        // 256 highest
-// #define     OLED_CONTRAST_LOW	20
-// U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, OLED_SCL, OLED_SDA, U8X8_PIN_NONE);
-
-//--------------------------------------------------------------------------------
 
 #define	STARTUP 		1 << 0
 #define WARNING 		1 << 1
 #define ERROR 			1 << 2
 #define DEBUG 			1 << 3
 #define COMMUNICATION 	1 << 4
-#define THROTTLE_DEBUG	1 << 5
-#define REGISTER 		1 << 6
-
+#define HARDWARE		1 << 5
 
 debugHelper debug;
 
+//--------------------------------------------------------------
+
 Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
+
+//--------------------------------------------------------------
 
 esk8Lib esk8;
 
@@ -98,19 +84,8 @@ esk8Lib esk8;
 #define 	NUM_PIXELS 		8
 
 CRGB leds[NUM_PIXELS];
-//Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_RGB + NEO_KHZ800);
-
 
 #define BRIGHTNESS	20
-
-// uint32_t COLOUR_OFF = leds.Color(0, 0, 0);
-// uint32_t COLOUR_RED = leds.Color(255, 0, 0);
-// uint32_t COLOUR_GREEN = leds.Color(0, 255, 0);
-// uint32_t COLOUR_BLUE = leds.Color(0, 0, 255);
-// uint32_t COLOUR_PINK = leds.Color(128, 0, 100);
-// uint32_t COLOUR_ACCELERATING = COLOUR_BLUE;
-// uint32_t COLOUR_BRAKING = COLOUR_PINK;
-// uint32_t COLOUR_THROTTLE_IDLE = COLOUR_GREEN;
 
 CRGB COLOUR_OFF = CRGB::Black;
 CRGB COLOUR_RED = CRGB::Red;
@@ -130,8 +105,6 @@ CRGB COLOUR_WHITE = CRGB::White;
 #define 	OFF_STATE_LOW       0
 #define 	PUSH_BUTTON_PULLUP  true
 
-void zeroThrottleReadyToSend();
-
 void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam );
 myPushButton deadmanSwitch(DEADMAN_SWITCH_PIN, PUSH_BUTTON_PULLUP, OFF_STATE_HIGH, listener_deadmanSwitch);
 void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
@@ -141,7 +114,7 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 		case deadmanSwitch.EV_BUTTON_PRESSED:
 			if (esk8.controllerPacket.throttle > 127) {
 			}
-			debug.print(DEBUG, "EV_BUTTON_PRESSED (DEADMAN) \n");
+			debug.print(HARDWARE, "EV_BUTTON_PRESSED (DEADMAN) \n");
 			break;
 
 		case deadmanSwitch.EV_RELEASED:
@@ -149,7 +122,7 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 			 	zeroThrottleReadyToSend();
 			 	//setPixels(COLOUR_DEADMAN_OFF, 0);
 			}
-			debug.print(DEBUG, "EV_BUTTON_RELEASED (DEADMAN) \n");
+			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
 
 		case deadmanSwitch.EV_HELD_SECONDS:
@@ -182,24 +155,12 @@ void listener_dialButton( int eventCode, int eventPin, int eventParam ) {
 #define ENCODER_COUNTER_MIN	-18 	// decceleration (ie -20 divides 0-127 into 20)
 #define ENCODER_COUNTER_MAX	10 		// acceleration (ie 15 divides 127-255 into 15)
 
-#define DEADMAN_SWITCH_USED		1
-
 //--------------------------------------------------------------
 
 int encoderCounter = 0;
-bool encoderChanged = false;
 volatile bool statusChanged = true;
 volatile bool packetReadyToBeSent = false;
 volatile long lastPacketFromMaster = 0;
-#define THROTTLE_STATUS_ACCEL	1
-#define THROTTLE_STATUS_IDLE	0
-#define THROTTLE_STATUS_BRAKE	-1
-
-#define COMMS_STATUS_ONLINE		1
-#define COMMS_STATUS_OFFLINE	0
-
-#define REG_THROTTLE	0
-#define REG_COMMS_STATE	1
 
 //--------------------------------------------------------------------------------
 
@@ -220,12 +181,11 @@ void fastFlashLed() {
     tFastFlash.setIterations(2);
     tFastFlash.enable();
 }
-
+//--------------------------------------------------------------
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
 
-// CRGB tFlashLedsColour = COLOUR_RED;
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
@@ -244,6 +204,8 @@ void tFlashLedsOff_callback() {
 	// setPixels(COLOUR_OFF, 0);
 	Serial.println("tFlashLedsOff_callback");
 }
+//--------------------------------------------------------------
+#define SEND_TO_BOARD_INTERVAL_MS	100
 
 void tSendControllerValues_callback() {
 	if (esk8.sendThenReadPacket() == true) {
@@ -252,16 +214,12 @@ void tSendControllerValues_callback() {
 	updateOled = true;
 	debug.print(COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f lastPacketFromMaster: %ul \n", esk8.boardPacket.batteryVoltage, lastPacketFromMaster);
 }
-
-
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
 //------------------------------------------------------------------------------
 
 void encoderInterruptHandler() {
 	unsigned char result = rotary.process();
-
-	// debug.print(DEBUG, "Encoder event \n");
 
 	bool canAccelerate = deadmanSwitch.isPressed();
 
@@ -271,16 +229,16 @@ void encoderInterruptHandler() {
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
 			packetReadyToBeSent = true;
-			debug.print(THROTTLE_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 			statusChanged = true;
 
-            if (encoderCounter > 0) {
-                setPixels(COLOUR_ACCELERATING);
-            }
-            else {
-                setPixels(COLOUR_BRAKING);
-            }
-            fastFlashLed();
+            // if (encoderCounter > 0) {
+            //     setPixels(COLOUR_ACCELERATING);
+            // }
+            // else {
+            //     setPixels(COLOUR_BRAKING);
+            // }
+            // fastFlashLed();
 		}
 	}
 	else if (result == DIR_CCW) {
@@ -289,16 +247,16 @@ void encoderInterruptHandler() {
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
 			packetReadyToBeSent = true;
-			debug.print(THROTTLE_DEBUG, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 			statusChanged = true;
 
-            if (encoderCounter > 0) {
-                setPixels(COLOUR_ACCELERATING);
-            }
-            else {
-                setPixels(COLOUR_BRAKING);
-            }
-            fastFlashLed();
+            // if (encoderCounter > 0) {
+            //     setPixels(COLOUR_ACCELERATING);
+            // }
+            // else {
+            //     setPixels(COLOUR_BRAKING);
+            // }
+            // fastFlashLed();
 		}
 	}
 }
@@ -328,6 +286,7 @@ void sendMessage() {
 	debug.print(COMMUNICATION, "Sending message: throttle:%d \n", esk8.controllerPacket.throttle);
 }
 //--------------------------------------------------------------
+// PowerUpManagement
 
 void powerupEvent(int state);
 
@@ -385,7 +344,10 @@ void powerupEvent(int state) {
 
 volatile int commsState = COMMS_UNKNOWN_STATE;
 
-//--------------------------------------------------------------
+TaskHandle_t EncoderTask;
+
+//**************************************************************
+//**************************************************************
 void setup() {
 
 	Serial.begin(9600);
@@ -395,20 +357,17 @@ void setup() {
     btStop();   // turn bluetooth module off
 
 	debug.init();
-
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ERROR, "ERROR");
-	debug.addOption(THROTTLE_DEBUG, "THROTTLE_DEBUG");
-	debug.addOption(REGISTER, "REGISTER");
+	debug.addOption(HARDWARE, "HARDWARE");
 
     // debug.setFilter(STARTUP | THROTTLE_DEBUG | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
-    debug.setFilter(THROTTLE_DEBUG);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
+    debug.setFilter(HARDWARE);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "Esk8 Controller/main.cpp \n");
-	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
 
 	esk8.begin(&radio, role, radioNumber, &debug);
 
@@ -429,15 +388,22 @@ void setup() {
 		powerButton.serviceButton();
 	}
 
-	// encoder
-	setupEncoder();
+	xTaskCreatePinnedToCore (
+		codeForEncoderTask,	// function
+		"Task_Encoder",		// name
+		10000,			// stack
+		NULL,			// parameter
+		1,				// priority
+		&EncoderTask,
+		0);			// handle
 }
-
+//**************************************************************
+//**************************************************************
 void loop() {
 
-	dialButton.serviceEvents();
+	// dialButton.serviceEvents();
 
-	deadmanSwitch.serviceEvents();
+	// deadmanSwitch.serviceEvents();
 
 	powerButton.serviceButton();
 
@@ -449,7 +415,23 @@ void loop() {
 
 	delay(10);
 }
-//--------------------------------------------------------------
+//**************************************************************
+//**************************************************************
+void codeForEncoderTask( void *parameter ) {
+
+	setupEncoder();
+
+	// then loop forever	
+	for (;;) {
+		dialButton.serviceEvents();
+		deadmanSwitch.serviceEvents();
+		delay(10);
+	}
+
+	vTaskDelete(NULL);
+}
+//**************************************************************
+//**************************************************************
 void servicePixels() {
 
 	uint8_t powerState = powerButton.getState();
@@ -545,7 +527,7 @@ int getThrottleValue(int raw) {
 void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
 	esk8.controllerPacket.throttle = 127;
-    debug.print(THROTTLE_DEBUG, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, esk8.controllerPacket.throttle);
+    debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, esk8.controllerPacket.throttle);
 	packetReadyToBeSent = true;
 }
 //--------------------------------------------------------------
