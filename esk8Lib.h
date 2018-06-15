@@ -28,6 +28,12 @@ struct ControllerStruct {
 class esk8Lib
 {
 	public:
+		enum ReturnCode {
+			CODE_SUCCESS,
+			ERR_NOT_SEND_OK,
+			ERR_TIMEOUT
+		};
+
 		esk8Lib();
 		void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
 
