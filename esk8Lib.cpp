@@ -113,27 +113,25 @@ int esk8Lib::sendThenReadPacket() {
 	_radio->stopListening();
 
 	bool sendOk;
+	uint8_t returnCode = CODE_SUCCESS;
 
 	if (_role == ROLE_BOARD) {
-		sendOk = _radio->write(&boardPacket, sizeof(boardPacket));
+		sendOk = _radio->write(&boardPacket, sizeof(boardPacket)) == true;
 	}
 	else if (_role == ROLE_CONTROLLER) {
-		sendOk = _radio->write(&controllerPacket, sizeof(controllerPacket));
+		sendOk = _radio->write(&controllerPacket, sizeof(controllerPacket)) == true;
 	}
 
 	if (sendOk == false) {
-		_debug->print(ERROR, "sendThenReadPacket(); return (sendOK=false) \n");
-		return false;
+		return ERR_NOT_SEND_OK;
 	}
 
-	bool timedOut = false;
 	long startedWaiting = millis();
 	_radio->startListening();
 	while (_radio->available() == false) {
 		if (millis()-startedWaiting > 200) {
-			timedOut = true;
-			_debug->print(COMMUNICATION, "sendThenReadPacket(); timeout \n");
-			return false;
+			// timeout
+			return ERR_TIMEOUT;
 		}
 	}
 
@@ -146,7 +144,7 @@ int esk8Lib::sendThenReadPacket() {
 		_lastPacketReadTime = millis();
 	}
 
-	return true;
+	return CODE_SUCCESS;
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::getSendInterval() {
