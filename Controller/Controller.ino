@@ -35,14 +35,6 @@ void zeroThrottleReadyToSend();
 
 #define	PIXEL_PIN			5
 
-<<<<<<< HEAD
-
-=======
-// const char boardSetup[] = "DEV Board";
-// #define SPI_CE				22	// white/purple
-// #define SPI_CS				5  // green
-const char boardSetup[] = "WEMOS TTGO Board";
->>>>>>> master
 #define SPI_MOSI			23 // Blue
 #define SPI_MISO			19 // Orange
 #define SPI_CLK				18 // Yellow
@@ -73,13 +65,8 @@ RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 #define ERROR 			1 << 2
 #define DEBUG 			1 << 3
 #define COMMUNICATION 	1 << 4
-<<<<<<< HEAD
 #define HARDWARE		1 << 5
-=======
-#define THROTTLE_DEBUG	1 << 5
 #define TIMING			1 << 6
-
->>>>>>> master
 
 debugHelper debug;
 
@@ -172,20 +159,7 @@ void listener_dialButton( int eventCode, int eventPin, int eventParam ) {
 int encoderCounter = 0;
 volatile bool statusChanged = true;
 volatile bool packetReadyToBeSent = false;
-<<<<<<< HEAD
-volatile long lastPacketFromMaster = 0;
-=======
 volatile long lastPacketFromBoard = 0;
-#define THROTTLE_STATUS_ACCEL	1
-#define THROTTLE_STATUS_IDLE	0
-#define THROTTLE_STATUS_BRAKE	-1
-
-#define COMMS_STATUS_ONLINE		1
-#define COMMS_STATUS_OFFLINE	0
-
-#define REG_THROTTLE	0
-#define REG_COMMS_STATE	1
->>>>>>> master
 
 //--------------------------------------------------------------------------------
 
@@ -206,13 +180,8 @@ void fastFlashLed() {
     tFastFlash.setIterations(2);
     tFastFlash.enable();
 }
-<<<<<<< HEAD
-//--------------------------------------------------------------
-=======
 
 //------------------------------------------------------------------------------
-
->>>>>>> master
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
@@ -318,7 +287,6 @@ volatile long lastRxMillis = 0;
 #define COMMS_TIMEOUT_PERIOD 	1000
 
 //--------------------------------------------------------------
-<<<<<<< HEAD
 void sendMessage() {
 	if (esk8.sendPacketToBoard()) {
 		lastPacketFromMaster = millis();
@@ -328,8 +296,6 @@ void sendMessage() {
 }
 //--------------------------------------------------------------
 // PowerUpManagement
-=======
->>>>>>> master
 
 void powerupEvent(int state);
 
@@ -404,18 +370,9 @@ void setup() {
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ERROR, "ERROR");
-<<<<<<< HEAD
 	debug.addOption(HARDWARE, "HARDWARE");
-
     // debug.setFilter(STARTUP | THROTTLE_DEBUG | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
     debug.setFilter(HARDWARE);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
-=======
-	debug.addOption(THROTTLE_DEBUG, "THROTTLE_DEBUG");
-	debug.addOption(TIMING, "TIMING");
-
-    // debug.setFilter(STARTUP | THROTTLE_DEBUG | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
-    debug.setFilter(THROTTLE_DEBUG | TIMING | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
->>>>>>> master
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "Esk8 Controller/main.cpp \n");
