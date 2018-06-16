@@ -16,6 +16,7 @@ struct BoardStruct{
 
 struct ControllerStruct {
 	int throttle;
+	int encoderButton;
 };
 
 #define	STARTUP 		1 << 0

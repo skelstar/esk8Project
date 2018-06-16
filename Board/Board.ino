@@ -265,6 +265,13 @@ void updateLEDs() {
 					strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
 				}
 				break;
+			case 3:
+				if (esk8.controllerPacket.encoderButton == 1) {
+					strip.setPixelColor(i, strip.Color(0, 0, 255));	
+				} else {
+					strip.setPixelColor(i, strip.Color(0, 0, 0));
+				}
+				break;
 			default:
 				strip.setPixelColor(i, strip.Color(0, 0, 0));
 				break;

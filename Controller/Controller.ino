@@ -7,7 +7,6 @@
 
 #include <myPushButton.h>
 #include <debugHelper.h>
-#include <myPowerButtonManager.h>
 #include <esk8Lib.h>
 
 //--------------------------------------------------------------------------------
@@ -17,9 +16,6 @@ const char compile_date[] = __DATE__ " " __TIME__;
 int getThrottleValue(int raw);
 void setupEncoder();
 void setPixels(CRGB c) ;
-void setCommsState(int newState);
-void serviceCommsState();
-void servicePixels();
 void zeroThrottleReadyToSend();
 
 //--------------------------------------------------------------------------------
@@ -29,9 +25,6 @@ void zeroThrottleReadyToSend();
 #define ENCODER_PIN_B		17
 
 #define DEADMAN_SWITCH_PIN	25
-
-#define POWER_WAKE_BUTTON_PIN		DEADMAN_SWITCH_PIN
-#define POWER_OTHER_BUTTON_PIN		ENCODER_BUTTON_PIN
 
 #define	PIXEL_PIN			5
 
@@ -67,6 +60,7 @@ RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 #define COMMUNICATION 	1 << 4
 #define HARDWARE		1 << 5
 #define TIMING			1 << 6
+#define COMMS_STATE  	1 << 7
 
 debugHelper debug;
 
@@ -80,6 +74,34 @@ esk8Lib esk8;
 
 //--------------------------------------------------------------------------------
 
+#define	TN_ONLINE 	1
+#define	ST_ONLINE 	2
+#define	TN_OFFLINE  3
+#define	ST_OFFLINE  4
+
+uint8_t boardCommsState;
+long lastBoardOnlineTime = 0;
+long lastBoardOfflineTime = 0;
+
+uint8_t serviceCommsState(uint8_t commsState, bool online) {
+	switch (commsState) {
+		case TN_ONLINE:
+			debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
+			return online ? ST_ONLINE : TN_OFFLINE;
+		case ST_ONLINE:
+			lastBoardOnlineTime = millis();
+			return  online ? ST_ONLINE : TN_OFFLINE;
+		case TN_OFFLINE:
+			debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
+			return online ? TN_ONLINE : ST_OFFLINE;
+		case ST_OFFLINE:
+			return online ? TN_ONLINE : ST_OFFLINE;
+		default:
+			return online ? TN_ONLINE : TN_OFFLINE;
+	}
+}
+
+//--------------------------------------------------------------
 #define 	NUM_PIXELS 		8
 
 CRGB leds[NUM_PIXELS];
@@ -137,9 +159,11 @@ void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 	switch (eventCode) {
 
 		case encoderButton.EV_BUTTON_PRESSED:
+			esk8.controllerPacket.encoderButton = 1;
 			break;
 
 		case encoderButton.EV_RELEASED:
+			esk8.controllerPacket.encoderButton = 0;
             zeroThrottleReadyToSend();
 			break;
 
@@ -157,7 +181,6 @@ void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 //--------------------------------------------------------------
 
 int encoderCounter = 0;
-volatile long lastResponseFromBoard = 0;
 
 //--------------------------------------------------------------------------------
 
@@ -225,7 +248,6 @@ void encoderInterruptHandler() {
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
-			//sendMessage();
 		}
 	}
 	else if (result == DIR_CCW) {
@@ -234,7 +256,6 @@ void encoderInterruptHandler() {
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
-			//sendMessage();
 		}
 	}
 }
@@ -251,11 +272,11 @@ void sendMessage() {
 	int result = esk8.sendThenReadPacket();
 
 	if (result == esk8.CODE_SUCCESS) {
+
 		debug.print(
 			COMMUNICATION, 
 			"tSendControllerValues_callback(): batteryVoltage:%.1f \n", 
 			esk8.boardPacket.batteryVoltage);
-		lastResponseFromBoard = millis();
 	}
 	else if (result == esk8.ERR_NOT_SEND_OK) {
 		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
@@ -266,52 +287,8 @@ void sendMessage() {
 	else {
 		debug.print(COMMUNICATION, "tSendControllerValues_callback(): UNKNOWN_CODE %d \n", result);	
 	}
+	boardCommsState = serviceCommsState(boardCommsState, result == esk8.CODE_SUCCESS);
 }
-//--------------------------------------------------------------
-// PowerUpManagement
-
-void powerupEvent(int state);
-
-int powerButtonIsPressedFunc() {
-	return deadmanSwitch.isPressed() &&
-			encoderButton.isPressed();
-}
-
-//myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
-myPowerButtonManager powerButton(POWER_WAKE_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent, powerButtonIsPressedFunc);
-
-void powerupEvent(int state) {
-
-	switch (state) {
-		case powerButton.TN_TO_POWERING_UP:
-			setPixels(COLOUR_GREEN);
-			break;
-		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
-			setPixels(COLOUR_OFF);
-			// skip this and go straight to RUNNING
-			powerButton.setState(powerButton.TN_TO_RUNNING);
-			break;
-		case powerButton.TN_TO_RUNNING:
-			setPixels(COLOUR_OFF);
-			break;
-		case powerButton.TN_TO_POWERING_DOWN:
-			tFlashLeds.disable();	// in case comms is offline
-			zeroThrottleReadyToSend();
-			setPixels(COLOUR_RED);
-			break;
-		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE: {
-    			powerButton.setState(powerButton.TN_TO_POWER_OFF);
-            }
-			break;
-		case powerButton.TN_TO_POWER_OFF:
-			 setPixels(COLOUR_OFF);
-			delay(100);
-			esp_deep_sleep_start();
-			Serial.println("This will never be printed");
-			break;
-	}
-}
-
 //--------------------------------------------------------------------------------
 
 #define COMMS_ONLINE 		1
@@ -338,8 +315,8 @@ void setup() {
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ERROR, "ERROR");
 	debug.addOption(HARDWARE, "HARDWARE");
-    // debug.setFilter(STARTUP | THROTTLE_DEBUG | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
-    debug.setFilter( DEBUG );	// DEBUG | STARTUP | COMMUNICATION | ERROR);
+	debug.addOption(COMMS_STATE, "COMMS_STATE");
+    debug.setFilter( DEBUG | COMMS_STATE );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "Esk8 Controller/main.cpp \n");
@@ -357,12 +334,6 @@ void setup() {
 	//tSendControllerValues.setInterval(SEND_TO_BOARD_INTERVAL_MS);	//  esk8.getSendInterval()
 	tSendControllerValues.enable();
 
-	powerButton.begin(DEBUG);
-
-	while (powerButton.isRunning() == false) {
-		powerButton.serviceButton();
-	}
-
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
 		"Task_Encoder",		// name
@@ -379,22 +350,16 @@ long now = 0;
 
 void loop() {
 
-	// encoderButton.serviceEvents();
-
-	// deadmanSwitch.serviceEvents();
-
-	//powerButton.serviceButton();
-
 	runner.execute();
 
 	// serviceCommsState();
-
-	// servicePixels();
 
 	if (millis() - now > 2000) {
 		debug.print(DEBUG, "this is loop() core: %d \n", xPortGetCoreID());
 		now = millis();
 	}
+
+	boardCommsState = serviceCommsState(boardCommsState, boardCommsState == TN_ONLINE || boardCommsState == ST_ONLINE);
 
 	delay(10);
 }
@@ -422,34 +387,6 @@ void codeForEncoderTask( void *parameter ) {
 	vTaskDelete(NULL);
 }
 //**************************************************************
-//**************************************************************
-void servicePixels() {
-
-	uint8_t powerState = powerButton.getState();
-	debug.print(DEBUG, "powerState: %d \n", powerState);
-
-	if (powerState == powerButton.TN_TO_POWERING_UP) {
-		setPixels(COLOUR_GREEN);
-	}
-	else if (powerState == powerButton.TN_TO_POWERED_UP_WAIT_RELEASE) {
-		setPixels(COLOUR_OFF);
-	}
-	else if (powerState == powerButton.TN_TO_RUNNING) {
-		setPixels(COLOUR_RED);
-	}
-	else if (powerState == powerButton.TN_TO_POWERING_DOWN) {
-		setPixels(COLOUR_RED);
-	}
-	else if (powerState == powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE) {
-		setPixels(COLOUR_OFF);
-	}
-	else if (powerState == powerButton.TN_TO_POWER_OFF) {
-		setPixels(COLOUR_OFF);
-	}
-	else {
-	}
-}
-//----------------------------------------------------------------
 void setupEncoder() {
 
 	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
@@ -459,20 +396,20 @@ void setupEncoder() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
 }
 //--------------------------------------------------------------------------------
-void serviceCommsState() {
+// void serviceCommsState() {
 
-	bool online = esk8.boardOnline();
+// 	bool online = esk8.boardOnline();
 
-	if (commsState == COMMS_ONLINE && online == false) {
-		setCommsState(COMMS_OFFLINE);
-	}
-	else if (commsState == COMMS_OFFLINE && online) {
-		setCommsState(COMMS_ONLINE);
-	}
-	else if (commsState == COMMS_UNKNOWN_STATE) {
-		setCommsState(online == false ? COMMS_OFFLINE : COMMS_ONLINE);
-	}
-}
+// 	if (commsState == COMMS_ONLINE && online == false) {
+// 		setCommsState(COMMS_OFFLINE);
+// 	}
+// 	else if (commsState == COMMS_OFFLINE && online) {
+// 		setCommsState(COMMS_ONLINE);
+// 	}
+// 	else if (commsState == COMMS_UNKNOWN_STATE) {
+// 		setCommsState(online == false ? COMMS_OFFLINE : COMMS_ONLINE);
+// 	}
+// }
 //--------------------------------------------------------------------------------
 void setCommsState(int newState) {
 	if (newState == COMMS_OFFLINE) {
