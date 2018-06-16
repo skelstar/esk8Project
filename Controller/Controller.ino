@@ -106,14 +106,14 @@ long lastBoardOfflineTime = 0;
 uint8_t serviceCommsState(uint8_t commsState, bool online) {
 	switch (commsState) {
 		case TN_ONLINE:
-			setPixels(COLOUR_OFF);
+			//setPixels(COLOUR_OFF);
 			debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
 			return online ? ST_ONLINE : TN_OFFLINE;
 		case ST_ONLINE:
 			lastBoardOnlineTime = millis();
 			return  online ? ST_ONLINE : TN_OFFLINE;
 		case TN_OFFLINE:
-			setPixels(COLOUR_RED);
+			//setPixels(COLOUR_RED);
 			debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
 			return online ? TN_ONLINE : ST_OFFLINE;
 		case ST_OFFLINE:
@@ -214,24 +214,28 @@ void fastFlashLed() {
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
+CRGB tFlashLedsColour = COLOUR_RED;
 
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	// setPixels(tFlashLedsColour, 0);
-	Serial.println("tFlashLeds_onEnable");
+	setPixels(tFlashLedsColour);
+	// Serial.println("tFlashLeds_onEnable");
+	debug.print(COMMS_STATE, "tFlashLeds_onEnable()\n");
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLedsOn_callback() {
+	debug.print(COMMS_STATE, "tFlashLedsOn_callback()\n");
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	// setPixels(tFlashLedsColour, 0);
-	Serial.println("tFlashLedsOn_callback");
+	setPixels(tFlashLedsColour);
+	// Serial.println("tFlashLedsOn_callback");
 }
 void tFlashLedsOff_callback() {
+	debug.print(COMMS_STATE, "tFlashLedsOff_callback()\n");
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	// setPixels(COLOUR_OFF, 0);
-	Serial.println("tFlashLedsOff_callback");
+	setPixels(COLOUR_OFF);
+	// Serial.println("tFlashLedsOff_callback");
 }
 //--------------------------------------------------------------
 #define SEND_TO_BOARD_INTERVAL_MS	200
@@ -305,8 +309,6 @@ void sendMessage() {
 
 volatile int commsState = COMMS_UNKNOWN_STATE;
 
-TaskHandle_t EncoderTask;
-
 /**************************************************************
 					SETUP
 **************************************************************/
@@ -349,8 +351,17 @@ void setup() {
 		10000,			// stack
 		NULL,			// parameter
 		1,				// priority
-		&EncoderTask,	// handle
+		NULL,	// handle
 		0);				// port	
+
+	xTaskCreatePinnedToCore (
+		codeBoardCommsStateTask,	// function
+		"Task_BoardCommsState",		// name
+		10000,			// stack
+		NULL,			// parameter
+		1,				// priority
+		NULL,			// handle
+		1);				// core	
 }
 /**************************************************************
 					LOOP
@@ -368,17 +379,41 @@ void loop() {
 		now = millis();
 	}
 
-	boardCommsState = serviceCommsState(boardCommsState, boardCommsState == TN_ONLINE || boardCommsState == ST_ONLINE);
+	// boardCommsState = serviceCommsState(boardCommsState, boardCommsState == TN_ONLINE || boardCommsState == ST_ONLINE);
 
 	delay(10);
+}
+/**************************************************************
+					TASK Board Comms State
+**************************************************************/
+void codeBoardCommsStateTask( void *parameter ) {
+
+	long taskBoardCOmmsStateNow = 0;
+
+	// then loop forever	
+	for (;;) {
+
+		if (boardCommsState == TN_ONLINE) {
+			tFlashLeds.disable();
+		}
+		else if (boardCommsState == TN_OFFLINE) {
+			tFlashLeds.enable();
+		}
+
+		boardCommsState = serviceCommsState(boardCommsState, boardCommsState == TN_ONLINE || boardCommsState == ST_ONLINE);
+
+		delay(10);
+	}
+
+	vTaskDelete(NULL);
 }
 /**************************************************************
 					TASK 0
 **************************************************************/
 
-long task0now = 0;
-
 void codeForEncoderTask( void *parameter ) {
+
+	long task0now = 0;
 
 	setupEncoder();
 
