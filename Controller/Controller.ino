@@ -130,20 +130,20 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 	}
 }
 
-void listener_dialButton( int eventCode, int eventPin, int eventParam );
-myPushButton dialButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_dialButton);
-void listener_dialButton( int eventCode, int eventPin, int eventParam ) {
+void listener_encoderButton( int eventCode, int eventPin, int eventParam );
+myPushButton encoderButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_encoderButton);
+void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 
 	switch (eventCode) {
 
-		case dialButton.EV_BUTTON_PRESSED:
+		case encoderButton.EV_BUTTON_PRESSED:
 			break;
 
-		case dialButton.EV_RELEASED:
+		case encoderButton.EV_RELEASED:
             zeroThrottleReadyToSend();
 			break;
 
-		case dialButton.EV_HELD_SECONDS:
+		case encoderButton.EV_HELD_SECONDS:
 			break;
 	}
 }
@@ -274,7 +274,7 @@ void powerupEvent(int state);
 
 int powerButtonIsPressedFunc() {
 	return deadmanSwitch.isPressed() &&
-			dialButton.isPressed();
+			encoderButton.isPressed();
 }
 
 //myPowerButtonManager powerButton(ENCODER_BUTTON_PIN, HIGH, 3000, 3000, powerupEvent);
@@ -379,11 +379,11 @@ long now = 0;
 
 void loop() {
 
-	// dialButton.serviceEvents();
+	// encoderButton.serviceEvents();
 
 	// deadmanSwitch.serviceEvents();
 
-	powerButton.serviceButton();
+	//powerButton.serviceButton();
 
 	runner.execute();
 
@@ -409,7 +409,7 @@ void codeForEncoderTask( void *parameter ) {
 
 	// then loop forever	
 	for (;;) {
-		dialButton.serviceEvents();
+		encoderButton.serviceEvents();
 		deadmanSwitch.serviceEvents();
 		delay(10);
 

@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include "RF24.h"
 #include <esk8Lib.h>
+#include <Adafruit_NeoPixel.h>
 
 #include <ESP8266VESC.h>
 #include "VescUart.h"
@@ -15,6 +16,14 @@
 /*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
+
+//--------------------------------------------------------------------------------
+
+#define LED_PIN     4
+#define NUM_LEDS    8
+#define BRIGHTNESS  64
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 //--------------------------------------------------------------------------------
 
@@ -95,16 +104,20 @@ bool haveControllerData;
 #define	ST_OFFLINE  4
 
 uint8_t controllerCommsState;
+uint8_t vescCommsState;
+long lastControllerOnlineTime = 0;
+long lastControllerOfflineTime = 0;
 
 uint8_t serviceCommsState(uint8_t commsState, bool online) {
 	switch (commsState) {
 		case TN_ONLINE:
-			debug.print(CONTROLLER_COMMS, "-> TN_ONLINE \n");
+			debug.print(CONTROLLER_COMMS, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastControllerOnlineTime)/1000);
 			return online ? ST_ONLINE : TN_OFFLINE;
 		case ST_ONLINE:
+			lastControllerOnlineTime = millis();
 			return  online ? ST_ONLINE : TN_OFFLINE;
 		case TN_OFFLINE:
-			debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE \n");
+			debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastControllerOfflineTime)/1000);
 			return online ? TN_ONLINE : ST_OFFLINE;
 		case ST_OFFLINE:
 			return online ? TN_ONLINE : ST_OFFLINE;
@@ -162,6 +175,11 @@ void setup()
     // Setup serial connection to VESC
     Serial1.begin(9600);
 
+    strip.setBrightness(BRIGHTNESS);
+    strip.begin();
+    delay(50);
+    strip.show(); // Initialize all pixels to 'off'
+
     // initOLED();
 
     radio.begin();
@@ -192,14 +210,18 @@ void loop() {
 		intervalStarts = millis();
 		// update controller
 		bool success = getVescValues();
-		if (success == false) {
-			debug.print(VESC_COMMS, "VESC not responding\n");
-		}
+
+		vescCommsState = serviceCommsState(vescCommsState, success);
+
 		//update with data if VESC offline
 		loadPacketForController(success);
 	}
 
 	runner.execute();
+
+	updateLEDs();
+
+	delay(10);
 }
 //*************************************************************
 void codeForRF24CommsRxTask( void *parameter ) {
@@ -217,6 +239,39 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	vTaskDelete(NULL);
 }
 //*************************************************************
+void updateLEDs() {
+	for (int i = 0; i < NUM_LEDS; i++) {
+		switch (i) {
+			case 0:	// controller online status
+				if (controllerCommsState == ST_ONLINE) {
+					strip.setPixelColor(i, strip.Color(0, 255, 0));
+				} else {
+					strip.setPixelColor(i, strip.Color(255, 0, 0));
+				}
+				break;
+			case 1: // VESC online
+				if (vescCommsState == ST_ONLINE) {
+					strip.setPixelColor(i, strip.Color(0, 255, 0));
+				} else {
+					strip.setPixelColor(i, strip.Color(255, 0, 0));
+				}
+				break;
+			case 2:
+				if (esk8.controllerPacket.throttle > 127) {
+					strip.setPixelColor(i, strip.Color(0, 0, 255));	
+				} else if (esk8.controllerPacket.throttle < 127) {
+					strip.setPixelColor(i, strip.Color(0, 255, 0));	
+				} else {
+					strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+				}
+				break;
+			default:
+				strip.setPixelColor(i, strip.Color(0, 0, 0));
+				break;
+		}
+		strip.show();
+	}
+}
 //--------------------------------------------------------------------------------
 bool getVescValues() {
 
