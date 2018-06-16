@@ -72,34 +72,6 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 esk8Lib esk8;
 
-//--------------------------------------------------------------------------------
-
-#define	TN_ONLINE 	1
-#define	ST_ONLINE 	2
-#define	TN_OFFLINE  3
-#define	ST_OFFLINE  4
-
-uint8_t boardCommsState;
-long lastBoardOnlineTime = 0;
-long lastBoardOfflineTime = 0;
-
-uint8_t serviceCommsState(uint8_t commsState, bool online) {
-	switch (commsState) {
-		case TN_ONLINE:
-			debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
-			return online ? ST_ONLINE : TN_OFFLINE;
-		case ST_ONLINE:
-			lastBoardOnlineTime = millis();
-			return  online ? ST_ONLINE : TN_OFFLINE;
-		case TN_OFFLINE:
-			debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
-			return online ? TN_ONLINE : ST_OFFLINE;
-		case ST_OFFLINE:
-			return online ? TN_ONLINE : ST_OFFLINE;
-		default:
-			return online ? TN_ONLINE : TN_OFFLINE;
-	}
-}
 
 //--------------------------------------------------------------
 #define 	NUM_PIXELS 		8
@@ -122,6 +94,37 @@ CRGB COLOUR_WHITE = CRGB::White;
 
 //--------------------------------------------------------------------------------
 
+#define	TN_ONLINE 	1
+#define	ST_ONLINE 	2
+#define	TN_OFFLINE  3
+#define	ST_OFFLINE  4
+
+uint8_t boardCommsState;
+long lastBoardOnlineTime = 0;
+long lastBoardOfflineTime = 0;
+
+uint8_t serviceCommsState(uint8_t commsState, bool online) {
+	switch (commsState) {
+		case TN_ONLINE:
+			setPixels(COLOUR_OFF);
+			debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
+			return online ? ST_ONLINE : TN_OFFLINE;
+		case ST_ONLINE:
+			lastBoardOnlineTime = millis();
+			return  online ? ST_ONLINE : TN_OFFLINE;
+		case TN_OFFLINE:
+			setPixels(COLOUR_RED);
+			debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
+			return online ? TN_ONLINE : ST_OFFLINE;
+		case ST_OFFLINE:
+			return online ? TN_ONLINE : ST_OFFLINE;
+		default:
+			return online ? TN_ONLINE : TN_OFFLINE;
+	}
+}
+
+//--------------------------------------------------------------------------------
+
 #define 	OFF_STATE_HIGH		HIGH
 #define 	OFF_STATE_LOW       0
 #define 	PUSH_BUTTON_PULLUP  true
@@ -141,7 +144,6 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 		case deadmanSwitch.EV_RELEASED:
 			if (esk8.controllerPacket.throttle > 127) {
 			 	zeroThrottleReadyToSend();
-			 	//setPixels(COLOUR_DEADMAN_OFF, 0);
 			}
 			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
@@ -195,6 +197,12 @@ void tFastFlash_callback() {
         setPixels(COLOUR_OFF);
         tFastFlash.disable();
     }
+}
+
+void fastFlashLed(CRGB c) {
+	setPixels(c);
+    tFastFlash.setIterations(2);
+    tFastFlash.enable();
 }
 
 void fastFlashLed() {
@@ -299,8 +307,9 @@ volatile int commsState = COMMS_UNKNOWN_STATE;
 
 TaskHandle_t EncoderTask;
 
-//**************************************************************
-//**************************************************************
+/**************************************************************
+					SETUP
+**************************************************************/
 void setup() {
 
 	Serial.begin(9600);
@@ -343,9 +352,9 @@ void setup() {
 		&EncoderTask,	// handle
 		0);				// port	
 }
-//**************************************************************
-//**************************************************************
-
+/**************************************************************
+					LOOP
+**************************************************************/
 long now = 0;
 
 void loop() {
@@ -363,8 +372,9 @@ void loop() {
 
 	delay(10);
 }
-//**************************************************************
-//**************************************************************
+/**************************************************************
+					TASK 0
+**************************************************************/
 
 long task0now = 0;
 
@@ -396,39 +406,6 @@ void setupEncoder() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
 }
 //--------------------------------------------------------------------------------
-// void serviceCommsState() {
-
-// 	bool online = esk8.boardOnline();
-
-// 	if (commsState == COMMS_ONLINE && online == false) {
-// 		setCommsState(COMMS_OFFLINE);
-// 	}
-// 	else if (commsState == COMMS_OFFLINE && online) {
-// 		setCommsState(COMMS_ONLINE);
-// 	}
-// 	else if (commsState == COMMS_UNKNOWN_STATE) {
-// 		setCommsState(online == false ? COMMS_OFFLINE : COMMS_ONLINE);
-// 	}
-// }
-//--------------------------------------------------------------------------------
-void setCommsState(int newState) {
-	if (newState == COMMS_OFFLINE) {
-		commsState = COMMS_OFFLINE;
-		debug.print(DEBUG, "Setting commsState: COMMS_OFFLINE\n");
-		// start leds flashing
-		//tFlashLedsColour = COLOUR_RED;
-		//setPixels(tFlashLedsColour, 0);
-		//tFlashLeds.enable();
-	}
-	else if (newState == COMMS_ONLINE) {
-		debug.print(DEBUG, "Setting commsState: COMMS_ONLINE\n");
-		commsState = COMMS_ONLINE;
-		// stop leds flashing
-		// tFlashLeds.disable();
-		// setPixels(COLOUR_OFF, 0);
-	}
-}
-//--------------------------------------------------------------
 void setPixels(CRGB c) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
 		leds[i] = c;
