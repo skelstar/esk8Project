@@ -13,7 +13,7 @@ byte addresses[][6] = {"1Node","2Node"};
 #define		RADIO_0			0
 #define 	PIPE_NUMBER		1
 
-#define 	CONTROLLER_SEND_INTERVAL	200
+#define 	CONTROLLER_SEND_INTERVAL	200 + 50
 #define 	BOARD_SEND_INTERVAL			4000
 
 volatile long _lastRxMillis;
@@ -70,23 +70,24 @@ int esk8Lib::checkForPacket() {
 		while ( _radio->available() ) {                          	// While there is data ready
 			if (_role == ROLE_BOARD) {
 				// save current throttle data
-				_oldControllerPacket.throttle = controllerPacket.throttle;
 				_radio->read( &controllerPacket, sizeof(controllerPacket) );         	// Get the payload
 				_lastPacketReadTime = millis();
 			}
 			else if (_role == ROLE_CONTROLLER) {
-				_radio->read( &boardPacket, sizeof(boardPacket) );         	// Get the payload
-				_lastPacketReadTime = millis();
+				Serial.printf("ERROR: unhandled role type (Controller). \n");
+				// _radio->read( &boardPacket, sizeof(boardPacket) );         	// Get the payload
+				// _lastPacketReadTime = millis();
 			}
 		}
 
 		// This can be commented out to send empty payloads.
 		if (_role == ROLE_BOARD) {
 			_radio->writeAckPayload( PIPE_NUMBER, &boardPacket, sizeof(boardPacket) );  			
-			_debug->print(COMMUNICATION, "checkForPacket():_radio->available() == true throttle=%d \n", controllerPacket.throttle);
+			// _debug->print(COMMUNICATION, "checkForPacket():_radio->available() == true throttle=%d \n", controllerPacket.throttle);
 		}
 		else if (_role == ROLE_CONTROLLER) {
-			_radio->writeAckPayload( PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket) );  			
+			Serial.printf("ERROR: unhandled role type (Controller). \n");
+			//_radio->writeAckPayload( PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket) );  			
 		}
 
 		return true;
@@ -94,19 +95,19 @@ int esk8Lib::checkForPacket() {
 	return false;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::packetChanged() {
+// int esk8Lib::packetChanged() {
 
-	bool changed = false;
+// 	bool changed = false;
 	
-	switch (_role) {
-		case ROLE_BOARD:
-			changed = _oldControllerPacket.throttle != controllerPacket.throttle;
-			break;
-		default:
-			changed = false;
-	}
-	return changed;
-}
+// 	switch (_role) {
+// 		case ROLE_BOARD:
+// 			changed = _oldControllerPacket.throttle != controllerPacket.throttle;
+// 			break;
+// 		default:
+// 			changed = false;
+// 	}
+// 	return changed;
+// }
 //---------------------------------------------------------------------------------
 int esk8Lib::sendThenReadPacket() {
 
@@ -129,7 +130,8 @@ int esk8Lib::sendThenReadPacket() {
 	long startedWaiting = millis();
 	_radio->startListening();
 	while (_radio->available() == false) {
-		if (millis()-startedWaiting > 200) {
+		Serial.print(".");
+		if (millis()-startedWaiting > 50) {
 			// timeout
 			return ERR_TIMEOUT;
 		}
@@ -157,7 +159,7 @@ int esk8Lib::getSendInterval() {
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::controllerOnline() {
-	return (millis()-_lastPacketReadTime) < (CONTROLLER_SEND_INTERVAL+100);
+	return (millis()-_lastPacketReadTime) < CONTROLLER_SEND_INTERVAL;
 }
 
 int esk8Lib::controllerOnline(int period) {
@@ -166,6 +168,6 @@ int esk8Lib::controllerOnline(int period) {
 
 //---------------------------------------------------------------------------------
 int esk8Lib::boardOnline() {
-	return (millis()-_lastPacketReadTime) < (CONTROLLER_SEND_INTERVAL+100);
+	return (millis()-_lastPacketReadTime) < CONTROLLER_SEND_INTERVAL;
 }
 //---------------------------------------------------------------------------------
