@@ -372,15 +372,6 @@ void loop() {
 
 	runner.execute();
 
-	// serviceCommsState();
-
-	if (millis() - now > 2000) {
-		debug.print(DEBUG, "this is loop() core: %d \n", xPortGetCoreID());
-		now = millis();
-	}
-
-	// boardCommsState = serviceCommsState(boardCommsState, boardCommsState == TN_ONLINE || boardCommsState == ST_ONLINE);
-
 	delay(10);
 }
 /**************************************************************
@@ -410,7 +401,6 @@ void codeBoardCommsStateTask( void *parameter ) {
 /**************************************************************
 					TASK 0
 **************************************************************/
-
 void codeForEncoderTask( void *parameter ) {
 
 	long task0now = 0;
@@ -422,11 +412,6 @@ void codeForEncoderTask( void *parameter ) {
 		encoderButton.serviceEvents();
 		deadmanSwitch.serviceEvents();
 		delay(10);
-
-		if (millis() - task0now > 2000) {
-			debug.print(DEBUG, "this is codeForTaskEncoder() core: %d \n", xPortGetCoreID());
-			task0now = millis();
-		}
 	}
 
 	vTaskDelete(NULL);
