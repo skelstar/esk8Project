@@ -42,30 +42,36 @@ esk8Lib esk8;
 #define 	ROLE_BOARD 		1
 #define 	ROLE_CONTROLLER 0
 
-#define GET_VESC_DATA_INTERVAL	1000
-#define CONTROLLER_ONLINE_MS	500
+#define 	GET_VESC_DATA_INTERVAL	1000
+#define 	CONTROLLER_ONLINE_MS	500
 
 //--------------------------------------------------------------------------------
+#define	STARTUP 		1 << 0
+#define WARNING 		1 << 1
+#define ERROR 			1 << 2
+#define DEBUG 			1 << 3
+#define CONTROLLER_COMMS 	1 << 4
+#define HARDWARE		1 << 5
+#define VESC_COMMS		1 << 6
 
 debugHelper debug;
 
 volatile uint32_t otherNode;
 volatile long lastControllerPacketTime = 0;
 volatile float packetData = 0.1;
-bool calc_delay =false;
 
 //--------------------------------------------------------------
 void loadPacketForController(bool gotDataFromVesc) {
 
 	if (gotDataFromVesc) {
-		debug.print(COMMUNICATION, "VESC online\n");
+		debug.print(VESC_COMMS, "VESC online\n");
 	}
 	else {
 		// dummy data
 		esk8.boardPacket.batteryVoltage = packetData;
 		packetData += 0.1;
 
-		debug.print(DEBUG, "Loaded batteryVoltage: %.1f\n", esk8.boardPacket.batteryVoltage);
+		debug.print(VESC_COMMS, "VESC OFFLINE: mock data: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
 }
 
@@ -81,6 +87,31 @@ ESP8266VESC esp8266VESC = ESP8266VESC(Serial1);
 bool vescConnected = false;
 bool controllerHasBeenOnline = false;
 long intervalStarts = 0;
+bool haveControllerData;
+
+#define	TN_ONLINE 	1
+#define	ST_ONLINE 	2
+#define	TN_OFFLINE  3
+#define	ST_OFFLINE  4
+
+uint8_t controllerCommsState;
+
+uint8_t serviceCommsState(uint8_t commsState, bool online) {
+	switch (commsState) {
+		case TN_ONLINE:
+			debug.print(CONTROLLER_COMMS, "-> TN_ONLINE \n");
+			return online ? ST_ONLINE : TN_OFFLINE;
+		case ST_ONLINE:
+			return  online ? ST_ONLINE : TN_OFFLINE;
+		case TN_OFFLINE:
+			debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE \n");
+			return online ? TN_ONLINE : ST_OFFLINE;
+		case ST_OFFLINE:
+			return online ? TN_ONLINE : ST_OFFLINE;
+		default:
+			return online ? TN_ONLINE : TN_OFFLINE;
+	}
+}
 
 //--------------------------------------------------------------------------------
 
@@ -93,19 +124,21 @@ void tSendToVESC_callback() {
 	int throttle = 127;
 
 	if (esk8.controllerOnline()) {
-		debug.print(COMMUNICATION, "tSendToVESC: throttle=%d \n", esk8.controllerPacket.throttle);
+		debug.print(VESC_COMMS, "tSendToVESC: throttle=%d \n", esk8.controllerPacket.throttle);
 		throttle = esk8.controllerPacket.throttle;
 	}
 	else {
-		debug.print(COMMUNICATION, "tSendToVESC: Controller OFFLINE (127) \n");
+		debug.print(VESC_COMMS, "tSendToVESC: Controller OFFLINE (127) \n");
 	}
 	esp8266VESC.setNunchukValues(127, throttle, 0, 0);
 }
 
 //--------------------------------------------------------------------------------
 
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
-#define 	OLED_CONTRAST_HIGH	100		// 256 highest
+// U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
+// #define 	OLED_CONTRAST_HIGH	100		// 256 highest
+
+TaskHandle_t RF24CommsRxTask;
 
 //--------------------------------------------------------------------------------
 
@@ -118,9 +151,10 @@ void setup()
 
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(STARTUP, "STARTUP");
-	debug.addOption(COMMUNICATION, "COMMUNICATION");
+	debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS");
+	debug.addOption(VESC_COMMS, "VESC_COMMS");
 	debug.addOption(ERROR, "ERROR");
-	debug.setFilter(DEBUG | STARTUP | COMMUNICATION | ERROR);
+	debug.setFilter(DEBUG | STARTUP | CONTROLLER_COMMS | ERROR);
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -128,7 +162,7 @@ void setup()
     // Setup serial connection to VESC
     Serial1.begin(9600);
 
-    initOLED();
+    // initOLED();
 
     radio.begin();
 
@@ -137,8 +171,19 @@ void setup()
 	runner.startNow();
 	runner.addTask(tSendToVESC);
 	tSendToVESC.enable();
-}
 
+	xTaskCreatePinnedToCore (
+		codeForRF24CommsRxTask,	// function
+		"RF24 Comms Rx Task",		// name
+		10000,			// stack
+		NULL,			// parameter
+		1,				// priority
+		&RF24CommsRxTask,	// handle
+		0);				// port	
+
+	debug.print(STARTUP, "loop() core: %d \n", xPortGetCoreID());
+}
+//*************************************************************
 void loop() {
 
 	bool timeToUpdateController = millis() - intervalStarts > esk8.getSendInterval();
@@ -148,22 +193,30 @@ void loop() {
 		// update controller
 		bool success = getVescValues();
 		if (success == false) {
-			debug.print(COMMUNICATION, "VESC not responding\n");
+			debug.print(VESC_COMMS, "VESC not responding\n");
 		}
+		//update with data if VESC offline
 		loadPacketForController(success);
 	}
 
 	runner.execute();
-
-	bool haveControllerData = esk8.checkForPacket();
-	bool controllerOnline = esk8.controllerOnline();
-
-	if (controllerOnline == false) {
-		debug.print(COMMUNICATION, "Controller: OFFLINE \n");
-	}
-
-	updateOLED(controllerOnline);
 }
+//*************************************************************
+void codeForRF24CommsRxTask( void *parameter ) {
+	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
+
+	for (;;) {
+		haveControllerData = esk8.checkForPacket();
+
+		bool controllerOnline = esk8.controllerOnline();
+
+		controllerCommsState = (uint8_t)serviceCommsState(controllerCommsState, controllerOnline);
+
+		delay(10);
+	}
+	vTaskDelete(NULL);
+}
+//*************************************************************
 //--------------------------------------------------------------------------------
 bool getVescValues() {
 
@@ -220,59 +273,59 @@ bool getVescValues() {
 	else
 	{
 		vescConnected = false;
-		debug.print(COMMUNICATION, "The VESC values could not be read!\n");
+		debug.print(VESC_COMMS, "The VESC values could not be read!\n");
 	}
 	return vescConnected;
 }
 //--------------------------------------------------------------------------------
-void initOLED() {
+// void initOLED() {
 
-    // OLED
-    pinMode(OLED_GND, OUTPUT); digitalWrite(OLED_GND, LOW);
-    pinMode(OLED_PWR, OUTPUT); digitalWrite(OLED_PWR, HIGH);
+//     // OLED
+//     pinMode(OLED_GND, OUTPUT); digitalWrite(OLED_GND, LOW);
+//     pinMode(OLED_PWR, OUTPUT); digitalWrite(OLED_PWR, HIGH);
 
-	// u8g2.setI2CAddress(0x3C);
-	u8g2.begin();
-	u8g2.setContrast(OLED_CONTRAST_HIGH);
+// 	// u8g2.setI2CAddress(0x3C);
+// 	u8g2.begin();
+// 	u8g2.setContrast(OLED_CONTRAST_HIGH);
 
-	u8g2.clearBuffer();
-	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
-	int width = u8g2.getStrWidth("ready!");
-	u8g2.drawStr((128/2)-(width/2), (64/2) + (26/2),"ready!");
-	u8g2.sendBuffer();
-}
-//--------------------------------------------------------------------------------
-void updateOLED(bool controllerOnline) {
+// 	u8g2.clearBuffer();
+// 	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
+// 	int width = u8g2.getStrWidth("ready!");
+// 	u8g2.drawStr((128/2)-(width/2), (64/2) + (26/2),"ready!");
+// 	u8g2.sendBuffer();
+// }
+// //--------------------------------------------------------------------------------
+// void updateOLED(bool controllerOnline) {
 
-	int y = 0;
+// 	int y = 0;
 
-	u8g2.clearBuffer();
-	// throttle
-	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
-	char buff[5];
-	itoa(esk8.controllerPacket.throttle, buff, 10);
-	u8g2.drawStr(0, 26, buff);
+// 	u8g2.clearBuffer();
+// 	// throttle
+// 	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
+// 	char buff[5];
+// 	itoa(esk8.controllerPacket.throttle, buff, 10);
+// 	u8g2.drawStr(0, 26, buff);
 
-	// vesc connected
-	y = 64/2+12;
-	u8g2.setFont(u8g2_font_courB12_tf);
-	if (vescConnected) {
-		u8g2.setCursor(0, y);
-		u8g2.print("VESC: ");
-		u8g2.print(esk8.boardPacket.batteryVoltage, 1);
-		//u8g2.drawStr(0, y, "VESC: Connected");
-	}
-	else {
-		u8g2.drawStr(0, y, "VESC: -");
-	}
+// 	// vesc connected
+// 	y = 64/2+12;
+// 	u8g2.setFont(u8g2_font_courB12_tf);
+// 	if (vescConnected) {
+// 		u8g2.setCursor(0, y);
+// 		u8g2.print("VESC: ");
+// 		u8g2.print(esk8.boardPacket.batteryVoltage, 1);
+// 		//u8g2.drawStr(0, y, "VESC: Connected");
+// 	}
+// 	else {
+// 		u8g2.drawStr(0, y, "VESC: -");
+// 	}
 
-	y = 64/2+12+2+12;
-	if (controllerOnline) {
-		u8g2.drawStr(0, y, "CTRL: Connected");
-	}
-	else {
-		u8g2.drawStr(0, y, "CTRL: -");
-	}
-	u8g2.sendBuffer();
-}
+// 	y = 64/2+12+2+12;
+// 	if (controllerOnline) {
+// 		u8g2.drawStr(0, y, "CTRL: Connected");
+// 	}
+// 	else {
+// 		u8g2.drawStr(0, y, "CTRL: -");
+// 	}
+// 	u8g2.sendBuffer();
+// }
 //--------------------------------------------------------------------------------

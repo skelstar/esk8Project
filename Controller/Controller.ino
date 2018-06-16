@@ -157,9 +157,7 @@ void listener_dialButton( int eventCode, int eventPin, int eventParam ) {
 //--------------------------------------------------------------
 
 int encoderCounter = 0;
-volatile bool statusChanged = true;
-volatile bool packetReadyToBeSent = false;
-volatile long lastPacketFromBoard = 0;
+volatile long lastResponseFromBoard = 0;
 
 //--------------------------------------------------------------------------------
 
@@ -205,24 +203,12 @@ void tFlashLedsOff_callback() {
 	Serial.println("tFlashLedsOff_callback");
 }
 //--------------------------------------------------------------
-#define SEND_TO_BOARD_INTERVAL_MS	100
+#define SEND_TO_BOARD_INTERVAL_MS	200
 
 //------------------------------------------------------------------------------
 
 void tSendControllerValues_callback() {
-	int result = esk8.sendThenReadPacket();
-
-	if (result == esk8.CODE_SUCCESS) {
-		debug.print(COMMUNICATION, "tSendControllerValues_callback(): batteryVoltage:%.1f since last packet: %ul \n", 
-			esk8.boardPacket.batteryVoltage, millis() - lastPacketFromBoard);
-		lastPacketFromBoard = millis();
-	}
-	else if (result == esk8.ERR_NOT_SEND_OK) {
-		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
-	}
-	else if (result == esk8.ERR_TIMEOUT) {
-		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_TIMEOUT \n");
-	}
+	sendMessage();
 }
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
@@ -238,17 +224,8 @@ void encoderInterruptHandler() {
 			encoderCounter++;
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
-			packetReadyToBeSent = true;
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
-			statusChanged = true;
-
-            // if (encoderCounter > 0) {
-            //     setPixels(COLOUR_ACCELERATING);
-            // }
-            // else {
-            //     setPixels(COLOUR_BRAKING);
-            // }
-            // fastFlashLed();
+			//sendMessage();
 		}
 	}
 	else if (result == DIR_CCW) {
@@ -256,29 +233,11 @@ void encoderInterruptHandler() {
 			encoderCounter--;
 			int throttle = getThrottleValue(encoderCounter);
 			esk8.controllerPacket.throttle = throttle;
-			packetReadyToBeSent = true;
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
-			statusChanged = true;
-
-            // if (encoderCounter > 0) {
-            //     setPixels(COLOUR_ACCELERATING);
-            // }
-            // else {
-            //     setPixels(COLOUR_BRAKING);
-            // }
-            // fastFlashLed();
+			//sendMessage();
 		}
 	}
 }
-
-//--------------------------------------------------------------
-
-// Accessory chuk;
-
-//--------------------------------------------------------------
-// Prototypes
-
-bool calc_delay = false;
 
 //--------------------------------------------------------------
 
@@ -288,11 +247,25 @@ volatile long lastRxMillis = 0;
 
 //--------------------------------------------------------------
 void sendMessage() {
-	if (esk8.sendPacketToBoard()) {
-		lastPacketFromMaster = millis();
-		updateOled = true;
+
+	int result = esk8.sendThenReadPacket();
+
+	if (result == esk8.CODE_SUCCESS) {
+		debug.print(
+			COMMUNICATION, 
+			"tSendControllerValues_callback(): batteryVoltage:%.1f \n", 
+			esk8.boardPacket.batteryVoltage);
+		lastResponseFromBoard = millis();
 	}
-	debug.print(COMMUNICATION, "Sending message: throttle:%d \n", esk8.controllerPacket.throttle);
+	else if (result == esk8.ERR_NOT_SEND_OK) {
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+	}
+	else if (result == esk8.ERR_TIMEOUT) {
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_TIMEOUT \n");
+	}
+	else {
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): UNKNOWN_CODE %d \n", result);	
+	}
 }
 //--------------------------------------------------------------
 // PowerUpManagement
@@ -312,32 +285,26 @@ void powerupEvent(int state) {
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
 			setPixels(COLOUR_GREEN);
-			statusChanged = true;
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
 			setPixels(COLOUR_OFF);
 			// skip this and go straight to RUNNING
-			statusChanged = true;
 			powerButton.setState(powerButton.TN_TO_RUNNING);
 			break;
 		case powerButton.TN_TO_RUNNING:
 			setPixels(COLOUR_OFF);
-			statusChanged = true;
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
 			tFlashLeds.disable();	// in case comms is offline
 			zeroThrottleReadyToSend();
 			setPixels(COLOUR_RED);
-			statusChanged = true;
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE: {
     			powerButton.setState(powerButton.TN_TO_POWER_OFF);
-    			statusChanged = true;
             }
 			break;
 		case powerButton.TN_TO_POWER_OFF:
 			 setPixels(COLOUR_OFF);
-			statusChanged = true;
 			delay(100);
 			esp_deep_sleep_start();
 			Serial.println("This will never be printed");
@@ -372,7 +339,7 @@ void setup() {
 	debug.addOption(ERROR, "ERROR");
 	debug.addOption(HARDWARE, "HARDWARE");
     // debug.setFilter(STARTUP | THROTTLE_DEBUG | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
-    debug.setFilter(HARDWARE);	// DEBUG | STARTUP | COMMUNICATION | ERROR);
+    debug.setFilter( DEBUG );	// DEBUG | STARTUP | COMMUNICATION | ERROR);
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "Esk8 Controller/main.cpp \n");
@@ -387,7 +354,7 @@ void setup() {
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
 
-	tSendControllerValues.setInterval(esk8.getSendInterval());
+	//tSendControllerValues.setInterval(SEND_TO_BOARD_INTERVAL_MS);	//  esk8.getSendInterval()
 	tSendControllerValues.enable();
 
 	powerButton.begin(DEBUG);
@@ -402,11 +369,14 @@ void setup() {
 		10000,			// stack
 		NULL,			// parameter
 		1,				// priority
-		&EncoderTask,
-		0);			// handle
+		&EncoderTask,	// handle
+		0);				// port	
 }
 //**************************************************************
 //**************************************************************
+
+long now = 0;
+
 void loop() {
 
 	// dialButton.serviceEvents();
@@ -417,14 +387,22 @@ void loop() {
 
 	runner.execute();
 
-	serviceCommsState();
+	// serviceCommsState();
 
-	servicePixels();
+	// servicePixels();
+
+	if (millis() - now > 2000) {
+		debug.print(DEBUG, "this is loop() core: %d \n", xPortGetCoreID());
+		now = millis();
+	}
 
 	delay(10);
 }
 //**************************************************************
 //**************************************************************
+
+long task0now = 0;
+
 void codeForEncoderTask( void *parameter ) {
 
 	setupEncoder();
@@ -434,6 +412,11 @@ void codeForEncoderTask( void *parameter ) {
 		dialButton.serviceEvents();
 		deadmanSwitch.serviceEvents();
 		delay(10);
+
+		if (millis() - task0now > 2000) {
+			debug.print(DEBUG, "this is codeForTaskEncoder() core: %d \n", xPortGetCoreID());
+			task0now = millis();
+		}
 	}
 
 	vTaskDelete(NULL);
@@ -494,7 +477,6 @@ void serviceCommsState() {
 void setCommsState(int newState) {
 	if (newState == COMMS_OFFLINE) {
 		commsState = COMMS_OFFLINE;
-		statusChanged = true;
 		debug.print(DEBUG, "Setting commsState: COMMS_OFFLINE\n");
 		// start leds flashing
 		//tFlashLedsColour = COLOUR_RED;
@@ -504,7 +486,6 @@ void setCommsState(int newState) {
 	else if (newState == COMMS_ONLINE) {
 		debug.print(DEBUG, "Setting commsState: COMMS_ONLINE\n");
 		commsState = COMMS_ONLINE;
-		statusChanged = true;
 		// stop leds flashing
 		// tFlashLeds.disable();
 		// setPixels(COLOUR_OFF, 0);
@@ -536,7 +517,6 @@ void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
 	esk8.controllerPacket.throttle = 127;
     debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, esk8.controllerPacket.throttle);
-	packetReadyToBeSent = true;
 }
 //--------------------------------------------------------------
 #define ONLINE_SYMBOL_WIDTH 	14

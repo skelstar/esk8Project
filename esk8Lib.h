@@ -23,7 +23,7 @@ struct ControllerStruct {
 #define ERROR 			1 << 2
 #define DEBUG 			1 << 3
 #define COMMUNICATION 	1 << 4
-//#define VESC_COMMS		1 << 5
+#define VESC_COMMS		1 << 5
 
 class esk8Lib
 {
@@ -36,8 +36,6 @@ class esk8Lib
 
 		esk8Lib();
 		void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
-
-		int sendPacketToBoard();
 
 		int checkForPacket();
 		int packetChanged();
@@ -59,7 +57,7 @@ class esk8Lib
 		int _role;
 		long _lastPacketReadTime;
 		debugHelper *_debug;
-		ControllerStruct _oldControllerPacket;
+		// ControllerStruct _oldControllerPacket;
 
 };
 
