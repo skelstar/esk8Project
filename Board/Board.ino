@@ -20,7 +20,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 //--------------------------------------------------------------------------------
 
 #define LED_PIN     4
-#define NUM_LEDS    8
+#define NUM_LEDS    17
 #define BRIGHTNESS  64
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
@@ -243,29 +243,38 @@ void updateLEDs() {
 	for (int i = 0; i < NUM_LEDS; i++) {
 		switch (i) {
 			case 0:	// controller online status
+			case 1: // VESC online
 				if (controllerCommsState == ST_ONLINE) {
 					strip.setPixelColor(i, strip.Color(0, 255, 0));
 				} else {
 					strip.setPixelColor(i, strip.Color(255, 0, 0));
 				}
 				break;
-			case 1: // VESC online
+			case 3: // VESC online
+			case 4: // VESC online
 				if (vescCommsState == ST_ONLINE) {
 					strip.setPixelColor(i, strip.Color(0, 255, 0));
 				} else {
 					strip.setPixelColor(i, strip.Color(255, 0, 0));
 				}
 				break;
-			case 2:
-				if (esk8.controllerPacket.throttle > 127) {
-					strip.setPixelColor(i, strip.Color(0, 0, 255));	
-				} else if (esk8.controllerPacket.throttle < 127) {
-					strip.setPixelColor(i, strip.Color(0, 255, 0));	
-				} else {
-					strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+			case 6:
+			case 7:
+				if (controllerCommsState == ST_ONLINE) {
+					if (esk8.controllerPacket.throttle > 127) {
+						strip.setPixelColor(i, strip.Color(0, 0, 255));	
+					} else if (esk8.controllerPacket.throttle < 127) {
+						strip.setPixelColor(i, strip.Color(0, 255, 0));	
+					} else {
+						strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+					}
+				}
+				else {
+					strip.setPixelColor(i, strip.Color(0, 0, 0));	
 				}
 				break;
-			case 3:
+			case 9:
+			case 10:
 				if (esk8.controllerPacket.encoderButton == 1) {
 					strip.setPixelColor(i, strip.Color(0, 0, 255));	
 				} else {
