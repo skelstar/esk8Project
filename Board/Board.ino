@@ -17,6 +17,22 @@
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
+//--------------------------------------------------------------
+
+// struct Status_Type {
+// 	uint8_t status;
+// 	bool change;
+// };
+
+// Status_Type controllerStatus;
+// Status_Type vescStatus;
+
+bool controllerStatusChanged = true;
+bool controllerOnline = false;
+bool vescStatusChanged = true;
+int currentThrottle = 127;
+int currentEncoderButton = 0;
+
 //--------------------------------------------------------------------------------
 
 #define LED_PIN     4
@@ -97,34 +113,75 @@ bool vescConnected = false;
 bool controllerHasBeenOnline = false;
 long intervalStarts = 0;
 bool haveControllerData;
+long lastControllerOnlineTime = 0;
 
+//--------------------------------------------------------------
 #define	TN_ONLINE 	1
 #define	ST_ONLINE 	2
 #define	TN_OFFLINE  3
 #define	ST_OFFLINE  4
 
+class OnlineStatus 
+{
+	private:
+		uint8_t state = ST_OFFLINE;
+		uint8_t oldstate = ST_OFFLINE;
+
+	public:
+
+		bool serviceState(bool online) {
+			switch (state) {
+				case TN_ONLINE:
+					// debug.print(CONTROLLER_COMMS, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastControllerOnlineTime)/1000);
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case ST_ONLINE:
+					lastControllerOnlineTime = millis();
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case TN_OFFLINE:
+					// debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastControllerOfflineTime)/1000);
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				case ST_OFFLINE:
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				default:
+					state = online ? TN_ONLINE : TN_OFFLINE;
+					break;
+			}
+			bool stateChanged = oldstate == state;
+			oldstate = state;
+			return stateChanged;
+		}
+};
+
+OnlineStatus controllerStatus;
+OnlineStatus vescStatus;
+
+//--------------------------------------------------------------
+
 uint8_t controllerCommsState;
 uint8_t vescCommsState;
-long lastControllerOnlineTime = 0;
 long lastControllerOfflineTime = 0;
 
-uint8_t serviceCommsState(uint8_t commsState, bool online) {
-	switch (commsState) {
-		case TN_ONLINE:
-			debug.print(CONTROLLER_COMMS, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastControllerOnlineTime)/1000);
-			return online ? ST_ONLINE : TN_OFFLINE;
-		case ST_ONLINE:
-			lastControllerOnlineTime = millis();
-			return  online ? ST_ONLINE : TN_OFFLINE;
-		case TN_OFFLINE:
-			debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastControllerOfflineTime)/1000);
-			return online ? TN_ONLINE : ST_OFFLINE;
-		case ST_OFFLINE:
-			return online ? TN_ONLINE : ST_OFFLINE;
-		default:
-			return online ? TN_ONLINE : TN_OFFLINE;
-	}
-}
+// uint8_t serviceCommsState(uint8_t commsState, bool online) {
+// 	switch (commsState) {
+// 		case TN_ONLINE:
+// 			debug.print(CONTROLLER_COMMS, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastControllerOnlineTime)/1000);
+// 			return online ? ST_ONLINE : TN_OFFLINE;
+// 		case ST_ONLINE:
+// 			lastControllerOnlineTime = millis();
+// 			return  online ? ST_ONLINE : TN_OFFLINE;
+// 		case TN_OFFLINE:
+// 			debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastControllerOfflineTime)/1000);
+// 			return online ? TN_ONLINE : ST_OFFLINE;
+// 		case ST_OFFLINE:
+// 			return online ? TN_ONLINE : ST_OFFLINE;
+// 		default:
+// 			return online ? TN_ONLINE : TN_OFFLINE;
+// 	}
+// }
 
 //--------------------------------------------------------------------------------
 
@@ -167,7 +224,7 @@ void setup()
 	debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS");
 	debug.addOption(VESC_COMMS, "VESC_COMMS");
 	debug.addOption(ERROR, "ERROR");
-	debug.setFilter(DEBUG | STARTUP | CONTROLLER_COMMS | ERROR);
+	debug.setFilter( STARTUP );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -211,7 +268,7 @@ void loop() {
 		// update controller
 		bool success = getVescValues();
 
-		vescCommsState = serviceCommsState(vescCommsState, success);
+		bool vescStatusChanged = vescStatus.serviceState(success);
 
 		//update with data if VESC offline
 		loadPacketForController(success);
@@ -232,7 +289,7 @@ void codeForRF24CommsRxTask( void *parameter ) {
 
 		bool controllerOnline = esk8.controllerOnline();
 
-		controllerCommsState = (uint8_t)serviceCommsState(controllerCommsState, controllerOnline);
+		controllerStatusChanged = controllerStatus.serviceState(controllerOnline);
 
 		delay(10);
 	}
@@ -240,52 +297,70 @@ void codeForRF24CommsRxTask( void *parameter ) {
 }
 //*************************************************************
 void updateLEDs() {
+
+	bool changed;
+
 	for (int i = 0; i < NUM_LEDS; i++) {
 		switch (i) {
 			case 0:	// controller online status
 			case 1: // VESC online
-				if (controllerCommsState == ST_ONLINE) {
-					strip.setPixelColor(i, strip.Color(0, 255, 0));
-				} else {
-					strip.setPixelColor(i, strip.Color(255, 0, 0));
+				if (controllerStatusChanged) {
+					if (controllerCommsState == ST_ONLINE) {
+						strip.setPixelColor(i, strip.Color(0, 255, 0));
+					} else {
+						strip.setPixelColor(i, strip.Color(255, 0, 0));
+					}
 				}
 				break;
 			case 3: // VESC online
 			case 4: // VESC online
-				if (vescCommsState == ST_ONLINE) {
-					strip.setPixelColor(i, strip.Color(0, 255, 0));
-				} else {
-					strip.setPixelColor(i, strip.Color(255, 0, 0));
+				if (vescStatusChanged) {
+					if (vescCommsState == ST_ONLINE) {
+						strip.setPixelColor(i, strip.Color(0, 255, 0));
+					} else {
+						strip.setPixelColor(i, strip.Color(255, 0, 0));
+					}
 				}
 				break;
 			case 6:
 			case 7:
 				if (controllerCommsState == ST_ONLINE) {
-					if (esk8.controllerPacket.throttle > 127) {
-						strip.setPixelColor(i, strip.Color(0, 0, 255));	
-					} else if (esk8.controllerPacket.throttle < 127) {
-						strip.setPixelColor(i, strip.Color(0, 255, 0));	
-					} else {
-						strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+					changed = currentThrottle != esk8.controllerPacket.throttle;
+					currentThrottle = esk8.controllerPacket.throttle;
+					if (changed) {
+						if (esk8.controllerPacket.throttle > 127) {
+							strip.setPixelColor(i, strip.Color(0, 0, 255));	
+						} else if (esk8.controllerPacket.throttle < 127) {
+							strip.setPixelColor(i, strip.Color(0, 255, 0));	
+						} else {
+							strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+						}
 					}
 				}
-				else {
+				else if (controllerStatusChanged) {
 					strip.setPixelColor(i, strip.Color(0, 0, 0));	
 				}
 				break;
 			case 9:
 			case 10:
-				if (esk8.controllerPacket.encoderButton == 1) {
-					strip.setPixelColor(i, strip.Color(0, 0, 255));	
-				} else {
-					strip.setPixelColor(i, strip.Color(0, 0, 0));
+				changed = currentEncoderButton != esk8.controllerPacket.encoderButton;
+				currentEncoderButton = esk8.controllerPacket.encoderButton;
+				if (changed) {
+					if (esk8.controllerPacket.encoderButton == 1) {
+						strip.setPixelColor(i, strip.Color(0, 0, 255));	
+					} else {
+						strip.setPixelColor(i, strip.Color(0, 0, 0));
+					}
 				}
 				break;
 			default:
-				strip.setPixelColor(i, strip.Color(0, 0, 0));
+				//strip.setPixelColor(i, strip.Color(0, 0, 0));
 				break;
 		}
+
 		strip.show();
+		controllerStatusChanged = false;
+		vescStatusChanged = false;
 	}
 }
 //--------------------------------------------------------------------------------
