@@ -168,25 +168,6 @@ OnlineStatus vescStatus;
 uint8_t controllerCommsState;
 uint8_t vescCommsState;
 long lastControllerOfflineTime = 0;
-
-// uint8_t serviceCommsState(uint8_t commsState, bool online) {
-// 	switch (commsState) {
-// 		case TN_ONLINE:
-// 			debug.print(CONTROLLER_COMMS, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastControllerOnlineTime)/1000);
-// 			return online ? ST_ONLINE : TN_OFFLINE;
-// 		case ST_ONLINE:
-// 			lastControllerOnlineTime = millis();
-// 			return  online ? ST_ONLINE : TN_OFFLINE;
-// 		case TN_OFFLINE:
-// 			debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastControllerOfflineTime)/1000);
-// 			return online ? TN_ONLINE : ST_OFFLINE;
-// 		case ST_OFFLINE:
-// 			return online ? TN_ONLINE : ST_OFFLINE;
-// 		default:
-// 			return online ? TN_ONLINE : TN_OFFLINE;
-// 	}
-// }
-
 //--------------------------------------------------------------------------------
 
 Scheduler runner;
@@ -322,7 +303,6 @@ void codeForRF24CommsRxTask( void *parameter ) {
 }
 //*************************************************************
 void updateLEDs() {
-
 	// return;
 
 	// bool changed;
@@ -457,57 +437,6 @@ bool getVescValues() {
 	}
 	return vescConnected;
 }
-//--------------------------------------------------------------------------------
-// void initOLED() {
-
-//     // OLED
-//     pinMode(OLED_GND, OUTPUT); digitalWrite(OLED_GND, LOW);
-//     pinMode(OLED_PWR, OUTPUT); digitalWrite(OLED_PWR, HIGH);
-
-// 	// u8g2.setI2CAddress(0x3C);
-// 	u8g2.begin();
-// 	u8g2.setContrast(OLED_CONTRAST_HIGH);
-
-// 	u8g2.clearBuffer();
-// 	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
-// 	int width = u8g2.getStrWidth("ready!");
-// 	u8g2.drawStr((128/2)-(width/2), (64/2) + (26/2),"ready!");
-// 	u8g2.sendBuffer();
-// }
-// //--------------------------------------------------------------------------------
-// void updateOLED(bool controllerOnline) {
-
-// 	int y = 0;
-
-// 	u8g2.clearBuffer();
-// 	// throttle
-// 	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
-// 	char buff[5];
-// 	itoa(esk8.controllerPacket.throttle, buff, 10);
-// 	u8g2.drawStr(0, 26, buff);
-
-// 	// vesc connected
-// 	y = 64/2+12;
-// 	u8g2.setFont(u8g2_font_courB12_tf);
-// 	if (vescConnected) {
-// 		u8g2.setCursor(0, y);
-// 		u8g2.print("VESC: ");
-// 		u8g2.print(esk8.boardPacket.batteryVoltage, 1);
-// 		//u8g2.drawStr(0, y, "VESC: Connected");
-// 	}
-// 	else {
-// 		u8g2.drawStr(0, y, "VESC: -");
-// 	}
-
-// 	y = 64/2+12+2+12;
-// 	if (controllerOnline) {
-// 		u8g2.drawStr(0, y, "CTRL: Connected");
-// 	}
-// 	else {
-// 		u8g2.drawStr(0, y, "CTRL: -");
-// 	}
-// 	u8g2.sendBuffer();
-// }
 //--------------------------------------------------------------------------------
 void print_reset_reason(RESET_REASON reason, int cpu)
 {
