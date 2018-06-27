@@ -15,12 +15,27 @@
 #include <esp_task_wdt.h>
 #include <TaskScheduler.h>
 
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+
 /*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
 //--------------------------------------------------------------
 
+// You should get Auth Token in the Blynk App.
+// Go to the Project Settings (nut icon).
+char auth[] = "e90e62d5ffe64b6585d95db991b0b293";
+
+// Your WiFi credentials.
+// Set password to "" for open networks.
+char ssid[] = "LeilaNet2";
+char pass[] = "ec1122%f*&";
+
+
+//--------------------------------------------------------------
 // struct Status_Type {
 // 	uint8_t status;
 // 	bool change;
@@ -188,6 +203,15 @@ void tSendToVESC_callback() {
 	esp8266VESC.setNunchukValues(127, throttle, 0, 0);
 }
 
+//--------------------------------------------------------------
+
+BLYNK_WRITE(V4) {
+	int value = param.asInt();
+	if (value == 1) {
+		Blynk.virtualWrite(V5, esk8.boardPacket.batteryVoltage);
+	}
+}
+
 //--------------------------------------------------------------------------------
 
 // U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
@@ -212,7 +236,7 @@ void setup()
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(STATE, "STATE");
 
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | DEBUG );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -235,6 +259,9 @@ void setup()
     // initOLED();
 
     radio.begin();
+
+
+    Blynk.begin(auth, ssid, pass);
 
 	esk8.begin(&radio, ROLE_BOARD, radioNumber, &debug);
 
@@ -269,9 +296,9 @@ void loop() {
 		loadPacketForController(success);
 	}
 
-	runner.execute();
+	Blynk.run();
 
-	// updateLEDs();
+	runner.execute();
 
 	delay(10);
 }
