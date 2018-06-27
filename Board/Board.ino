@@ -10,20 +10,38 @@
 #include <U8g2lib.h>
 #include <myPushButton.h>
 #include <debugHelper.h>
-
+#include <rom/rtc.h>
+#include <esp_int_wdt.h>
+#include <esp_task_wdt.h>
 #include <TaskScheduler.h>
 
 /*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
+//--------------------------------------------------------------
+
+// struct Status_Type {
+// 	uint8_t status;
+// 	bool change;
+// };
+
+// Status_Type controllerStatus;
+// Status_Type vescStatus;
+
+bool controllerStatusChanged = true;
+bool controllerOnline = false;
+bool vescStatusChanged = true;
+int currentThrottle = 127;
+int currentEncoderButton = 0;
+
 //--------------------------------------------------------------------------------
 
-#define LED_PIN     4
-#define NUM_LEDS    17
-#define BRIGHTNESS  64
+// #define LED_PIN     4
+// #define NUM_LEDS    17
+// #define BRIGHTNESS  64
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
+// Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 //--------------------------------------------------------------------------------
 
@@ -55,13 +73,15 @@ esk8Lib esk8;
 #define 	CONTROLLER_ONLINE_MS	500
 
 //--------------------------------------------------------------------------------
-#define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
+#define	STARTUP 			1 << 0
+#define WARNING 			1 << 1
+#define ERROR 				1 << 2
+#define DEBUG 				1 << 3
 #define CONTROLLER_COMMS 	1 << 4
-#define HARDWARE		1 << 5
-#define VESC_COMMS		1 << 6
+#define HARDWARE			1 << 5
+#define VESC_COMMS			1 << 6
+#define ONLINE_STATUS		1 << 7
+#define STATE 				1 << 8
 
 debugHelper debug;
 
@@ -97,35 +117,57 @@ bool vescConnected = false;
 bool controllerHasBeenOnline = false;
 long intervalStarts = 0;
 bool haveControllerData;
+long lastControllerOnlineTime = 0;
 
+//--------------------------------------------------------------
 #define	TN_ONLINE 	1
 #define	ST_ONLINE 	2
 #define	TN_OFFLINE  3
 #define	ST_OFFLINE  4
 
+class OnlineStatus 
+{
+	private:
+		uint8_t state = ST_OFFLINE;
+		uint8_t oldstate = ST_OFFLINE;
+
+	public:
+
+		bool serviceState(bool online) {
+			switch (state) {
+				case TN_ONLINE:
+					debug.print(ONLINE_STATUS, "-> TN_ONLINE \n");
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case ST_ONLINE:
+					lastControllerOnlineTime = millis();
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case TN_OFFLINE:
+					debug.print(ONLINE_STATUS, "-> TN_OFFLINE \n");
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				case ST_OFFLINE:
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				default:
+					state = online ? TN_ONLINE : TN_OFFLINE;
+					break;
+			}
+			bool stateChanged = oldstate != state;
+			oldstate = state;
+			return stateChanged;
+		}
+};
+
+OnlineStatus controllerStatus;
+OnlineStatus vescStatus;
+
+//--------------------------------------------------------------
+
 uint8_t controllerCommsState;
 uint8_t vescCommsState;
-long lastControllerOnlineTime = 0;
 long lastControllerOfflineTime = 0;
-
-uint8_t serviceCommsState(uint8_t commsState, bool online) {
-	switch (commsState) {
-		case TN_ONLINE:
-			debug.print(CONTROLLER_COMMS, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastControllerOnlineTime)/1000);
-			return online ? ST_ONLINE : TN_OFFLINE;
-		case ST_ONLINE:
-			lastControllerOnlineTime = millis();
-			return  online ? ST_ONLINE : TN_OFFLINE;
-		case TN_OFFLINE:
-			debug.print(CONTROLLER_COMMS, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastControllerOfflineTime)/1000);
-			return online ? TN_ONLINE : ST_OFFLINE;
-		case ST_OFFLINE:
-			return online ? TN_ONLINE : ST_OFFLINE;
-		default:
-			return online ? TN_ONLINE : TN_OFFLINE;
-	}
-}
-
 //--------------------------------------------------------------------------------
 
 Scheduler runner;
@@ -167,18 +209,28 @@ void setup()
 	debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS");
 	debug.addOption(VESC_COMMS, "VESC_COMMS");
 	debug.addOption(ERROR, "ERROR");
-	debug.setFilter(DEBUG | STARTUP | CONTROLLER_COMMS | ERROR);
+	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
+	debug.addOption(STATE, "STATE");
+
+	debug.setFilter( STARTUP );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
 
+	print_reset_reason(rtc_get_reset_reason(0), 0);
+	print_reset_reason(rtc_get_reset_reason(1), 1);
+
     // Setup serial connection to VESC
     Serial1.begin(9600);
 
-    strip.setBrightness(BRIGHTNESS);
-    strip.begin();
-    delay(50);
-    strip.show(); // Initialize all pixels to 'off'
+  //   strip.setBrightness(BRIGHTNESS);
+  //   strip.begin();
+  //   delay(50);
+  //   strip.show(); // Initialize all pixels to 'off'
+  //   for (int i=0; i<NUM_LEDS; i++) {
+		// strip.setPixelColor(i, strip.Color(0, 0, 0));
+  //   }
+  //   strip.show();
 
     // initOLED();
 
@@ -211,7 +263,7 @@ void loop() {
 		// update controller
 		bool success = getVescValues();
 
-		vescCommsState = serviceCommsState(vescCommsState, success);
+		bool vescStatusChanged = vescStatus.serviceState(success);
 
 		//update with data if VESC offline
 		loadPacketForController(success);
@@ -219,74 +271,111 @@ void loop() {
 
 	runner.execute();
 
-	updateLEDs();
+	// updateLEDs();
 
 	delay(10);
 }
 //*************************************************************
+long nowms = 0;
+
 void codeForRF24CommsRxTask( void *parameter ) {
 	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
 
 	for (;;) {
+
+		// if (millis()-nowms > 1000) {
+		// 	long oldnow = nowms;
+		// 	nowms = millis();
+		// 	debug.print(STARTUP, "%u %d \n", millis()/1000, millis()-oldnow);
+		// }
+
 		haveControllerData = esk8.checkForPacket();
 
 		bool controllerOnline = esk8.controllerOnline();
 
-		controllerCommsState = (uint8_t)serviceCommsState(controllerCommsState, controllerOnline);
+		controllerStatusChanged = controllerStatus.serviceState(controllerOnline);
 
-		delay(10);
+		esp_task_wdt_feed();
+
+		delay(50);
 	}
 	vTaskDelete(NULL);
 }
 //*************************************************************
 void updateLEDs() {
-	for (int i = 0; i < NUM_LEDS; i++) {
-		switch (i) {
-			case 0:	// controller online status
-			case 1: // VESC online
-				if (controllerCommsState == ST_ONLINE) {
-					strip.setPixelColor(i, strip.Color(0, 255, 0));
-				} else {
-					strip.setPixelColor(i, strip.Color(255, 0, 0));
-				}
-				break;
-			case 3: // VESC online
-			case 4: // VESC online
-				if (vescCommsState == ST_ONLINE) {
-					strip.setPixelColor(i, strip.Color(0, 255, 0));
-				} else {
-					strip.setPixelColor(i, strip.Color(255, 0, 0));
-				}
-				break;
-			case 6:
-			case 7:
-				if (controllerCommsState == ST_ONLINE) {
-					if (esk8.controllerPacket.throttle > 127) {
-						strip.setPixelColor(i, strip.Color(0, 0, 255));	
-					} else if (esk8.controllerPacket.throttle < 127) {
-						strip.setPixelColor(i, strip.Color(0, 255, 0));	
-					} else {
-						strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
-					}
-				}
-				else {
-					strip.setPixelColor(i, strip.Color(0, 0, 0));	
-				}
-				break;
-			case 9:
-			case 10:
-				if (esk8.controllerPacket.encoderButton == 1) {
-					strip.setPixelColor(i, strip.Color(0, 0, 255));	
-				} else {
-					strip.setPixelColor(i, strip.Color(0, 0, 0));
-				}
-				break;
-			default:
-				strip.setPixelColor(i, strip.Color(0, 0, 0));
-				break;
-		}
-		strip.show();
-	}
+	// return;
+
+	// bool changed;
+	// bool throttleChanged = currentThrottle != esk8.controllerPacket.throttle;
+	// bool encoderButtonChanged = currentEncoderButton != esk8.controllerPacket.encoderButton; 
+
+	// if (!controllerStatusChanged && !vescStatusChanged && !throttleChanged && !encoderButtonChanged) {
+	// 	return;
+	// }
+
+	// debug.print(STATE, "controllerStatusChanged: %d \n", controllerStatusChanged);
+	// debug.print(STATE, "vescStatusChanged: %d \n", vescStatusChanged);
+	// debug.print(STATE, "currentThrottle != esk8.controllerPacket.throttle: %d \n", 
+	// 	currentThrottle != esk8.controllerPacket.throttle);
+	// debug.print(STATE, "currentEncoderButton != esk8.controllerPacket.encoderButton: %d \n", 
+	// 	currentEncoderButton != esk8.controllerPacket.encoderButton);
+
+	// for (int i = 0; i < NUM_LEDS; i++) {
+	// 	switch (i) {
+	// 		case 0:	// controller online status
+	// 		case 1: // VESC online
+	// 			if (controllerCommsState == ST_ONLINE) {
+	// 				strip.setPixelColor(i, strip.Color(0, 255, 0));
+	// 			} else {
+	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
+	// 			}
+	// 			break;
+	// 		case 3: // VESC online
+	// 		case 4: // VESC online
+	// 		 	if (vescCommsState == ST_ONLINE) {
+	// 		 		strip.setPixelColor(i, strip.Color(0, 255, 0));
+	// 		 	} else {
+	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
+	// 			}
+	// 			break;
+	// 		case 6:
+	// 		case 7:
+	// 			if (controllerCommsState == ST_ONLINE) {
+	// 				if (throttleChanged) {
+	// 					if (esk8.controllerPacket.throttle > 127) {
+	// 			 			strip.setPixelColor(i, strip.Color(0, 0, 255));	
+	// 			 		} else if (esk8.controllerPacket.throttle < 127) {
+	// 			 			strip.setPixelColor(i, strip.Color(0, 255, 0));	
+	// 			 		} else {
+	// 						strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+	// 				 	}
+	// 			 	}
+	// 			}
+	// 			else if (controllerStatusChanged) {
+	// 				strip.setPixelColor(i, strip.Color(0, 0, 0));	
+	// 			}
+	// 			break;
+	// 		case 9:
+	// 		case 10:
+	// 			if (encoderButtonChanged) {
+	// 				if (esk8.controllerPacket.encoderButton == 1) {
+	// 					strip.setPixelColor(i, strip.Color(0, 0, 255));	
+	// 				} else {
+	// 					strip.setPixelColor(i, strip.Color(0, 0, 0));
+	// 				}
+	// 			}
+	// 			break;
+	// 		default:
+	// 			strip.setPixelColor(i, strip.Color(0, 0, 0));
+	// 			break;
+	// 	}
+
+	// 	strip.show();
+	// 	controllerStatusChanged = false;
+	// 	vescStatusChanged = false;
+	// 	currentThrottle = esk8.controllerPacket.throttle;
+	// 	currentEncoderButton = esk8.controllerPacket.encoderButton;
+	// }
 }
 //--------------------------------------------------------------------------------
 bool getVescValues() {
@@ -349,54 +438,26 @@ bool getVescValues() {
 	return vescConnected;
 }
 //--------------------------------------------------------------------------------
-// void initOLED() {
-
-//     // OLED
-//     pinMode(OLED_GND, OUTPUT); digitalWrite(OLED_GND, LOW);
-//     pinMode(OLED_PWR, OUTPUT); digitalWrite(OLED_PWR, HIGH);
-
-// 	// u8g2.setI2CAddress(0x3C);
-// 	u8g2.begin();
-// 	u8g2.setContrast(OLED_CONTRAST_HIGH);
-
-// 	u8g2.clearBuffer();
-// 	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
-// 	int width = u8g2.getStrWidth("ready!");
-// 	u8g2.drawStr((128/2)-(width/2), (64/2) + (26/2),"ready!");
-// 	u8g2.sendBuffer();
-// }
-// //--------------------------------------------------------------------------------
-// void updateOLED(bool controllerOnline) {
-
-// 	int y = 0;
-
-// 	u8g2.clearBuffer();
-// 	// throttle
-// 	u8g2.setFont(u8g2_font_logisoso26_tf);	// u8g2_font_logisoso46_tf
-// 	char buff[5];
-// 	itoa(esk8.controllerPacket.throttle, buff, 10);
-// 	u8g2.drawStr(0, 26, buff);
-
-// 	// vesc connected
-// 	y = 64/2+12;
-// 	u8g2.setFont(u8g2_font_courB12_tf);
-// 	if (vescConnected) {
-// 		u8g2.setCursor(0, y);
-// 		u8g2.print("VESC: ");
-// 		u8g2.print(esk8.boardPacket.batteryVoltage, 1);
-// 		//u8g2.drawStr(0, y, "VESC: Connected");
-// 	}
-// 	else {
-// 		u8g2.drawStr(0, y, "VESC: -");
-// 	}
-
-// 	y = 64/2+12+2+12;
-// 	if (controllerOnline) {
-// 		u8g2.drawStr(0, y, "CTRL: Connected");
-// 	}
-// 	else {
-// 		u8g2.drawStr(0, y, "CTRL: -");
-// 	}
-// 	u8g2.sendBuffer();
-// }
-//--------------------------------------------------------------------------------
+void print_reset_reason(RESET_REASON reason, int cpu)
+{
+	debug.print(STARTUP, "Reboot reason (CPU%d): ", cpu);
+	switch ( reason)
+	{
+		case 1 :  debug.print(STARTUP, "POWERON_RESET \n");break;          /**<1, Vbat power on reset*/
+		case 3 :  debug.print(STARTUP, "SW_RESET \n");break;               /**<3, Software reset digital core*/
+		case 4 :  debug.print(STARTUP, "OWDT_RESET \n");break;             /**<4, Legacy watch dog reset digital core*/
+		case 5 :  debug.print(STARTUP, "DEEPSLEEP_RESET \n");break;        /**<5, Deep Sleep reset digital core*/
+		case 6 :  debug.print(STARTUP, "SDIO_RESET \n");break;             /**<6, Reset by SLC module, reset digital core*/
+		case 7 :  debug.print(STARTUP, "TG0WDT_SYS_RESET \n");break;       /**<7, Timer Group0 Watch dog reset digital core*/
+		case 8 :  debug.print(STARTUP, "TG1WDT_SYS_RESET \n");break;       /**<8, Timer Group1 Watch dog reset digital core*/
+		case 9 :  debug.print(STARTUP, "RTCWDT_SYS_RESET \n");break;       /**<9, RTC Watch dog Reset digital core*/
+		case 10 : debug.print(STARTUP, "INTRUSION_RESET \n");break;       /**<10, Instrusion tested to reset CPU*/
+		case 11 : debug.print(STARTUP, "TGWDT_CPU_RESET \n");break;       /**<11, Time Group reset CPU*/
+		case 12 : debug.print(STARTUP, "SW_CPU_RESET \n");break;          /**<12, Software reset CPU*/
+		case 13 : debug.print(STARTUP, "RTCWDT_CPU_RESET \n");break;      /**<13, RTC Watch dog Reset CPU*/
+		case 14 : debug.print(STARTUP, "EXT_CPU_RESET \n");break;         /**<14, for APP CPU, reseted by PRO CPU*/
+		case 15 : debug.print(STARTUP, "RTCWDT_BROWN_OUT_RESET \n");break;/**<15, Reset when the vdd voltage is not stable*/
+		case 16 : debug.print(STARTUP, "RTCWDT_RTC_RESET \n");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
+		default : debug.print(STARTUP, "NO_MEAN\n");
+	}
+}
