@@ -37,11 +37,11 @@ int currentEncoderButton = 0;
 
 //--------------------------------------------------------------------------------
 
-#define LED_PIN     4
-#define NUM_LEDS    17
-#define BRIGHTNESS  64
+// #define LED_PIN     4
+// #define NUM_LEDS    17
+// #define BRIGHTNESS  64
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
+// Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 //--------------------------------------------------------------------------------
 
@@ -242,14 +242,14 @@ void setup()
     // Setup serial connection to VESC
     Serial1.begin(9600);
 
-    strip.setBrightness(BRIGHTNESS);
-    strip.begin();
-    delay(50);
-    strip.show(); // Initialize all pixels to 'off'
-    for (int i=0; i<NUM_LEDS; i++) {
-		strip.setPixelColor(i, strip.Color(0, 0, 0));
-    }
-    strip.show();
+  //   strip.setBrightness(BRIGHTNESS);
+  //   strip.begin();
+  //   delay(50);
+  //   strip.show(); // Initialize all pixels to 'off'
+  //   for (int i=0; i<NUM_LEDS; i++) {
+		// strip.setPixelColor(i, strip.Color(0, 0, 0));
+  //   }
+  //   strip.show();
 
     // initOLED();
 
@@ -290,7 +290,7 @@ void loop() {
 
 	runner.execute();
 
-	updateLEDs();
+	// updateLEDs();
 
 	delay(10);
 }
@@ -303,8 +303,9 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	for (;;) {
 
 		// if (millis()-nowms > 1000) {
-		// 	Serial.printf("%ul millis() \n", millis());
+		// 	long oldnow = nowms;
 		// 	nowms = millis();
+		// 	debug.print(STARTUP, "%u %d \n", millis()/1000, millis()-oldnow);
 		// }
 
 		haveControllerData = esk8.checkForPacket();
@@ -322,79 +323,79 @@ void codeForRF24CommsRxTask( void *parameter ) {
 //*************************************************************
 void updateLEDs() {
 
-	return;
+	// return;
 
-	bool changed;
-	bool throttleChanged = currentThrottle != esk8.controllerPacket.throttle;
-	bool encoderButtonChanged = currentEncoderButton != esk8.controllerPacket.encoderButton; 
+	// bool changed;
+	// bool throttleChanged = currentThrottle != esk8.controllerPacket.throttle;
+	// bool encoderButtonChanged = currentEncoderButton != esk8.controllerPacket.encoderButton; 
 
-	if (!controllerStatusChanged && !vescStatusChanged && !throttleChanged && !encoderButtonChanged) {
-		return;
-	}
+	// if (!controllerStatusChanged && !vescStatusChanged && !throttleChanged && !encoderButtonChanged) {
+	// 	return;
+	// }
 
-	debug.print(STATE, "controllerStatusChanged: %d \n", controllerStatusChanged);
-	debug.print(STATE, "vescStatusChanged: %d \n", vescStatusChanged);
-	debug.print(STATE, "currentThrottle != esk8.controllerPacket.throttle: %d \n", 
-		currentThrottle != esk8.controllerPacket.throttle);
-	debug.print(STATE, "currentEncoderButton != esk8.controllerPacket.encoderButton: %d \n", 
-		currentEncoderButton != esk8.controllerPacket.encoderButton);
+	// debug.print(STATE, "controllerStatusChanged: %d \n", controllerStatusChanged);
+	// debug.print(STATE, "vescStatusChanged: %d \n", vescStatusChanged);
+	// debug.print(STATE, "currentThrottle != esk8.controllerPacket.throttle: %d \n", 
+	// 	currentThrottle != esk8.controllerPacket.throttle);
+	// debug.print(STATE, "currentEncoderButton != esk8.controllerPacket.encoderButton: %d \n", 
+	// 	currentEncoderButton != esk8.controllerPacket.encoderButton);
 
-	for (int i = 0; i < NUM_LEDS; i++) {
-		switch (i) {
-			case 0:	// controller online status
-			case 1: // VESC online
-				if (controllerCommsState == ST_ONLINE) {
-					strip.setPixelColor(i, strip.Color(0, 255, 0));
-				} else {
-					strip.setPixelColor(i, strip.Color(255, 0, 0));
-				}
-				break;
-			case 3: // VESC online
-			case 4: // VESC online
-			 	if (vescCommsState == ST_ONLINE) {
-			 		strip.setPixelColor(i, strip.Color(0, 255, 0));
-			 	} else {
-					strip.setPixelColor(i, strip.Color(255, 0, 0));
-				}
-				break;
-			case 6:
-			case 7:
-				if (controllerCommsState == ST_ONLINE) {
-					if (throttleChanged) {
-						if (esk8.controllerPacket.throttle > 127) {
-				 			strip.setPixelColor(i, strip.Color(0, 0, 255));	
-				 		} else if (esk8.controllerPacket.throttle < 127) {
-				 			strip.setPixelColor(i, strip.Color(0, 255, 0));	
-				 		} else {
-							strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
-					 	}
-				 	}
-				}
-				else if (controllerStatusChanged) {
-					strip.setPixelColor(i, strip.Color(0, 0, 0));	
-				}
-				break;
-			case 9:
-			case 10:
-				if (encoderButtonChanged) {
-					if (esk8.controllerPacket.encoderButton == 1) {
-						strip.setPixelColor(i, strip.Color(0, 0, 255));	
-					} else {
-						strip.setPixelColor(i, strip.Color(0, 0, 0));
-					}
-				}
-				break;
-			default:
-				strip.setPixelColor(i, strip.Color(0, 0, 0));
-				break;
-		}
+	// for (int i = 0; i < NUM_LEDS; i++) {
+	// 	switch (i) {
+	// 		case 0:	// controller online status
+	// 		case 1: // VESC online
+	// 			if (controllerCommsState == ST_ONLINE) {
+	// 				strip.setPixelColor(i, strip.Color(0, 255, 0));
+	// 			} else {
+	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
+	// 			}
+	// 			break;
+	// 		case 3: // VESC online
+	// 		case 4: // VESC online
+	// 		 	if (vescCommsState == ST_ONLINE) {
+	// 		 		strip.setPixelColor(i, strip.Color(0, 255, 0));
+	// 		 	} else {
+	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
+	// 			}
+	// 			break;
+	// 		case 6:
+	// 		case 7:
+	// 			if (controllerCommsState == ST_ONLINE) {
+	// 				if (throttleChanged) {
+	// 					if (esk8.controllerPacket.throttle > 127) {
+	// 			 			strip.setPixelColor(i, strip.Color(0, 0, 255));	
+	// 			 		} else if (esk8.controllerPacket.throttle < 127) {
+	// 			 			strip.setPixelColor(i, strip.Color(0, 255, 0));	
+	// 			 		} else {
+	// 						strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
+	// 				 	}
+	// 			 	}
+	// 			}
+	// 			else if (controllerStatusChanged) {
+	// 				strip.setPixelColor(i, strip.Color(0, 0, 0));	
+	// 			}
+	// 			break;
+	// 		case 9:
+	// 		case 10:
+	// 			if (encoderButtonChanged) {
+	// 				if (esk8.controllerPacket.encoderButton == 1) {
+	// 					strip.setPixelColor(i, strip.Color(0, 0, 255));	
+	// 				} else {
+	// 					strip.setPixelColor(i, strip.Color(0, 0, 0));
+	// 				}
+	// 			}
+	// 			break;
+	// 		default:
+	// 			strip.setPixelColor(i, strip.Color(0, 0, 0));
+	// 			break;
+	// 	}
 
-		strip.show();
-		controllerStatusChanged = false;
-		vescStatusChanged = false;
-		currentThrottle = esk8.controllerPacket.throttle;
-		currentEncoderButton = esk8.controllerPacket.encoderButton;
-	}
+	// 	strip.show();
+	// 	controllerStatusChanged = false;
+	// 	vescStatusChanged = false;
+	// 	currentThrottle = esk8.controllerPacket.throttle;
+	// 	currentEncoderButton = esk8.controllerPacket.encoderButton;
+	// }
 }
 //--------------------------------------------------------------------------------
 bool getVescValues() {
