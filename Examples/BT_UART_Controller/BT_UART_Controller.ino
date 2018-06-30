@@ -21,10 +21,7 @@ static void notifyCallback(
 	uint8_t* pData,
 	size_t length,
 	bool isNotify) {
-		//Serial.printf("Notify callback for characteristic \n");
-	    Serial.println("-------------------------------------------");
-	    Serial.printf("notifyCallback: length=%d \n", length);
-	    Serial.printf("sizeof(pData) %u \n", sizeof(pData));
+	    Serial.println("----------- N O T I F Y -----------");
 		esp8266VESC.receivePacket(pData, length);
 }
 
@@ -99,6 +96,13 @@ void setup() {
 } // End of setup.
 
 long nowms = 0;
+long accelDEcelMs = 0;
+
+#define ACCEL_DECEL_STATE_IDLE	0
+#define ACCEL_DECEL_STATE_ACCEL	1
+#define ACCEL_DECEL_STATE_DECEL	2
+
+int accelDecelState = 0;
 
 void loop() {
 	// If the flag "doConnect" is true then we have scanned for and found the desired
@@ -114,91 +118,52 @@ void loop() {
 		doConnect = false;
 	}
 
-	// If we are connected to a peer BLE Server, update the characteristic each time we are reached
-	// // with the current time since boot.
-	// if (connected) {
-	// 	String newValue = "Time since boot: " + String(millis()/1000);
-	// 	Serial.println("Setting new characteristic value to \"" + newValue + "\"");
+	if (connected) {
 
-	// 	// Set the characteristic's value to be the array of bytes that is actually a string.
-	// 	pRemoteCharacteristic->writeValue(newValue.c_str(), newValue.length());
-	// }
+		if (millis() - nowms > 5000) {
+			nowms = millis();
+			//Serial.println("======================================================");
+			//sendGetValuesRequest();
+		}
 
-	if (connected && millis() - nowms > 5000) {
-		nowms = millis();
-		Serial.println("======================================================");
-		getVescValues();
+		if (accelDecelState == ACCEL_DECEL_STATE_IDLE || accelDecelState == ACCEL_DECEL_STATE_DECEL) {
+			if (millis()-accelDEcelMs > 3000) {
+				accelDEcelMs = millis();
+				accelDecelState = ACCEL_DECEL_STATE_ACCEL;
+				sendNunchukValues(127+15);
+			}
+		}
+		else {
+			if (millis()-accelDEcelMs > 1000) {
+				accelDEcelMs = millis();
+				accelDecelState = ACCEL_DECEL_STATE_DECEL;
+				sendNunchukValues(127);
+			}
+		}
+
 	}
 
-	delay(100); // Delay a second between loops.
+	delay(10); // Delay a second between loops.
 } // End of loop
 
+//--------------------------------------------------------------
+void sendGetValuesRequest() {
 
-void getVescValues() {
-
-	// struct VESCValues
-	// {
-	//		float temperatureMosfet1 = 0.0f;
-	//		float temperatureMosfet2 = 0.0f;
-	//		float temperatureMosfet3 = 0.0f;
-	//		float temperatureMosfet4 = 0.0f;
-	//		float temperatureMosfet5 = 0.0f;
-	//		float temperatureMosfet6 = 0.0f;
-	//		float temperaturePCB = 0.0f;
-	//		float avgMotorCurrent = 0.0f;
-	//		float avgInputCurrent = 0.0f;
-	//		float dutyCycleNow = 0.0f;
-	//		int32_t rpm = 0;
-	//		float inputVoltage = 0.0f;
-	//		float ampHours = 0.0f;
-	//		float ampHoursCharged = 0.0f;
-	//		float wattHours = 0.0f;
-	//		float wattHoursCharged = 0.0f;
-	//		int32_t tachometer = 0;
-	//		int32_t tachometerAbs = 0;
-	//		mc_fault_code faultCode = FAULT_CODE_NONE;
-	// };
-
-    VESCValues vescValues;
-
-	esp8266VESC.requestVescValues(vescValues);
+	esp8266VESC.composeGetValuesRequest();
 
 	uint8_t* payload = esp8266VESC.getCommandPayload();
 	uint8_t payloadLength = esp8266VESC.getCommandPayloadLength();
 
-	// Serial.printf("sizeof packet = %d\n", payloadLength);
+	pRemoteCharacteristic->writeValue(payload, payloadLength);
+}
+//--------------------------------------------------------------
+void sendNunchukValues(int throttle) {
+
+	Serial.printf("sendNunchukValues(int %d) \n", throttle);
+	esp8266VESC.composeSendNunchukValuesRequest(127, throttle, 0, 0);
+
+	uint8_t* payload = esp8266VESC.getCommandPayload();
+	uint8_t payloadLength = esp8266VESC.getCommandPayloadLength();
 
 	pRemoteCharacteristic->writeValue(payload, payloadLength);
-		// get the packet that should be sent
-		//esp8266VESC.requestVESCValues(vescValues);
-
-		// vescConnected = true;
-		// esk8.boardPacket.batteryVoltage = vescValues.inputVoltage;
-		// Serial.println("Average motor current = " + String(vescValues.avgMotorCurrent) + "A");
-		// Serial.println("Average battery current = " + String(vescValues.avgInputCurrent) + "A");
-		// Serial.println("Duty cycle = " + String(vescValues.dutyCycleNow) + "%");
-	    
-		//Serial.println("rpm = " + String(vescValues.rpm) + "rpm");
-
-		// Serial.println("Battery voltage = " + String(vescValues.inputVoltage) + "V");
-
-		// Serial.println("Drawn energy (mAh) = " + String(vescValues.ampHours) + "mAh");
-		// Serial.println("Charged energy (mAh) = " + String(vescValues.ampHoursCharged) + "mAh");
-
-		// Serial.println("Drawn energy (Wh) = " + String(vescValues.wattHours) + "Wh");
-		// Serial.println("Charged energy (Wh) = " + String(vescValues.wattHoursCharged) + "Wh");
-
-		// String(vescValues.ampHours).toCharArray(myVescValues.ampHours, 7);
-		// String(vescValues.rpm).toCharArray(myVescValues.rpm, 7);
-			// String(vescValues.inputVoltage).toCharArray(myVescValues.battery, 7);
-		// myVescValues.battery = vescValues.inputVoltage;
-		// String(vescValues.avgMotorCurrent).toCharArray(myVescValues.avgMotorCurrent, 7);
-		// String(vescValues.dutyCycleNow).toCharArray(myVescValues.dutyCycleNow, 7);
-	// }
-	// else
-	// {
-	// 	vescConnected = false;
-	// 	//debug.print(VESC_COMMS, "The VESC values could not be read!\n");
-	// }
-	//return vescConnected;
 }
