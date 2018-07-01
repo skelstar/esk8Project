@@ -364,7 +364,7 @@ void loop() {
 
 	if (doConnect == true) {
 		if (connectToServer(*pServerAddress)) {
-			debug.print(BLE, "We are now connected to the BLE Server.");
+			debug.print(BLE, "We are now connected to the BLE Server.\n");
 			connected = true;
 		} else {
 			debug.print(BLE, "We have failed to connect to the server; there is nothin more we will do.");
