@@ -277,25 +277,25 @@ void encoderInterruptHandler() {
 
 	bool canAccelerate = deadmanSwitch.isPressed();
 
-	if (result == DIR_CW) {
-		//debug.print(HARDWARE, "DIR_CW %d \n", encoderCounter);		
-	}
-	else if (result == DIR_CCW) {
-		//debug.print(HARDWARE, "DIR_CCW %d \n", encoderCounter);
-	}
+	// if (result == DIR_CW) {
+	// 	debug.print(HARDWARE, "DIR_CW %d \n", encoderCounter);		
+	// }
+	// else if (result == DIR_CCW) {
+	// 	debug.print(HARDWARE, "DIR_CCW %d \n", encoderCounter);
+	// }
 
 	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
 			throttle = getThrottleValue(encoderCounter);
-			//debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
 			throttle = getThrottleValue(encoderCounter);
-			//debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 }
