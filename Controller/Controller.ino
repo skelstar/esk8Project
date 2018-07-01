@@ -1,63 +1,17 @@
-#include <SPI.h>
-#include "RF24.h"
+// #include <SPI.h>
+// #include "RF24.h"
 #include <Rotary.h>
-#include <FastLED.h>
+// #include <FastLED.h>
 
 #include <TaskScheduler.h>
 
 #include <myPushButton.h>
-#include <debugHelper.h>
+// #include <debugHelper.h>
 // #include <esk8Lib.h>
 
 #include "BLEDevice.h"
 #include <ESP8266VESC.h>
 #include "VescUart.h"
-
-//--------------------------------------------------------------
-
-ESP8266VESC esp8266VESC = ESP8266VESC();
-
-static BLEUUID serviceUUID("0000ffe0-0000-1000-8000-00805f9b34fb");
-static BLEUUID    charUUID("0000ffe1-0000-1000-8000-00805f9b34fb");
-
-static BLEAddress *pServerAddress;
-static boolean doConnect = false;
-static boolean connected = false;
-static BLERemoteCharacteristic* pRemoteCharacteristic;
-
-//--------------------------------------------------------------------------------
-
-const char compile_date[] = __DATE__ " " __TIME__;
-
-int getThrottleValue(int raw);
-void setupEncoder();
-void setPixels(CRGB c) ;
-void zeroThrottleReadyToSend();
-
-//--------------------------------------------------------------------------------
-
-#define ENCODER_BUTTON_PIN	34	// 36 didn't work
-#define ENCODER_PIN_A		16
-#define ENCODER_PIN_B		4
-
-#define DEADMAN_SWITCH_PIN	25
-
-#define	PIXEL_PIN			5
-
-// #define SPI_MOSI			23 // Blue
-// #define SPI_MISO			19 // Orange
-// #define SPI_CLK				18 // Yellow
-// #define SPI_CE				33	// white/purple
-// #define SPI_CS				26  // green
-
-#define OLED_SCL        	22    // std ESP32 (22)
-#define OLED_SDA        	21    // std ESP32 (23??)
-
-//--------------------------------------------------------------
-
-int sendIntervalMs = 200;
-
-int throttle = 127;
 
 //--------------------------------------------------------------
 
@@ -71,7 +25,106 @@ int throttle = 127;
 #define COMMS_STATE  	1 << 7
 #define BLE 			1 << 8
 
-debugHelper debug;
+// debugHelper debug;
+
+//--------------------------------------------------------------
+
+ESP8266VESC esp8266VESC = ESP8266VESC();
+
+static BLEUUID serviceUUID("0000ffe0-0000-1000-8000-00805f9b34fb");
+static BLEUUID    charUUID("0000ffe1-0000-1000-8000-00805f9b34fb");
+
+static BLEAddress *pServerAddress;
+static boolean doConnect = false;
+static boolean connected = false;
+static BLERemoteCharacteristic* pRemoteCharacteristic;
+//--------------------------------------------------------------
+static void notifyCallback(
+	BLERemoteCharacteristic* pBLERemoteCharacteristic,
+	uint8_t* pData,
+	size_t length,
+	bool isNotify) {
+	    Serial.printf("----------- N O T I F Y -----------");
+		esp8266VESC.receivePacket(pData, length);
+}
+//--------------------------------------------------------------
+bool connectToServer(BLEAddress pAddress) {
+	Serial.printf("Connecting...");
+    // Serial.print("Forming a connection to ");
+    // Serial.println(pAddress.toString().c_str());
+    BLEClient *pClient  = BLEDevice::createClient();
+    // Serial.println(" - Created client");
+    // Connect to the remove BLE Server.
+    pClient->connect(pAddress);
+    // Serial.println(" - Connected to server");
+    // Obtain a reference to the service we are after in the remote BLE server.
+    BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
+    if (pRemoteService == nullptr) {
+		// Serial.print("Failed to find our service UUID: ");
+		// Serial.println(serviceUUID.toString().c_str());
+		return false;
+    }
+    // Serial.println(" - Found our service");
+
+    // Obtain a reference to the characteristic in the service of the remote BLE server.
+    pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
+    if (pRemoteCharacteristic == nullptr) {
+		// Serial.print("Failed to find our characteristic UUID: ");
+		// Serial.println(charUUID.toString().c_str());
+		return false;
+    }
+    // Serial.println(" - Found our characteristic");
+
+    // Read the value of the characteristic.
+    // std::string value = pRemoteCharacteristic->readValue();
+    // Serial.print("The characteristic value was: ");
+    // Serial.println(value.c_str());
+    pRemoteCharacteristic->registerForNotify(notifyCallback);
+	Serial.printf("Registered!");
+}
+//--------------------------------------------------------------
+/*Scan for BLE servers and find the first one that advertises the service we are looking for. */
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+	/* Called for each advertising BLE server. */
+  	void onResult(BLEAdvertisedDevice advertisedDevice) {
+		// Serial.print("BLE Advertised Device found: ");
+		// Serial.println(advertisedDevice.toString().c_str());
+
+		// We have found a device, let us now see if it contains the service we are looking for.
+		if (advertisedDevice.haveServiceUUID() && advertisedDevice.getServiceUUID().equals(serviceUUID)) {
+			// Serial.print("Found our device!  address: "); 
+			Serial.printf("Found VESC...");
+			advertisedDevice.getScan()->stop();
+
+			pServerAddress = new BLEAddress(advertisedDevice.getAddress());
+			doConnect = true;
+		} // Found our server
+  	}
+};
+//--------------------------------------------------------------------------------
+
+const char compile_date[] = __DATE__ " " __TIME__;
+
+int getThrottleValue(int raw);
+void setupEncoder();
+// void setPixels(CRGB c) ;
+void zeroThrottleReadyToSend();
+
+//--------------------------------------------------------------------------------
+
+#define ENCODER_BUTTON_PIN	34	// 36 didn't work
+#define ENCODER_PIN_A		16
+#define ENCODER_PIN_B		4
+
+#define DEADMAN_SWITCH_PIN	25
+
+#define	PIXEL_PIN			5
+
+//--------------------------------------------------------------
+
+int sendIntervalMs = 200;
+
+int throttle = 127;
 
 //--------------------------------------------------------------
 
@@ -81,21 +134,21 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 #define 	NUM_PIXELS 		8
 
-CRGB leds[NUM_PIXELS];
+// CRGB leds[NUM_PIXELS];
 
-#define BRIGHTNESS	20
+// #define BRIGHTNESS	20
 
-CRGB COLOUR_OFF = CRGB::Black;
-CRGB COLOUR_RED = CRGB::Red;
-CRGB COLOUR_GREEN = CRGB::Green;
-CRGB COLOUR_BLUE = CRGB::Blue;
-CRGB COLOUR_PINK = CRGB::Pink;
+// CRGB COLOUR_OFF = CRGB::Black;
+// CRGB COLOUR_RED = CRGB::Red;
+// CRGB COLOUR_GREEN = CRGB::Green;
+// CRGB COLOUR_BLUE = CRGB::Blue;
+// CRGB COLOUR_PINK = CRGB::Pink;
 
-CRGB COLOUR_ACCELERATING = CRGB::Navy;
-CRGB COLOUR_BRAKING = CRGB::Crimson;
-CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
+// CRGB COLOUR_ACCELERATING = CRGB::Navy;
+// CRGB COLOUR_BRAKING = CRGB::Crimson;
+// CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
 
-CRGB COLOUR_WHITE = CRGB::White;
+// CRGB COLOUR_WHITE = CRGB::White;
 
 //--------------------------------------------------------------------------------
 
@@ -112,14 +165,14 @@ uint8_t serviceCommsState(uint8_t commsState, bool online) {
 	switch (commsState) {
 		case TN_ONLINE:
 			//setPixels(COLOUR_OFF);
-			debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
+			//debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
 			return online ? ST_ONLINE : TN_OFFLINE;
 		case ST_ONLINE:
 			lastBoardOnlineTime = millis();
 			return  online ? ST_ONLINE : TN_OFFLINE;
 		case TN_OFFLINE:
 			//setPixels(COLOUR_RED);
-			debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
+			//debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
 			return online ? TN_ONLINE : ST_OFFLINE;
 		case ST_OFFLINE:
 			return online ? TN_ONLINE : ST_OFFLINE;
@@ -146,7 +199,7 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 			if (throttle > 127) {
 			 	zeroThrottleReadyToSend();
 			}
-			// debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
+			// //debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
 	}
 }
@@ -185,42 +238,42 @@ void tFastFlash_callback();
 Task tFastFlash(FAST_FLASH_DURATION, 2, &tFastFlash_callback);
 void tFastFlash_callback() {
     if (tFastFlash.isLastIteration()) {
-        setPixels(COLOUR_OFF);
+        //setPixels(COLOUR_OFF);
         tFastFlash.disable();
     }
 }
 
-void fastFlashLed(CRGB c) {
-	setPixels(c);
-    tFastFlash.setIterations(2);
-    tFastFlash.enable();
-}
+// void fastFlashLed(CRGB c) {
+// 	setPixels(c);
+//     tFastFlash.setIterations(2);
+//     tFastFlash.enable();
+// }
 
-void fastFlashLed() {
-    tFastFlash.setIterations(2);
-    tFastFlash.enable();
-}
+// void fastFlashLed() {
+//     tFastFlash.setIterations(2);
+//     tFastFlash.enable();
+// }
 
 //------------------------------------------------------------------------------
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
-CRGB tFlashLedsColour = COLOUR_RED;
+// CRGB tFlashLedsColour = COLOUR_RED;
 
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	setPixels(tFlashLedsColour);
+	// setPixels(tFlashLedsColour);
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	setPixels(tFlashLedsColour);
+	// setPixels(tFlashLedsColour);
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	setPixels(COLOUR_OFF);
+	// setPixels(COLOUR_OFF);
 }
 // //--------------------------------------------------------------
 // void tSendControllerValues_callback() {
@@ -235,24 +288,24 @@ void encoderInterruptHandler() {
 	bool canAccelerate = deadmanSwitch.isPressed();
 
 	if (result == DIR_CW) {
-		debug.print(HARDWARE, "DIR_CW %d \n", encoderCounter);		
+		//debug.print(HARDWARE, "DIR_CW %d \n", encoderCounter);		
 	}
 	else if (result == DIR_CCW) {
-		debug.print(HARDWARE, "DIR_CCW %d \n", encoderCounter);
+		//debug.print(HARDWARE, "DIR_CCW %d \n", encoderCounter);
 	}
 
 	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
 			throttle = getThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			//debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
 			throttle = getThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			//debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 		}
 	}
 }
@@ -275,26 +328,35 @@ void setup() {
 
 	Serial.begin(9600);
 
-	debug.init();
-	debug.addOption(DEBUG, "DEBUG");
-	debug.addOption(STARTUP, "STARTUP");
-	debug.addOption(COMMUNICATION, "COMMUNICATION");
-	debug.addOption(ERROR, "ERROR");
-	debug.addOption(HARDWARE, "HARDWARE");
-	debug.addOption(COMMS_STATE, "COMMS_STATE");
-    debug.setFilter( BLE | STARTUP | HARDWARE );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	// debug.init();
+	// debug.addOption(DEBUG, "DEBUG");
+	// debug.addOption(STARTUP, "STARTUP");
+	// debug.addOption(COMMUNICATION, "COMMUNICATION");
+	// debug.addOption(ERROR, "ERROR");
+	// debug.addOption(HARDWARE, "HARDWARE");
+	// debug.addOption(COMMS_STATE, "COMMS_STATE");
+	// debug.addOption(BLE, "BLE");
+ //    debug.setFilter( STARTUP | HARDWARE | BLE );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
-	debug.print(STARTUP, "%s \n", compile_date);
-    debug.print(STARTUP, "esk8Project/Controller.ino \n");
+	//debug.print(STARTUP, "%s \n", compile_date);
+    //debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
 	// FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
 	// FastLED.show();
-    debug.print(STARTUP, "FastLED \n");
+	BLEDevice::init("ESP32 BLE Client");
+
+    //debug.print(STARTUP, "BLE init \n");
+
+	BLEScan* pBLEScan = BLEDevice::getScan();
+	pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+	pBLEScan->setActiveScan(true);
+	Serial.printf("Scanning... \n");
+	pBLEScan->start(30);
 
 	runner.startNow();
     runner.addTask(tFastFlash);
 	runner.addTask(tFlashLeds);
-    debug.print(STARTUP, "runner \n");
+    //debug.print(STARTUP, "runner \n");
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -308,10 +370,46 @@ void setup() {
 /**************************************************************
 					LOOP
 **************************************************************/
-long now = 0;
+long nowms = 0;
 
 void loop() {
-    //debug.print(STARTUP, "loop \n");
+    ////debug.print(STARTUP, "loop \n");
+
+	if (doConnect == true) {
+		if (connectToServer(*pServerAddress)) {
+			Serial.println("We are now connected to the BLE Server.");
+			connected = true;
+		} else {
+			Serial.println("We have failed to connect to the server; there is nothin more we will do.");
+		}
+		doConnect = false;
+	}
+
+	if (connected) {
+
+		if (millis() - nowms > 5000) {
+			nowms = millis();
+			Serial.println("======================================================");
+			sendGetValuesRequest();
+		}
+
+		// if (accelDecelState == ACCEL_DECEL_STATE_IDLE || accelDecelState == ACCEL_DECEL_STATE_DECEL) {
+		// 	if (millis()-accelDEcelMs > 3000) {
+		// 		accelDEcelMs = millis();
+		// 		accelDecelState = ACCEL_DECEL_STATE_ACCEL;
+		// 		sendNunchukValues(127+15);
+		// 	}
+		// }
+		// else {
+		// 	if (millis()-accelDEcelMs > 1000) {
+		// 		accelDEcelMs = millis();
+		// 		accelDecelState = ACCEL_DECEL_STATE_DECEL;
+		// 		sendNunchukValues(127);
+		// 	}
+		// }
+
+	}
+
 
 	delay(10);
 }
@@ -322,7 +420,7 @@ void codeForEncoderTask( void *parameter ) {
 
 	long task0now = 0;
 
-    // debug.print(STARTUP, "codeForEncoderTask \n");
+    // //debug.print(STARTUP, "codeForEncoderTask \n");
 
 	setupEncoder();
 
@@ -344,14 +442,24 @@ void setupEncoder() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
 }
-//--------------------------------------------------------------------------------
-void setPixels(CRGB c) {
-	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
-	// 	leds[i] = c;
-	// 	leds[i] /= 10;
-	// }
-	// FastLED.show();
+//--------------------------------------------------------------
+void sendGetValuesRequest() {
+
+	esp8266VESC.composeGetValuesRequest();
+
+	uint8_t* payload = esp8266VESC.getCommandPayload();
+	uint8_t payloadLength = esp8266VESC.getCommandPayloadLength();
+
+	pRemoteCharacteristic->writeValue(payload, payloadLength);
 }
+//--------------------------------------------------------------------------------
+// void setPixels(CRGB c) {
+// 	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
+// 	// 	leds[i] = c;
+// 	// 	leds[i] /= 10;
+// 	// }
+// 	// FastLED.show();
+// }
 //--------------------------------------------------------------------------------
 int getThrottleValue(int raw) {
 	int mappedThrottle = 0;
@@ -369,7 +477,7 @@ int getThrottleValue(int raw) {
 void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
 	throttle = 127;
-    debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
+    //debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
 }
 //--------------------------------------------------------------
 #define ONLINE_SYMBOL_WIDTH 	14
