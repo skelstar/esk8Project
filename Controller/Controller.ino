@@ -6,7 +6,7 @@
 #include <TaskScheduler.h>
 
 #include <myPushButton.h>
-// #include <debugHelper.h>
+#include <debugHelper.h>
 // #include <esk8Lib.h>
 
 #include "BLEDevice.h"
@@ -16,16 +16,13 @@
 //--------------------------------------------------------------
 
 #define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
-#define COMMUNICATION 	1 << 4
-#define HARDWARE		1 << 5
-#define TIMING			1 << 6
-#define COMMS_STATE  	1 << 7
-#define BLE 			1 << 8
+#define DEBUG 			1 << 1
+#define COMMUNICATION 	1 << 2
+#define HARDWARE		1 << 3
+#define BLE 			1 << 4
+#define ONLINE_STATUS	1 << 5
 
-// debugHelper debug;
+debugHelper debug;
 
 //--------------------------------------------------------------
 
@@ -44,56 +41,33 @@ static void notifyCallback(
 	uint8_t* pData,
 	size_t length,
 	bool isNotify) {
-	    Serial.printf("----------- N O T I F Y -----------");
+	    debug.print(BLE, "----------- N O T I F Y -----------\n");
 		esp8266VESC.receivePacket(pData, length);
 }
 //--------------------------------------------------------------
 bool connectToServer(BLEAddress pAddress) {
-	Serial.printf("Connecting...");
-    // Serial.print("Forming a connection to ");
-    // Serial.println(pAddress.toString().c_str());
+	debug.print(BLE, "Connecting...\n");
     BLEClient *pClient  = BLEDevice::createClient();
-    // Serial.println(" - Created client");
-    // Connect to the remove BLE Server.
     pClient->connect(pAddress);
-    // Serial.println(" - Connected to server");
-    // Obtain a reference to the service we are after in the remote BLE server.
     BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
     if (pRemoteService == nullptr) {
 		// Serial.print("Failed to find our service UUID: ");
-		// Serial.println(serviceUUID.toString().c_str());
 		return false;
     }
-    // Serial.println(" - Found our service");
-
-    // Obtain a reference to the characteristic in the service of the remote BLE server.
     pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
     if (pRemoteCharacteristic == nullptr) {
 		// Serial.print("Failed to find our characteristic UUID: ");
-		// Serial.println(charUUID.toString().c_str());
 		return false;
     }
-    // Serial.println(" - Found our characteristic");
-
-    // Read the value of the characteristic.
-    // std::string value = pRemoteCharacteristic->readValue();
-    // Serial.print("The characteristic value was: ");
-    // Serial.println(value.c_str());
     pRemoteCharacteristic->registerForNotify(notifyCallback);
-	Serial.printf("Registered!");
 }
 //--------------------------------------------------------------
 /*Scan for BLE servers and find the first one that advertises the service we are looking for. */
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
 	/* Called for each advertising BLE server. */
   	void onResult(BLEAdvertisedDevice advertisedDevice) {
-		// Serial.print("BLE Advertised Device found: ");
-		// Serial.println(advertisedDevice.toString().c_str());
-
-		// We have found a device, let us now see if it contains the service we are looking for.
 		if (advertisedDevice.haveServiceUUID() && advertisedDevice.getServiceUUID().equals(serviceUUID)) {
-			// Serial.print("Found our device!  address: "); 
-			Serial.printf("Found VESC...");
+			debug.print(BLE, "Found VESC...\n");
 			advertisedDevice.getScan()->stop();
 
 			pServerAddress = new BLEAddress(advertisedDevice.getAddress());
@@ -150,36 +124,52 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // CRGB COLOUR_WHITE = CRGB::White;
 
-//--------------------------------------------------------------------------------
-
+//--------------------------------------------------------------
 #define	TN_ONLINE 	1
 #define	ST_ONLINE 	2
 #define	TN_OFFLINE  3
 #define	ST_OFFLINE  4
 
-uint8_t boardCommsState;
-long lastBoardOnlineTime = 0;
-long lastBoardOfflineTime = 0;
+class OnlineStatus 
+{
+	private:
+		uint8_t state = ST_ONLINE;
+		uint8_t oldstate = ST_ONLINE;
 
-uint8_t serviceCommsState(uint8_t commsState, bool online) {
-	switch (commsState) {
-		case TN_ONLINE:
-			//setPixels(COLOUR_OFF);
-			//debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
-			return online ? ST_ONLINE : TN_OFFLINE;
-		case ST_ONLINE:
-			lastBoardOnlineTime = millis();
-			return  online ? ST_ONLINE : TN_OFFLINE;
-		case TN_OFFLINE:
-			//setPixels(COLOUR_RED);
-			//debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
-			return online ? TN_ONLINE : ST_OFFLINE;
-		case ST_OFFLINE:
-			return online ? TN_ONLINE : ST_OFFLINE;
-		default:
-			return online ? TN_ONLINE : TN_OFFLINE;
-	}
-}
+	public:
+
+		bool serviceState(bool online) {
+			switch (state) {
+				case TN_ONLINE:
+					debug.print(ONLINE_STATUS, "-> TN_ONLINE \n");
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case ST_ONLINE:
+					// lastControllerOnlineTime = millis();
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case TN_OFFLINE:
+					debug.print(ONLINE_STATUS, "-> TN_OFFLINE \n");
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				case ST_OFFLINE:
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				default:
+					state = online ? TN_ONLINE : TN_OFFLINE;
+					break;
+			}
+			bool stateChanged = oldstate != state;
+			oldstate = state;
+			return stateChanged;
+		}
+
+		bool getState() {
+			return state;
+		}
+};
+
+OnlineStatus vescCommsStatus;
 
 //--------------------------------------------------------------------------------
 
@@ -328,15 +318,13 @@ void setup() {
 
 	Serial.begin(9600);
 
-	// debug.init();
-	// debug.addOption(DEBUG, "DEBUG");
-	// debug.addOption(STARTUP, "STARTUP");
-	// debug.addOption(COMMUNICATION, "COMMUNICATION");
-	// debug.addOption(ERROR, "ERROR");
-	// debug.addOption(HARDWARE, "HARDWARE");
-	// debug.addOption(COMMS_STATE, "COMMS_STATE");
-	// debug.addOption(BLE, "BLE");
- //    debug.setFilter( STARTUP | HARDWARE | BLE );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	debug.init();
+	debug.addOption(STARTUP, "STARTUP");
+	debug.addOption(DEBUG, "DEBUG");
+	debug.addOption(HARDWARE, "HARDWARE");
+	debug.addOption(BLE, "BLE");
+	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
+    debug.setFilter( STARTUP | HARDWARE | BLE | ONLINE_STATUS );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	//debug.print(STARTUP, "%s \n", compile_date);
     //debug.print(STARTUP, "esk8Project/Controller.ino \n");
@@ -350,7 +338,7 @@ void setup() {
 	BLEScan* pBLEScan = BLEDevice::getScan();
 	pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
 	pBLEScan->setActiveScan(true);
-	Serial.printf("Scanning... \n");
+	debug.print(BLE, "Scanning... \n");
 	pBLEScan->start(30);
 
 	runner.startNow();
@@ -373,23 +361,25 @@ void setup() {
 long nowms = 0;
 
 void loop() {
-    ////debug.print(STARTUP, "loop \n");
 
 	if (doConnect == true) {
 		if (connectToServer(*pServerAddress)) {
-			Serial.println("We are now connected to the BLE Server.");
+			debug.print(BLE, "We are now connected to the BLE Server.");
 			connected = true;
 		} else {
-			Serial.println("We have failed to connect to the server; there is nothin more we will do.");
+			debug.print(BLE, "We have failed to connect to the server; there is nothin more we will do.");
 		}
 		doConnect = false;
 	}
+
+	// vescCommsStatus.serviceState(connected);
+	// bool vescOnline = vescCommsStatus.getState() == ST_ONLINE;
 
 	if (connected) {
 
 		if (millis() - nowms > 5000) {
 			nowms = millis();
-			Serial.println("======================================================");
+			debug.print(BLE, "======================================================\n");
 			sendGetValuesRequest();
 		}
 
