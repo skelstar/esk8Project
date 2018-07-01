@@ -1,7 +1,7 @@
 // #include <SPI.h>
 // #include "RF24.h"
 #include <Rotary.h>
-// #include <FastLED.h>
+#include <Adafruit_NeoPixel.h>
 
 #include <TaskScheduler.h>
 
@@ -35,6 +35,7 @@ static BLEAddress *pServerAddress;
 static boolean doConnect = false;
 static boolean connected = false;
 static BLERemoteCharacteristic* pRemoteCharacteristic;
+static BLEClient *pClient;
 //--------------------------------------------------------------
 static void notifyCallback(
 	BLERemoteCharacteristic* pBLERemoteCharacteristic,
@@ -47,8 +48,10 @@ static void notifyCallback(
 //--------------------------------------------------------------
 bool connectToServer(BLEAddress pAddress) {
 	debug.print(BLE, "Connecting...\n");
-    BLEClient *pClient  = BLEDevice::createClient();
+    // BLEClient *pClient  = BLEDevice::createClient();
+  	pClient = BLEDevice::createClient();
     pClient->connect(pAddress);
+
     BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
     if (pRemoteService == nullptr) {
 		// Serial.print("Failed to find our service UUID: ");
@@ -61,6 +64,7 @@ bool connectToServer(BLEAddress pAddress) {
     }
     pRemoteCharacteristic->registerForNotify(notifyCallback);
 }
+
 //--------------------------------------------------------------
 /*Scan for BLE servers and find the first one that advertises the service we are looking for. */
 class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
@@ -81,7 +85,7 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 int getThrottleValue(int raw);
 void setupEncoder();
-// void setPixels(CRGB c) ;
+void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
 
 //--------------------------------------------------------------------------------
@@ -96,9 +100,13 @@ void zeroThrottleReadyToSend();
 
 //--------------------------------------------------------------
 
-int sendIntervalMs = 200;
+// int sendIntervalMs = 200;
+
+bool throttleChanged = false;
 
 int throttle = 127;
+
+#define SEND_TO_BOARD_INTERVAL_MS 500
 
 //--------------------------------------------------------------
 
@@ -110,7 +118,7 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // CRGB leds[NUM_PIXELS];
 
-// #define BRIGHTNESS	20
+#define BRIGHTNESS	20
 
 // CRGB COLOUR_OFF = CRGB::Black;
 // CRGB COLOUR_RED = CRGB::Red;
@@ -124,52 +132,18 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // CRGB COLOUR_WHITE = CRGB::White;
 
-//--------------------------------------------------------------
-#define	TN_ONLINE 	1
-#define	ST_ONLINE 	2
-#define	TN_OFFLINE  3
-#define	ST_OFFLINE  4
 
-class OnlineStatus 
-{
-	private:
-		uint8_t state = ST_ONLINE;
-		uint8_t oldstate = ST_ONLINE;
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRBW + NEO_KHZ800);
 
-	public:
+uint32_t COLOUR_OFF = strip.Color(0, 0, 0);
+uint32_t COLOUR_RED = strip.Color(255, 0, 0);
+uint32_t COLOUR_GREEN = strip.Color(0, 255, 0);
+uint32_t COLOUR_BLUE = strip.Color(0, 0, 255);
+uint32_t COLOUR_WHITE = strip.Color(255, 255, 255);
 
-		bool serviceState(bool online) {
-			switch (state) {
-				case TN_ONLINE:
-					debug.print(ONLINE_STATUS, "-> TN_ONLINE \n");
-					state = online ? ST_ONLINE : TN_OFFLINE;
-					break;
-				case ST_ONLINE:
-					// lastControllerOnlineTime = millis();
-					state = online ? ST_ONLINE : TN_OFFLINE;
-					break;
-				case TN_OFFLINE:
-					debug.print(ONLINE_STATUS, "-> TN_OFFLINE \n");
-					state = online ? TN_ONLINE : ST_OFFLINE;
-					break;
-				case ST_OFFLINE:
-					state = online ? TN_ONLINE : ST_OFFLINE;
-					break;
-				default:
-					state = online ? TN_ONLINE : TN_OFFLINE;
-					break;
-			}
-			bool stateChanged = oldstate != state;
-			oldstate = state;
-			return stateChanged;
-		}
-
-		bool getState() {
-			return state;
-		}
-};
-
-OnlineStatus vescCommsStatus;
+uint32_t COLOUR_BRAKING = COLOUR_GREEN;
+uint32_t COLOUR_THROTTLE_IDLE = COLOUR_WHITE;
+uint32_t COLOUR_ACCELERATING = COLOUR_BLUE;
 
 //--------------------------------------------------------------------------------
 
@@ -248,7 +222,6 @@ void tFastFlash_callback() {
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
-// CRGB tFlashLedsColour = COLOUR_RED;
 
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
@@ -260,16 +233,69 @@ bool tFlashLeds_onEnable() {
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
 	// setPixels(tFlashLedsColour);
+	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
 	// setPixels(COLOUR_OFF);
+	return;
 }
 // //--------------------------------------------------------------
-// void tSendControllerValues_callback() {
-// 	sendThrottleToVESC();
-// }
-// Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
+void tSendToVESC_callback() {
+	sendNunchukValues(throttle);
+	throttleChanged = false;
+}
+Task tSendToVESC(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendToVESC_callback);
+//--------------------------------------------------------------
+#define	TN_ONLINE 	1
+#define	ST_ONLINE 	2
+#define	TN_OFFLINE  3
+#define	ST_OFFLINE  4
+
+class OnlineStatus 
+{
+	private:
+		uint8_t state = ST_ONLINE;
+		uint8_t oldstate = ST_ONLINE;
+
+	public:
+
+		bool serviceState(bool online) {
+			switch (state) {
+				case TN_ONLINE:
+					debug.print(ONLINE_STATUS, "-> TN_ONLINE \n");
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					setPixels(COLOUR_OFF);
+					tSendToVESC.enable();
+					break;
+				case ST_ONLINE:
+					// lastControllerOnlineTime = millis();
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case TN_OFFLINE:
+					debug.print(ONLINE_STATUS, "-> TN_OFFLINE \n");
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					setPixels(COLOUR_RED);
+					break;
+				case ST_OFFLINE:
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				default:
+					state = online ? TN_ONLINE : TN_OFFLINE;
+					break;
+			}
+			bool stateChanged = oldstate != state;
+			oldstate = state;
+			return stateChanged;
+		}
+
+		bool getState() {
+			return state;
+		}
+};
+
+OnlineStatus vescCommsStatus;
+
 //------------------------------------------------------------------------------
 
 void encoderInterruptHandler() {
@@ -289,6 +315,7 @@ void encoderInterruptHandler() {
 			encoderCounter++;
 			throttle = getThrottleValue(encoderCounter);
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			throttleChanged = true;
 		}
 	}
 	else if (result == DIR_CCW) {
@@ -296,6 +323,7 @@ void encoderInterruptHandler() {
 			encoderCounter--;
 			throttle = getThrottleValue(encoderCounter);
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			throttleChanged = true;
 		}
 	}
 }
@@ -322,15 +350,20 @@ void setup() {
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(HARDWARE, "HARDWARE");
+	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(BLE, "BLE");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
-    debug.setFilter( STARTUP | HARDWARE | BLE | ONLINE_STATUS );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+    debug.setFilter( STARTUP | HARDWARE | BLE | ONLINE_STATUS | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	//debug.print(STARTUP, "%s \n", compile_date);
     //debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
-	// FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
-	// FastLED.show();
+    strip.setBrightness(BRIGHTNESS);
+    strip.begin();
+    delay(50);
+    strip.show(); // Initialize all pixels to 'off'
+    setPixels(COLOUR_BLUE);
+
 	BLEDevice::init("ESP32 BLE Client");
 
     //debug.print(STARTUP, "BLE init \n");
@@ -344,6 +377,7 @@ void setup() {
 	runner.startNow();
     runner.addTask(tFastFlash);
 	runner.addTask(tFlashLeds);
+	runner.addTask(tSendToVESC);
     //debug.print(STARTUP, "runner \n");
 
 	xTaskCreatePinnedToCore (
@@ -359,6 +393,8 @@ void setup() {
 					LOOP
 **************************************************************/
 long nowms = 0;
+long connectedNow = 0;
+bool oldConnected = false;
 
 void loop() {
 
@@ -375,31 +411,44 @@ void loop() {
 	// vescCommsStatus.serviceState(connected);
 	// bool vescOnline = vescCommsStatus.getState() == ST_ONLINE;
 
-	if (connected) {
+	if (millis() - connectedNow > 1000 && pClient != NULL) {
+    	connected = pClient->isConnected();
 
-		if (millis() - nowms > 5000) {
-			nowms = millis();
-			debug.print(BLE, "======================================================\n");
-			sendGetValuesRequest();
-		}
-
-		// if (accelDecelState == ACCEL_DECEL_STATE_IDLE || accelDecelState == ACCEL_DECEL_STATE_DECEL) {
-		// 	if (millis()-accelDEcelMs > 3000) {
-		// 		accelDEcelMs = millis();
-		// 		accelDecelState = ACCEL_DECEL_STATE_ACCEL;
-		// 		sendNunchukValues(127+15);
-		// 	}
-		// }
-		// else {
-		// 	if (millis()-accelDEcelMs > 1000) {
-		// 		accelDEcelMs = millis();
-		// 		accelDecelState = ACCEL_DECEL_STATE_DECEL;
-		// 		sendNunchukValues(127);
-		// 	}
-		// }
-
+    	vescCommsStatus.serviceState(connected);
 	}
 
+	// if (connected) {
+
+	// 	setPixels(COLOUR_OFF);
+
+	// 	// if (millis() - nowms > 5000) {
+	// 	// 	nowms = millis();
+	// 	// 	debug.print(BLE, "======================================================\n");
+	// 	// 	sendGetValuesRequest();
+	// 	// }
+
+	// 	// if (accelDecelState == ACCEL_DECEL_STATE_IDLE || accelDecelState == ACCEL_DECEL_STATE_DECEL) {
+	// 	// 	if (millis()-accelDEcelMs > 3000) {
+	// 	// 		accelDEcelMs = millis();
+	// 	// 		accelDecelState = ACCEL_DECEL_STATE_ACCEL;
+	// 	// 		sendNunchukValues(127+15);
+	// 	// 	}
+	// 	// }
+	// 	// else {
+	// 	// 	if (millis()-accelDEcelMs > 1000) {
+	// 	// 		accelDEcelMs = millis();
+	// 	// 		accelDecelState = ACCEL_DECEL_STATE_DECEL;
+	// 	// 		sendNunchukValues(127);
+	// 	// 	}
+	// 	// }
+
+	// }
+
+	if (throttleChanged && connected) {
+		tSendToVESC.restart();
+	}
+
+	runner.execute();
 
 	delay(10);
 }
@@ -442,14 +491,24 @@ void sendGetValuesRequest() {
 
 	pRemoteCharacteristic->writeValue(payload, payloadLength);
 }
+//--------------------------------------------------------------
+void sendNunchukValues(int throttle) {
+
+	debug.print(BLE, "sendNunchukValues(int %d) \n", throttle);
+	esp8266VESC.composeSendNunchukValuesRequest(127, throttle, 0, 0);
+
+	uint8_t* payload = esp8266VESC.getCommandPayload();
+	uint8_t payloadLength = esp8266VESC.getCommandPayloadLength();
+
+	pRemoteCharacteristic->writeValue(payload, payloadLength);
+}
 //--------------------------------------------------------------------------------
-// void setPixels(CRGB c) {
-// 	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
-// 	// 	leds[i] = c;
-// 	// 	leds[i] /= 10;
-// 	// }
-// 	// FastLED.show();
-// }
+void setPixels(uint32_t c) {
+	for (uint16_t i=0; i<NUM_PIXELS; i++) {
+		strip.setPixelColor(i, c);		
+	}
+	strip.show();
+}
 //--------------------------------------------------------------------------------
 int getThrottleValue(int raw) {
 	int mappedThrottle = 0;
@@ -467,6 +526,7 @@ int getThrottleValue(int raw) {
 void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
 	throttle = 127;
+	throttleChanged = true;
     //debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
 }
 //--------------------------------------------------------------
