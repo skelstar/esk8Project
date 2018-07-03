@@ -126,7 +126,7 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // CRGB leds[NUM_PIXELS];
 
-#define BRIGHTNESS	20
+#define BRIGHTNESS	5
 
 // CRGB COLOUR_OFF = CRGB::Black;
 // CRGB COLOUR_RED = CRGB::Red;
@@ -140,8 +140,10 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 // CRGB COLOUR_WHITE = CRGB::White;
 
+// CRGB leds[NUM_PIXELS];
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRBW + NEO_KHZ800);
+
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 uint32_t COLOUR_OFF = strip.Color(0, 0, 0);
 uint32_t COLOUR_RED = strip.Color(255, 0, 0);
@@ -281,7 +283,7 @@ class OnlineStatus
 				case TN_ONLINE:
 					debug.print(ONLINE_STATUS, "-> TN_ONLINE \n");
 					state = online ? ST_ONLINE : TN_OFFLINE;
-					setPixels(COLOUR_OFF);
+					// setPixels(COLOUR_OFF);
 					tSendToVESC.enable();
 					break;
 				case ST_ONLINE:
@@ -291,7 +293,7 @@ class OnlineStatus
 				case TN_OFFLINE:
 					debug.print(ONLINE_STATUS, "-> TN_OFFLINE \n");
 					state = online ? TN_ONLINE : ST_OFFLINE;
-					setPixels(COLOUR_RED);
+					// setPixels(COLOUR_RED);
 					break;
 				case ST_OFFLINE:
 					state = online ? TN_ONLINE : ST_OFFLINE;
@@ -307,6 +309,9 @@ class OnlineStatus
 
 		bool getState() {
 			return state;
+		}
+		bool isOnline() {
+			return state == ST_ONLINE;
 		}
 };
 
@@ -365,20 +370,19 @@ void setup() {
 	debug.addOption(BLE, "BLE");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
-    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+    // debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	debug.setFilter( STARTUP );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	//debug.print(STARTUP, "%s \n", compile_date);
     //debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
-    strip.setBrightness(BRIGHTNESS);
-    strip.begin();
-    delay(50);
-    strip.show(); // Initialize all pixels to 'off'
-    setPixels(COLOUR_BLUE);
+    // strip.begin();
+    // strip.setBrightness(BRIGHTNESS);
+    // delay(50);
+    // setPixels(COLOUR_OFF);
+    // strip.show(); // Initialize all pixels to 'off'
 
 	BLEDevice::init("ESP32 BLE Client");
-
-    //debug.print(STARTUP, "BLE init \n");
 
 	BLEScan* pBLEScan = BLEDevice::getScan();
 	pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
@@ -386,11 +390,15 @@ void setup() {
 	debug.print(BLE, "Scanning... \n");
 	pBLEScan->start(30);
 
+    setPixels(COLOUR_OFF);
+    // strip.show(); // Initialize all pixels to 'off'
+
+	throttleChanged = true;	// initialise
+
 	runner.startNow();
     runner.addTask(tFastFlash);
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendToVESC);
-    //debug.print(STARTUP, "runner \n");
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -475,6 +483,7 @@ void loop() {
 void codeForEncoderTask( void *parameter ) {
 
 	long task0now = 0;
+	long oldConnected = true;
 
     // //debug.print(STARTUP, "codeForEncoderTask \n");
 
@@ -484,6 +493,18 @@ void codeForEncoderTask( void *parameter ) {
 	for (;;) {
 		encoderButton.serviceEvents();
 		deadmanSwitch.serviceEvents();
+
+		bool onlineStatusChanged = oldConnected == vescCommsStatus.isOnline();
+
+		if (onlineStatusChanged) {
+			if (connected == false) {
+				setPixels(COLOUR_RED);
+			}
+			else {
+				setPixels(COLOUR_OFF);	
+			}
+		}
+		oldConnected = connected;
 		delay(10);
 	}
 
@@ -522,10 +543,10 @@ void sendNunchukValues(int throttle) {
 }
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
-	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		strip.setPixelColor(i, c);		
-	}
-	strip.show();
+	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
+	// 	strip.setPixelColor(i, c);		
+	// }
+	// strip.show();
 }
 //--------------------------------------------------------------------------------
 int getThrottleValue(int raw) {
