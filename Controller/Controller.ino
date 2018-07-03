@@ -21,12 +21,16 @@
 #define HARDWARE		1 << 3
 #define BLE 			1 << 4
 #define ONLINE_STATUS	1 << 5
+#define TIMING			1 << 6
 
 debugHelper debug;
 
 //--------------------------------------------------------------
 
 ESP8266VESC esp8266VESC = ESP8266VESC();
+
+long volatile lastSendGetValuesRequestToVesc = 0;
+bool volatile valuesUpdated = true;
 
 static BLEUUID serviceUUID("0000ffe0-0000-1000-8000-00805f9b34fb");
 static BLEUUID    charUUID("0000ffe1-0000-1000-8000-00805f9b34fb");
@@ -38,12 +42,16 @@ static BLERemoteCharacteristic* pRemoteCharacteristic;
 static BLEClient *pClient;
 //--------------------------------------------------------------
 static void notifyCallback(
-	BLERemoteCharacteristic* pBLERemoteCharacteristic,
-	uint8_t* pData,
-	size_t length,
-	bool isNotify) {
-	    debug.print(BLE, "----------- N O T I F Y -----------\n");
-		esp8266VESC.receivePacket(pData, length);
+		BLERemoteCharacteristic* pBLERemoteCharacteristic,
+		uint8_t* pData,
+		size_t length,
+		bool isNotify) {
+    debug.print(BLE, "--- N O T I F Y ---\n");
+	esp8266VESC.receivePacket(pData, length);
+	valuesUpdated = true;
+	if (lastSendGetValuesRequestToVesc != 0) {
+		debug.print(TIMING, "getValuesFromVesc took %ulms \n", millis()-lastSendGetValuesRequestToVesc);
+	}
 }
 //--------------------------------------------------------------
 bool connectToServer(BLEAddress pAddress) {
@@ -103,10 +111,10 @@ void zeroThrottleReadyToSend();
 // int sendIntervalMs = 200;
 
 bool throttleChanged = false;
-
 int throttle = 127;
 
-#define SEND_TO_BOARD_INTERVAL_MS 500
+#define SEND_TO_BOARD_INTERVAL_MS 			500
+#define GET_VALUES_FROM_VESC_INTERVAL_MS	5000
 
 //--------------------------------------------------------------
 
@@ -241,11 +249,19 @@ void tFlashLedsOff_callback() {
 	return;
 }
 // //--------------------------------------------------------------
+void tSendToVESC_callback();
+Task tSendToVESC(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendToVESC_callback);
 void tSendToVESC_callback() {
-	sendNunchukValues(throttle);
+	if (throttle != 127) {
+		tSendToVESC.setInterval(SEND_TO_BOARD_INTERVAL_MS);
+		sendNunchukValues(throttle);
+	}
+	else {
+		tSendToVESC.setInterval(GET_VALUES_FROM_VESC_INTERVAL_MS);
+		sendGetValuesRequest();
+	}
 	throttleChanged = false;
 }
-Task tSendToVESC(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendToVESC_callback);
 //--------------------------------------------------------------
 #define	TN_ONLINE 	1
 #define	ST_ONLINE 	2
@@ -334,11 +350,6 @@ volatile uint32_t otherNode;
 volatile long lastRxMillis = 0;
 #define COMMS_TIMEOUT_PERIOD 	1000
 
-//--------------------------------------------------------------
-void sendThrottleToVESC() {
-}
-//--------------------------------------------------------------------------------
-
 /**************************************************************
 					SETUP
 **************************************************************/
@@ -353,7 +364,8 @@ void setup() {
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(BLE, "BLE");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
-    debug.setFilter( STARTUP | HARDWARE | BLE | ONLINE_STATUS | COMMUNICATION);	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	debug.addOption(TIMING, "TIMING");
+    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	//debug.print(STARTUP, "%s \n", compile_date);
     //debug.print(STARTUP, "esk8Project/Controller.ino \n");
@@ -415,6 +427,11 @@ void loop() {
     	connected = pClient->isConnected();
 
     	vescCommsStatus.serviceState(connected);
+	}
+
+	if (valuesUpdated) {
+		valuesUpdated = false;
+		debug.print(DEBUG, "%.1fV %.2fA\n", esp8266VESC.vescValues.inputVoltage, esp8266VESC.vescValues.avgMotorCurrent);
 	}
 
 	// if (connected) {
@@ -484,6 +501,7 @@ void setupEncoder() {
 //--------------------------------------------------------------
 void sendGetValuesRequest() {
 
+	debug.print(BLE, "========= sendGetValuesRequest() ====== \n");
 	esp8266VESC.composeGetValuesRequest();
 
 	uint8_t* payload = esp8266VESC.getCommandPayload();
