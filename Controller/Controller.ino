@@ -283,7 +283,6 @@ class OnlineStatus
 				case TN_ONLINE:
 					debug.print(ONLINE_STATUS, "-> TN_ONLINE \n");
 					state = online ? ST_ONLINE : TN_OFFLINE;
-					// setPixels(COLOUR_OFF);
 					tSendToVESC.enable();
 					break;
 				case ST_ONLINE:
@@ -293,7 +292,6 @@ class OnlineStatus
 				case TN_OFFLINE:
 					debug.print(ONLINE_STATUS, "-> TN_OFFLINE \n");
 					state = online ? TN_ONLINE : ST_OFFLINE;
-					// setPixels(COLOUR_RED);
 					break;
 				case ST_OFFLINE:
 					state = online ? TN_ONLINE : ST_OFFLINE;
@@ -373,25 +371,17 @@ void setup() {
     // debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 	debug.setFilter( STARTUP );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
-	//debug.print(STARTUP, "%s \n", compile_date);
-    //debug.print(STARTUP, "esk8Project/Controller.ino \n");
+	debug.print(STARTUP, "%s \n", compile_date);
+    debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
-    // strip.begin();
-    // strip.setBrightness(BRIGHTNESS);
-    // delay(50);
-    // setPixels(COLOUR_OFF);
-    // strip.show(); // Initialize all pixels to 'off'
 
 	BLEDevice::init("ESP32 BLE Client");
 
 	BLEScan* pBLEScan = BLEDevice::getScan();
 	pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
 	pBLEScan->setActiveScan(true);
-	debug.print(BLE, "Scanning... \n");
+	debug.print(STARTUP, "BLE Start Scanning... \n");
 	pBLEScan->start(30);
-
-    setPixels(COLOUR_OFF);
-    // strip.show(); // Initialize all pixels to 'off'
 
 	throttleChanged = true;	// initialise
 
@@ -485,7 +475,11 @@ void codeForEncoderTask( void *parameter ) {
 	long task0now = 0;
 	long oldConnected = true;
 
-    // //debug.print(STARTUP, "codeForEncoderTask \n");
+    strip.begin();
+    strip.setBrightness(BRIGHTNESS);
+    delay(50);
+    setPixels(COLOUR_OFF);
+    strip.show();
 
 	setupEncoder();
 
@@ -543,10 +537,10 @@ void sendNunchukValues(int throttle) {
 }
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
-	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
-	// 	strip.setPixelColor(i, c);		
-	// }
-	// strip.show();
+	for (uint16_t i=0; i<NUM_PIXELS; i++) {
+		strip.setPixelColor(i, c);		
+	}
+	strip.show();
 }
 //--------------------------------------------------------------------------------
 int getThrottleValue(int raw) {
