@@ -432,33 +432,6 @@ void loop() {
 		debug.print(DEBUG, "%.1fV %.2fA\n", esp8266VESC.vescValues.inputVoltage, esp8266VESC.vescValues.avgMotorCurrent);
 	}
 
-	// if (connected) {
-
-	// 	setPixels(COLOUR_OFF);
-
-	// 	// if (millis() - nowms > 5000) {
-	// 	// 	nowms = millis();
-	// 	// 	debug.print(BLE, "======================================================\n");
-	// 	// 	sendGetValuesRequest();
-	// 	// }
-
-	// 	// if (accelDecelState == ACCEL_DECEL_STATE_IDLE || accelDecelState == ACCEL_DECEL_STATE_DECEL) {
-	// 	// 	if (millis()-accelDEcelMs > 3000) {
-	// 	// 		accelDEcelMs = millis();
-	// 	// 		accelDecelState = ACCEL_DECEL_STATE_ACCEL;
-	// 	// 		sendNunchukValues(127+15);
-	// 	// 	}
-	// 	// }
-	// 	// else {
-	// 	// 	if (millis()-accelDEcelMs > 1000) {
-	// 	// 		accelDEcelMs = millis();
-	// 	// 		accelDecelState = ACCEL_DECEL_STATE_DECEL;
-	// 	// 		sendNunchukValues(127);
-	// 	// 	}
-	// 	// }
-
-	// }
-
 	if (throttleChanged && connected) {
 		tSendToVESC.restart();
 	}
@@ -490,15 +463,16 @@ void codeForEncoderTask( void *parameter ) {
 
 		bool onlineStatusChanged = oldConnected == vescCommsStatus.isOnline();
 
-		if (onlineStatusChanged) {
-			if (connected == false) {
-				setPixels(COLOUR_RED);
-			}
-			else {
-				setPixels(COLOUR_OFF);	
-			}
-		}
-		oldConnected = connected;
+		// if (onlineStatusChanged) {
+		// 	if (connected == false) {
+		// 		setPixels(COLOUR_RED);
+		// 	}
+		// 	else {
+		// 		setPixels(COLOUR_OFF);	
+		// 	}
+		// }
+		// oldConnected = connected;
+
 		delay(10);
 	}
 
@@ -537,10 +511,10 @@ void sendNunchukValues(int throttle) {
 }
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
-	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		strip.setPixelColor(i, c);		
-	}
-	strip.show();
+	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
+	// 	strip.setPixelColor(i, c);		
+	// }
+	// strip.show();
 }
 //--------------------------------------------------------------------------------
 int getThrottleValue(int raw) {
