@@ -22,7 +22,7 @@ void zeroThrottleReadyToSend();
 
 #define ENCODER_BUTTON_PIN	34	// 36 didn't work
 #define ENCODER_PIN_A		16
-#define ENCODER_PIN_B		17
+#define ENCODER_PIN_B		4
 
 #define DEADMAN_SWITCH_PIN	25
 
@@ -33,9 +33,6 @@ void zeroThrottleReadyToSend();
 #define SPI_CLK				18 // Yellow
 #define SPI_CE				33	// white/purple
 #define SPI_CS				26  // green
-
-#define OLED_SCL        	22    // std ESP32 (22)
-#define OLED_SDA        	21    // std ESP32 (23??)
 
 //--------------------------------------------------------------
 
@@ -72,7 +69,6 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 esk8Lib esk8;
 
-
 //--------------------------------------------------------------
 #define 	NUM_PIXELS 		8
 
@@ -106,14 +102,12 @@ long lastBoardOfflineTime = 0;
 uint8_t serviceCommsState(uint8_t commsState, bool online) {
 	switch (commsState) {
 		case TN_ONLINE:
-			//setPixels(COLOUR_OFF);
 			debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
 			return online ? ST_ONLINE : TN_OFFLINE;
 		case ST_ONLINE:
 			lastBoardOnlineTime = millis();
 			return  online ? ST_ONLINE : TN_OFFLINE;
 		case TN_OFFLINE:
-			//setPixels(COLOUR_RED);
 			debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
 			return online ? TN_ONLINE : ST_OFFLINE;
 		case ST_OFFLINE:
@@ -327,7 +321,7 @@ void setup() {
 	debug.addOption(ERROR, "ERROR");
 	debug.addOption(HARDWARE, "HARDWARE");
 	debug.addOption(COMMS_STATE, "COMMS_STATE");
-    debug.setFilter( DEBUG | COMMS_STATE );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+    debug.setFilter( STARTUP | COMMUNICATION );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "Esk8 Controller/main.cpp \n");
@@ -366,8 +360,6 @@ void setup() {
 /**************************************************************
 					LOOP
 **************************************************************/
-long now = 0;
-
 void loop() {
 
 	runner.execute();
@@ -379,7 +371,7 @@ void loop() {
 **************************************************************/
 void codeBoardCommsStateTask( void *parameter ) {
 
-	long taskBoardCOmmsStateNow = 0;
+	long taskBoardCommsStateNow = 0;
 
 	// then loop forever	
 	for (;;) {
