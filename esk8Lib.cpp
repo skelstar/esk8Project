@@ -18,12 +18,6 @@ byte addresses[][6] = {"1Node","2Node"};
 
 volatile long _lastRxMillis;
 
-// #define	STARTUP 		1 << 0
-// #define WARNING 		1 << 1
-// #define ERROR 			1 << 2
-// #define DEBUG 			1 << 3
-// #define COMMUNICATION 	1 << 4
-
 //--------------------------------------------------------------------------------
 
 esk8Lib::esk8Lib() {}
@@ -94,20 +88,6 @@ int esk8Lib::checkForPacket() {
 	}
 	return false;
 }
-//---------------------------------------------------------------------------------
-// int esk8Lib::packetChanged() {
-
-// 	bool changed = false;
-	
-// 	switch (_role) {
-// 		case ROLE_BOARD:
-// 			changed = _oldControllerPacket.throttle != controllerPacket.throttle;
-// 			break;
-// 		default:
-// 			changed = false;
-// 	}
-// 	return changed;
-// }
 //---------------------------------------------------------------------------------
 int esk8Lib::sendThenReadPacket() {
 
