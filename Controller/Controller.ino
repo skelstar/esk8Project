@@ -1,7 +1,7 @@
 #include <SPI.h>
 #include "RF24.h"
 #include <Rotary.h>
-#include <FastLED.h>
+#include <Adafruit_NeoPixel.h>
 
 #include <TaskScheduler.h>
 
@@ -9,13 +9,34 @@
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
+// #include "VescUart.h"
+
+//--------------------------------------------------------------
+
+#define	STARTUP 		1 << 0
+#define DEBUG 			1 << 1
+#define COMMUNICATION 	1 << 2
+#define HARDWARE		1 << 3
+#define BLE 			1 << 4
+#define ONLINE_STATUS	1 << 5
+#define TIMING			1 << 6
+
+debugHelper debug;
+
+//--------------------------------------------------------------
+
+ESP8266VESC esp8266VESC = ESP8266VESC();
+
+long volatile lastSendGetValuesRequestToVesc = 0;
+bool volatile valuesUpdated = true;
+
 //--------------------------------------------------------------------------------
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
-int getThrottleValue(int raw);
+int mapEncoderToThrottleValue(int raw);
 void setupEncoder();
-void setPixels(CRGB c) ;
+void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
 
 //--------------------------------------------------------------------------------
@@ -28,38 +49,15 @@ void zeroThrottleReadyToSend();
 
 #define	PIXEL_PIN			5
 
-#define SPI_MOSI			23 // Blue
-#define SPI_MISO			19 // Orange
-#define SPI_CLK				18 // Yellow
-#define SPI_CE				33	// white/purple
-#define SPI_CS				26  // green
-
 //--------------------------------------------------------------
 
-#define ROLE_BOARD		1
-#define ROLE_CONTROLLER	0
+// int sendIntervalMs = 200;
 
-//int role = ROLE_MASTER;
-int role = ROLE_CONTROLLER;
-bool radioNumber = 1;
+bool throttleChanged = false;
+int throttle = 127;
 
-int sendIntervalMs = 200;
-
-RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
-
-
-//--------------------------------------------------------------
-
-#define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
-#define COMMUNICATION 	1 << 4
-#define HARDWARE		1 << 5
-#define TIMING			1 << 6
-#define COMMS_STATE  	1 << 7
-
-debugHelper debug;
+#define SEND_TO_BOARD_INTERVAL_MS 			500
+#define GET_VALUES_FROM_VESC_INTERVAL_MS	5000
 
 //--------------------------------------------------------------
 
@@ -67,55 +65,38 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 //--------------------------------------------------------------
 
-esk8Lib esk8;
-
-//--------------------------------------------------------------
 #define 	NUM_PIXELS 		8
 
-CRGB leds[NUM_PIXELS];
+// CRGB leds[NUM_PIXELS];
 
-#define BRIGHTNESS	20
+#define BRIGHTNESS	5
 
-CRGB COLOUR_OFF = CRGB::Black;
-CRGB COLOUR_RED = CRGB::Red;
-CRGB COLOUR_GREEN = CRGB::Green;
-CRGB COLOUR_BLUE = CRGB::Blue;
-CRGB COLOUR_PINK = CRGB::Pink;
+// CRGB COLOUR_OFF = CRGB::Black;
+// CRGB COLOUR_RED = CRGB::Red;
+// CRGB COLOUR_GREEN = CRGB::Green;
+// CRGB COLOUR_BLUE = CRGB::Blue;
+// CRGB COLOUR_PINK = CRGB::Pink;
 
-CRGB COLOUR_ACCELERATING = CRGB::Navy;
-CRGB COLOUR_BRAKING = CRGB::Crimson;
-CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
+// CRGB COLOUR_ACCELERATING = CRGB::Navy;
+// CRGB COLOUR_BRAKING = CRGB::Crimson;
+// CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
 
-CRGB COLOUR_WHITE = CRGB::White;
+// CRGB COLOUR_WHITE = CRGB::White;
 
-//--------------------------------------------------------------------------------
+// CRGB leds[NUM_PIXELS];
 
-#define	TN_ONLINE 	1
-#define	ST_ONLINE 	2
-#define	TN_OFFLINE  3
-#define	ST_OFFLINE  4
 
-uint8_t boardCommsState;
-long lastBoardOnlineTime = 0;
-long lastBoardOfflineTime = 0;
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-uint8_t serviceCommsState(uint8_t commsState, bool online) {
-	switch (commsState) {
-		case TN_ONLINE:
-			debug.print(COMMS_STATE, "-> TN_ONLINE (offline for %ds) \n", (millis()-lastBoardOnlineTime)/1000);
-			return online ? ST_ONLINE : TN_OFFLINE;
-		case ST_ONLINE:
-			lastBoardOnlineTime = millis();
-			return  online ? ST_ONLINE : TN_OFFLINE;
-		case TN_OFFLINE:
-			debug.print(COMMS_STATE, "-> TN_OFFLINE (online for %ds) \n", (millis()-lastBoardOfflineTime)/1000);
-			return online ? TN_ONLINE : ST_OFFLINE;
-		case ST_OFFLINE:
-			return online ? TN_ONLINE : ST_OFFLINE;
-		default:
-			return online ? TN_ONLINE : TN_OFFLINE;
-	}
-}
+uint32_t COLOUR_OFF = strip.Color(0, 0, 0);
+uint32_t COLOUR_RED = strip.Color(255, 0, 0);
+uint32_t COLOUR_GREEN = strip.Color(0, 255, 0);
+uint32_t COLOUR_BLUE = strip.Color(0, 0, 255);
+uint32_t COLOUR_WHITE = strip.Color(255, 255, 255);
+
+uint32_t COLOUR_BRAKING = COLOUR_GREEN;
+uint32_t COLOUR_THROTTLE_IDLE = COLOUR_WHITE;
+uint32_t COLOUR_ACCELERATING = COLOUR_BLUE;
 
 //--------------------------------------------------------------------------------
 
@@ -129,21 +110,13 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 
 	switch (eventCode) {
 
-		case deadmanSwitch.EV_BUTTON_PRESSED:
-			if (esk8.controllerPacket.throttle > 127) {
-			}
-			debug.print(HARDWARE, "EV_BUTTON_PRESSED (DEADMAN) \n");
-			break;
-
+		// case deadmanSwitch.EV_BUTTON_PRESSED:
+		// case deadmanSwitch.EV_HELD_SECONDS:
 		case deadmanSwitch.EV_RELEASED:
-			if (esk8.controllerPacket.throttle > 127) {
+			if (throttle > 127) {
 			 	zeroThrottleReadyToSend();
 			}
 			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
-			break;
-
-		case deadmanSwitch.EV_HELD_SECONDS:
-			//Serial.printf("EV_BUTTON_HELD (DEADMAN): %d \n", eventParam);
 			break;
 	}
 }
@@ -155,11 +128,9 @@ void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 	switch (eventCode) {
 
 		case encoderButton.EV_BUTTON_PRESSED:
-			esk8.controllerPacket.encoderButton = 1;
 			break;
 
 		case encoderButton.EV_RELEASED:
-			esk8.controllerPacket.encoderButton = 0;
             zeroThrottleReadyToSend();
 			break;
 
@@ -167,14 +138,10 @@ void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 			break;
 	}
 }
-
 //--------------------------------------------------------------
-
 // lower number = more coarse
 #define ENCODER_COUNTER_MIN	-18 	// decceleration (ie -20 divides 0-127 into 20)
 #define ENCODER_COUNTER_MAX	10 		// acceleration (ie 15 divides 127-255 into 15)
-
-//--------------------------------------------------------------
 
 int encoderCounter = 0;
 
@@ -188,58 +155,105 @@ void tFastFlash_callback();
 Task tFastFlash(FAST_FLASH_DURATION, 2, &tFastFlash_callback);
 void tFastFlash_callback() {
     if (tFastFlash.isLastIteration()) {
-        setPixels(COLOUR_OFF);
+        //setPixels(COLOUR_OFF);
         tFastFlash.disable();
     }
 }
 
-void fastFlashLed(CRGB c) {
-	setPixels(c);
-    tFastFlash.setIterations(2);
-    tFastFlash.enable();
-}
+// void fastFlashLed(CRGB c) {
+// 	setPixels(c);
+//     tFastFlash.setIterations(2);
+//     tFastFlash.enable();
+// }
 
-void fastFlashLed() {
-    tFastFlash.setIterations(2);
-    tFastFlash.enable();
-}
+// void fastFlashLed() {
+//     tFastFlash.setIterations(2);
+//     tFastFlash.enable();
+// }
 
 //------------------------------------------------------------------------------
 bool tFlashLeds_onEnable();
 void tFlashLedsOn_callback();
 void tFlashLedsOff_callback();
-CRGB tFlashLedsColour = COLOUR_RED;
 
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	setPixels(tFlashLedsColour);
-	// Serial.println("tFlashLeds_onEnable");
-	debug.print(COMMS_STATE, "tFlashLeds_onEnable()\n");
+	// setPixels(tFlashLedsColour);
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLedsOn_callback() {
-	debug.print(COMMS_STATE, "tFlashLedsOn_callback()\n");
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	setPixels(tFlashLedsColour);
-	// Serial.println("tFlashLedsOn_callback");
+	// setPixels(tFlashLedsColour);
+	return;
 }
 void tFlashLedsOff_callback() {
-	debug.print(COMMS_STATE, "tFlashLedsOff_callback()\n");
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	setPixels(COLOUR_OFF);
-	// Serial.println("tFlashLedsOff_callback");
+	// setPixels(COLOUR_OFF);
+	return;
+}
+// //--------------------------------------------------------------
+void tSendToVESC_callback();
+Task tSendToVESC(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendToVESC_callback);
+void tSendToVESC_callback() {
+	if (throttle != 127) {
+		tSendToVESC.setInterval(SEND_TO_BOARD_INTERVAL_MS);
+		sendNunchukValues(throttle);
+	}
+	else {
+		tSendToVESC.setInterval(GET_VALUES_FROM_VESC_INTERVAL_MS);
+		sendGetValuesRequest();
+	}
+	throttleChanged = false;
 }
 //--------------------------------------------------------------
-#define SEND_TO_BOARD_INTERVAL_MS	200
+#define	TN_ONLINE 	1
+#define	ST_ONLINE 	2
+#define	TN_OFFLINE  3
+#define	ST_OFFLINE  4
 
-//------------------------------------------------------------------------------
+class OnlineStatus 
+{
+	private:
+		uint8_t state = ST_ONLINE;
+		uint8_t oldstate = ST_ONLINE;
 
-void tSendControllerValues_callback() {
-	sendMessage();
-}
-Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
+	public:
+
+		bool serviceState(bool online) {
+			switch (state) {
+				case TN_ONLINE:
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					tSendToVESC.enable();
+					break;
+				case ST_ONLINE:
+					state = online ? ST_ONLINE : TN_OFFLINE;
+					break;
+				case TN_OFFLINE:
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				case ST_OFFLINE:
+					state = online ? TN_ONLINE : ST_OFFLINE;
+					break;
+				default:
+					state = online ? TN_ONLINE : TN_OFFLINE;
+					break;
+			}
+			bool stateChanged = oldstate != state;
+			oldstate = state;
+			return stateChanged;
+		}
+
+		bool getState() {
+			return state;
+		}
+		bool isOnline() {
+			return state == ST_ONLINE;
+		}
+};
+
+OnlineStatus vescCommsStatus;
 
 //------------------------------------------------------------------------------
 
@@ -251,17 +265,17 @@ void encoderInterruptHandler() {
 	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
-			int throttle = getThrottleValue(encoderCounter);
-			esk8.controllerPacket.throttle = throttle;
+			throttle = mapEncoderToThrottleValue(encoderCounter);
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			throttleChanged = true;
 		}
 	}
 	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
-			int throttle = getThrottleValue(encoderCounter);
-			esk8.controllerPacket.throttle = throttle;
+			throttle = mapEncoderToThrottleValue(encoderCounter);
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
+			throttleChanged = true;
 		}
 	}
 }
@@ -272,37 +286,6 @@ volatile uint32_t otherNode;
 volatile long lastRxMillis = 0;
 #define COMMS_TIMEOUT_PERIOD 	1000
 
-//--------------------------------------------------------------
-void sendMessage() {
-
-	int result = esk8.sendThenReadPacket();
-
-	if (result == esk8.CODE_SUCCESS) {
-
-		debug.print(
-			COMMUNICATION, 
-			"tSendControllerValues_callback(): batteryVoltage:%.1f \n", 
-			esk8.boardPacket.batteryVoltage);
-	}
-	else if (result == esk8.ERR_NOT_SEND_OK) {
-		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
-	}
-	else if (result == esk8.ERR_TIMEOUT) {
-		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_TIMEOUT \n");
-	}
-	else {
-		debug.print(COMMUNICATION, "tSendControllerValues_callback(): UNKNOWN_CODE %d \n", result);	
-	}
-	boardCommsState = serviceCommsState(boardCommsState, result == esk8.CODE_SUCCESS);
-}
-//--------------------------------------------------------------------------------
-
-#define COMMS_ONLINE 		1
-#define COMMS_OFFLINE		0
-#define COMMS_UNKNOWN_STATE	-1
-
-volatile int commsState = COMMS_UNKNOWN_STATE;
-
 /**************************************************************
 					SETUP
 **************************************************************/
@@ -310,34 +293,26 @@ void setup() {
 
 	Serial.begin(9600);
 
-	radio.begin();
-
-    btStop();   // turn bluetooth module off
-
 	debug.init();
-	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(STARTUP, "STARTUP");
-	debug.addOption(COMMUNICATION, "COMMUNICATION");
-	debug.addOption(ERROR, "ERROR");
+	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(HARDWARE, "HARDWARE");
-	debug.addOption(COMMS_STATE, "COMMS_STATE");
-    debug.setFilter( STARTUP | COMMUNICATION );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	debug.addOption(COMMUNICATION, "COMMUNICATION");
+	debug.addOption(BLE, "BLE");
+	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
+	debug.addOption(TIMING, "TIMING");
+    // debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	debug.setFilter( STARTUP );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	debug.print(STARTUP, "%s \n", compile_date);
-    debug.print(STARTUP, "Esk8 Controller/main.cpp \n");
+    debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
-	esk8.begin(&radio, role, radioNumber, &debug);
-
-	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
-	FastLED.show();
+	throttleChanged = true;	// initialise
 
 	runner.startNow();
     runner.addTask(tFastFlash);
 	runner.addTask(tFlashLeds);
-	runner.addTask(tSendControllerValues);
-
-	//tSendControllerValues.setInterval(SEND_TO_BOARD_INTERVAL_MS);	//  esk8.getSendInterval()
-	tSendControllerValues.enable();
+	runner.addTask(tSendToVESC);
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -347,48 +322,36 @@ void setup() {
 		1,				// priority
 		NULL,	// handle
 		0);				// port	
-
-	xTaskCreatePinnedToCore (
-		codeBoardCommsStateTask,	// function
-		"Task_BoardCommsState",		// name
-		10000,			// stack
-		NULL,			// parameter
-		1,				// priority
-		NULL,			// handle
-		1);				// core	
 }
 /**************************************************************
 					LOOP
 **************************************************************/
+long nowms = 0;
+long connectedNow = 0;
+bool oldConnected = false;
+
 void loop() {
+
+	// vescCommsStatus.serviceState(connected);
+	// bool vescOnline = vescCommsStatus.getState() == ST_ONLINE;
+
+	if (millis() - connectedNow > 1000 && pClient != NULL) {
+
+    	vescCommsStatus.serviceState(connected);
+	}
+
+	if (valuesUpdated) {
+		valuesUpdated = false;
+		debug.print(DEBUG, "%.1fV %.2fA\n", esp8266VESC.vescValues.inputVoltage, esp8266VESC.vescValues.avgMotorCurrent);
+	}
+
+	if (throttleChanged && connected) {
+		tSendToVESC.restart();
+	}
 
 	runner.execute();
 
 	delay(10);
-}
-/**************************************************************
-					TASK Board Comms State
-**************************************************************/
-void codeBoardCommsStateTask( void *parameter ) {
-
-	long taskBoardCommsStateNow = 0;
-
-	// then loop forever	
-	for (;;) {
-
-		if (boardCommsState == TN_ONLINE) {
-			tFlashLeds.disable();
-		}
-		else if (boardCommsState == TN_OFFLINE) {
-			tFlashLeds.enable();
-		}
-
-		boardCommsState = serviceCommsState(boardCommsState, boardCommsState == TN_ONLINE || boardCommsState == ST_ONLINE);
-
-		delay(10);
-	}
-
-	vTaskDelete(NULL);
 }
 /**************************************************************
 					TASK 0
@@ -396,6 +359,13 @@ void codeBoardCommsStateTask( void *parameter ) {
 void codeForEncoderTask( void *parameter ) {
 
 	long task0now = 0;
+	long oldConnected = true;
+
+    strip.begin();
+    strip.setBrightness(BRIGHTNESS);
+    delay(50);
+    setPixels(COLOUR_OFF);
+    strip.show();
 
 	setupEncoder();
 
@@ -403,6 +373,19 @@ void codeForEncoderTask( void *parameter ) {
 	for (;;) {
 		encoderButton.serviceEvents();
 		deadmanSwitch.serviceEvents();
+
+		bool onlineStatusChanged = oldConnected == vescCommsStatus.isOnline();
+
+		if (onlineStatusChanged) {
+			if (connected == false) {
+				setPixels(COLOUR_RED);
+			}
+			else {
+				setPixels(COLOUR_OFF);	
+			}
+		}
+		oldConnected = connected;
+
 		delay(10);
 	}
 
@@ -418,31 +401,27 @@ void setupEncoder() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
 }
 //--------------------------------------------------------------------------------
-void setPixels(CRGB c) {
+void setPixels(uint32_t c) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		leds[i] = c;
-		leds[i] /= 10;
+		strip.setPixelColor(i, c);		
 	}
-	FastLED.show();
+	strip.show();
 }
 //--------------------------------------------------------------------------------
-int getThrottleValue(int raw) {
+int mapEncoderToThrottleValue(int raw) {
 	int mappedThrottle = 0;
+	int rawMiddle = 0;
 
-	if (raw >= 0) {
-		mappedThrottle = map(raw, 0, ENCODER_COUNTER_MAX, 127, 255);
+	if (raw >= rawMiddle) {
+		return = map(raw, rawMiddle, ENCODER_COUNTER_MAX, 127, 255);
 	}
-	else {
-		mappedThrottle = map(raw, ENCODER_COUNTER_MIN, 0, 0, 127);
-	}
-
-	return mappedThrottle;
+	return = map(raw, ENCODER_COUNTER_MIN, rawMiddle, 0, 127);
 }
 //--------------------------------------------------------------------------------
 void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
-	esk8.controllerPacket.throttle = 127;
-    debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, esk8.controllerPacket.throttle);
+	throttle = 127;
+	throttleChanged = true;
+    //debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
 }
 //--------------------------------------------------------------
-#define ONLINE_SYMBOL_WIDTH 	14
