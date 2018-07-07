@@ -1,5 +1,5 @@
-// #include <SPI.h>
-// #include "RF24.h"
+#include <SPI.h>
+#include "RF24.h"
 #include <Rotary.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -7,11 +7,9 @@
 
 #include <myPushButton.h>
 #include <debugHelper.h>
-// #include <esk8Lib.h>
+#include <esk8Lib.h>
 
-#include "BLEDevice.h"
-#include <ESP8266VESC.h>
-#include "VescUart.h"
+// #include "VescUart.h"
 
 //--------------------------------------------------------------
 
@@ -32,66 +30,11 @@ ESP8266VESC esp8266VESC = ESP8266VESC();
 long volatile lastSendGetValuesRequestToVesc = 0;
 bool volatile valuesUpdated = true;
 
-static BLEUUID serviceUUID("0000ffe0-0000-1000-8000-00805f9b34fb");
-static BLEUUID    charUUID("0000ffe1-0000-1000-8000-00805f9b34fb");
-
-static BLEAddress *pServerAddress;
-static boolean doConnect = false;
-static boolean connected = false;
-static BLERemoteCharacteristic* pRemoteCharacteristic;
-static BLEClient *pClient;
-//--------------------------------------------------------------
-static void notifyCallback(
-		BLERemoteCharacteristic* pBLERemoteCharacteristic,
-		uint8_t* pData,
-		size_t length,
-		bool isNotify) {
-    debug.print(BLE, "--- N O T I F Y ---\n");
-	esp8266VESC.receivePacket(pData, length);
-	valuesUpdated = true;
-	if (lastSendGetValuesRequestToVesc != 0) {
-		debug.print(TIMING, "getValuesFromVesc took %ulms \n", millis()-lastSendGetValuesRequestToVesc);
-	}
-}
-//--------------------------------------------------------------
-bool connectToServer(BLEAddress pAddress) {
-	debug.print(BLE, "Connecting...\n");
-    // BLEClient *pClient  = BLEDevice::createClient();
-  	pClient = BLEDevice::createClient();
-    pClient->connect(pAddress);
-
-    BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
-    if (pRemoteService == nullptr) {
-		// Serial.print("Failed to find our service UUID: ");
-		return false;
-    }
-    pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
-    if (pRemoteCharacteristic == nullptr) {
-		// Serial.print("Failed to find our characteristic UUID: ");
-		return false;
-    }
-    pRemoteCharacteristic->registerForNotify(notifyCallback);
-}
-
-//--------------------------------------------------------------
-/*Scan for BLE servers and find the first one that advertises the service we are looking for. */
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
-	/* Called for each advertising BLE server. */
-  	void onResult(BLEAdvertisedDevice advertisedDevice) {
-		if (advertisedDevice.haveServiceUUID() && advertisedDevice.getServiceUUID().equals(serviceUUID)) {
-			debug.print(BLE, "Found VESC...\n");
-			advertisedDevice.getScan()->stop();
-
-			pServerAddress = new BLEAddress(advertisedDevice.getAddress());
-			doConnect = true;
-		} // Found our server
-  	}
-};
 //--------------------------------------------------------------------------------
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
-int getThrottleValue(int raw);
+int mapEncoderToThrottleValue(int raw);
 void setupEncoder();
 void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
@@ -173,7 +116,7 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 			if (throttle > 127) {
 			 	zeroThrottleReadyToSend();
 			}
-			// //debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
+			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
 			break;
 	}
 }
@@ -281,16 +224,13 @@ class OnlineStatus
 		bool serviceState(bool online) {
 			switch (state) {
 				case TN_ONLINE:
-					debug.print(ONLINE_STATUS, "-> TN_ONLINE \n");
 					state = online ? ST_ONLINE : TN_OFFLINE;
 					tSendToVESC.enable();
 					break;
 				case ST_ONLINE:
-					// lastControllerOnlineTime = millis();
 					state = online ? ST_ONLINE : TN_OFFLINE;
 					break;
 				case TN_OFFLINE:
-					debug.print(ONLINE_STATUS, "-> TN_OFFLINE \n");
 					state = online ? TN_ONLINE : ST_OFFLINE;
 					break;
 				case ST_OFFLINE:
@@ -322,17 +262,10 @@ void encoderInterruptHandler() {
 
 	bool canAccelerate = deadmanSwitch.isPressed();
 
-	// if (result == DIR_CW) {
-	// 	debug.print(HARDWARE, "DIR_CW %d \n", encoderCounter);		
-	// }
-	// else if (result == DIR_CCW) {
-	// 	debug.print(HARDWARE, "DIR_CCW %d \n", encoderCounter);
-	// }
-
 	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
-			throttle = getThrottleValue(encoderCounter);
+			throttle = mapEncoderToThrottleValue(encoderCounter);
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 			throttleChanged = true;
 		}
@@ -340,7 +273,7 @@ void encoderInterruptHandler() {
 	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
-			throttle = getThrottleValue(encoderCounter);
+			throttle = mapEncoderToThrottleValue(encoderCounter);
 			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, throttle);
 			throttleChanged = true;
 		}
@@ -374,15 +307,6 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
-
-	BLEDevice::init("ESP32 BLE Client");
-
-	BLEScan* pBLEScan = BLEDevice::getScan();
-	pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-	pBLEScan->setActiveScan(true);
-	debug.print(STARTUP, "BLE Start Scanning... \n");
-	pBLEScan->start(30);
-
 	throttleChanged = true;	// initialise
 
 	runner.startNow();
@@ -408,21 +332,10 @@ bool oldConnected = false;
 
 void loop() {
 
-	if (doConnect == true) {
-		if (connectToServer(*pServerAddress)) {
-			debug.print(BLE, "We are now connected to the BLE Server.\n");
-			connected = true;
-		} else {
-			debug.print(BLE, "We have failed to connect to the server; there is nothin more we will do.");
-		}
-		doConnect = false;
-	}
-
 	// vescCommsStatus.serviceState(connected);
 	// bool vescOnline = vescCommsStatus.getState() == ST_ONLINE;
 
 	if (millis() - connectedNow > 1000 && pClient != NULL) {
-    	connected = pClient->isConnected();
 
     	vescCommsStatus.serviceState(connected);
 	}
@@ -463,15 +376,15 @@ void codeForEncoderTask( void *parameter ) {
 
 		bool onlineStatusChanged = oldConnected == vescCommsStatus.isOnline();
 
-		// if (onlineStatusChanged) {
-		// 	if (connected == false) {
-		// 		setPixels(COLOUR_RED);
-		// 	}
-		// 	else {
-		// 		setPixels(COLOUR_OFF);	
-		// 	}
-		// }
-		// oldConnected = connected;
+		if (onlineStatusChanged) {
+			if (connected == false) {
+				setPixels(COLOUR_RED);
+			}
+			else {
+				setPixels(COLOUR_OFF);	
+			}
+		}
+		oldConnected = connected;
 
 		delay(10);
 	}
@@ -487,47 +400,22 @@ void setupEncoder() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
 }
-//--------------------------------------------------------------
-void sendGetValuesRequest() {
-
-	debug.print(BLE, "========= sendGetValuesRequest() ====== \n");
-	esp8266VESC.composeGetValuesRequest();
-
-	uint8_t* payload = esp8266VESC.getCommandPayload();
-	uint8_t payloadLength = esp8266VESC.getCommandPayloadLength();
-
-	pRemoteCharacteristic->writeValue(payload, payloadLength);
-}
-//--------------------------------------------------------------
-void sendNunchukValues(int throttle) {
-
-	debug.print(BLE, "sendNunchukValues(int %d) \n", throttle);
-	esp8266VESC.composeSendNunchukValuesRequest(127, throttle, 0, 0);
-
-	uint8_t* payload = esp8266VESC.getCommandPayload();
-	uint8_t payloadLength = esp8266VESC.getCommandPayloadLength();
-
-	pRemoteCharacteristic->writeValue(payload, payloadLength);
-}
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
-	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
-	// 	strip.setPixelColor(i, c);		
-	// }
-	// strip.show();
+	for (uint16_t i=0; i<NUM_PIXELS; i++) {
+		strip.setPixelColor(i, c);		
+	}
+	strip.show();
 }
 //--------------------------------------------------------------------------------
-int getThrottleValue(int raw) {
+int mapEncoderToThrottleValue(int raw) {
 	int mappedThrottle = 0;
+	int rawMiddle = 0;
 
-	if (raw >= 0) {
-		mappedThrottle = map(raw, 0, ENCODER_COUNTER_MAX, 127, 255);
+	if (raw >= rawMiddle) {
+		return = map(raw, rawMiddle, ENCODER_COUNTER_MAX, 127, 255);
 	}
-	else {
-		mappedThrottle = map(raw, ENCODER_COUNTER_MIN, 0, 0, 127);
-	}
-
-	return mappedThrottle;
+	return = map(raw, ENCODER_COUNTER_MIN, rawMiddle, 0, 127);
 }
 //--------------------------------------------------------------------------------
 void zeroThrottleReadyToSend() {
@@ -537,4 +425,3 @@ void zeroThrottleReadyToSend() {
     //debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
 }
 //--------------------------------------------------------------
-#define ONLINE_SYMBOL_WIDTH 	14
