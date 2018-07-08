@@ -182,6 +182,7 @@ void tSendToVESC_callback() {
 	int throttle = 127;
 
 	if (esk8.controllerOnline()) {
+		sendMessage();
 		debug.print(VESC_COMMS, "tSendToVESC: throttle=%d \n", esk8.controllerPacket.throttle);
 		throttle = esk8.controllerPacket.throttle;
 	}

@@ -89,7 +89,7 @@ int esk8Lib::checkForPacket() {
 	return false;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::sendThenReadPacket() {
+int esk8Lib::sendThenReadACK() {
 
 	_radio->stopListening();
 
@@ -110,9 +110,7 @@ int esk8Lib::sendThenReadPacket() {
 	long startedWaiting = millis();
 	_radio->startListening();
 	while (_radio->available() == false) {
-		Serial.print(".");
 		if (millis()-startedWaiting > 50) {
-			// timeout
 			return ERR_TIMEOUT;
 		}
 	}

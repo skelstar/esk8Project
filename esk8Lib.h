@@ -40,7 +40,7 @@ class esk8Lib
 
 		int checkForPacket();
 		int packetChanged();
-		int sendThenReadPacket();
+		int sendThenReadACK();
 		int controllerOnline();
 		int controllerOnline(int period);
 		int boardOnline();
