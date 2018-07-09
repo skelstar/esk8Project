@@ -29,8 +29,8 @@ esk8Lib esk8;
 
 //--------------------------------------------------------------
 
-long volatile lastSendGetValuesRequestToVesc = 0;
-bool volatile valuesUpdated = true;
+volatile long lastRxFromBoard = 0;
+volatile bool rxDataFromBoard = false;
 
 //--------------------------------------------------------------
 
@@ -88,8 +88,7 @@ int sendIntervalMs = 200;
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 
-
-
+//--------------------------------------------------------------
 
 #define 	NUM_PIXELS 		8
 
@@ -227,14 +226,14 @@ void tFlashLedsOff_callback() {
 	return;
 }
 //--------------------------------------------------------------
-//--------------------------------------------------------------
-
 void sendMessage() {
 
     int result = esk8.sendThenReadACK();
 
     if (result == esk8.CODE_SUCCESS) {
 		throttleChanged = false;
+		lastRxFromBoard = millis();
+		rxDataFromBoard = true;
         debug.print(COMMUNICATION, "sendMessage(): batteryVoltage:%.1f \n", esk8.boardPacket.batteryVoltage);
     }
     else if (result == esk8.ERR_NOT_SEND_OK) {
@@ -246,7 +245,6 @@ void sendMessage() {
     else {
         debug.print(COMMUNICATION, "tSendControllerValues_callback(): UNKNOWN_CODE %d \n", result);    
     }
-    // boardCommsState = serviceCommsState(boardCommsState, result == esk8.CODE_SUCCESS);
 }
 
 void tSendControllerValues_callback() {
@@ -255,6 +253,19 @@ void tSendControllerValues_callback() {
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
 //--------------------------------------------------------------
+void boardOfflineCallback() {
+	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
+	tFlashLeds.enable();
+	oledMessage("OFFLINE");
+}
+
+void boardOnlineCallback() {
+	// debug.print(ONLINE_STATUS, "onlineCallback();\n");	
+	tFlashLeds.disable();
+	u8g2.clearBuffer();
+	u8g2.sendBuffer();
+}
+//--------------------------------------------------------------
 #define	TN_ONLINE 	1
 #define	ST_ONLINE 	2
 #define	TN_OFFLINE  3
@@ -262,23 +273,35 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 class OnlineStatus 
 {
+	typedef void ( *StatusCallback )();
+
 	private:
 		uint8_t state = ST_ONLINE;
 		uint8_t oldstate = ST_ONLINE;
 
+		StatusCallback _offlineCallback;
+		StatusCallback _onlineCallback;
+
 	public:
+
+		OnlineStatus(StatusCallback offlineCallback, StatusCallback onlineCallback) {
+			_offlineCallback = offlineCallback;
+			_onlineCallback = onlineCallback;
+			state = ST_ONLINE;
+		}
 
 		bool serviceState(bool online) {
 			switch (state) {
 				case TN_ONLINE:
 					state = online ? ST_ONLINE : TN_OFFLINE;
-					tSendControllerValues.enable();
+					_onlineCallback();
 					break;
 				case ST_ONLINE:
 					state = online ? ST_ONLINE : TN_OFFLINE;
 					break;
 				case TN_OFFLINE:
 					state = online ? TN_ONLINE : ST_OFFLINE;
+					_offlineCallback();
 					break;
 				case ST_OFFLINE:
 					state = online ? TN_ONLINE : ST_OFFLINE;
@@ -296,7 +319,7 @@ class OnlineStatus
 		bool isOnline() { return state == ST_ONLINE; }
 };
 
-OnlineStatus vescCommsStatus;
+OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 
 //------------------------------------------------------------------------------
 
@@ -326,7 +349,6 @@ void encoderInterruptHandler() {
 //--------------------------------------------------------------
 
 volatile uint32_t otherNode;
-volatile long lastRxMillis = 0;
 #define COMMS_TIMEOUT_PERIOD 	1000
 
 /**************************************************************
@@ -345,7 +367,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
     // debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
-	debug.setFilter( STARTUP | COMMUNICATION );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	debug.setFilter( STARTUP | COMMUNICATION | HARDWARE | ONLINE_STATUS );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/Controller.ino \n");
@@ -367,6 +389,9 @@ void setup() {
  	// runner.addTask(tFastFlash);
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
+	tSendControllerValues.enable();
+
+	boardCommsStatus.serviceState(false);
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -383,15 +408,23 @@ void setup() {
 long nowms = 0;
 long connectedNow = 0;
 bool oldConnected = false;
+#define BOARD_OFFLINE_PERIOD	1000
 
 void loop() {
 
-	bool connected = true;
+	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
-	vescCommsStatus.serviceState(connected);
+	boardCommsStatus.serviceState(connected);
 
 	if (throttleChanged && connected) {
 		tSendControllerValues.restart();
+	}
+	else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
+		rxDataFromBoard = false;
+		char buf[100];
+		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
+		long now = millis();
+		oled2LineMessage("BATT. VOLTS", buf, "V");
 	}
 
 	runner.execute();
@@ -451,7 +484,7 @@ void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
 	throttle = 127;
 	throttleChanged = true;
-    //debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
+    debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
 }
 //--------------------------------------------------------------
 void oled2LineMessage(char* line1, char* line2, char* unit) {
@@ -475,3 +508,14 @@ void oled2LineMessage(char* line1, char* line2, char* unit) {
 
 	u8g2.sendBuffer();
 }
+//--------------------------------------------------------------
+void oledMessage(char* line1) {
+	
+	u8g2.clearBuffer();
+	// line1
+	u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
+	u8g2_uint_t width = u8g2.getStrWidth((const char*) line1);
+	u8g2.drawStr(64-(width/2), (32/2)+(18/2), line1);
+	u8g2.sendBuffer();
+}
+//--------------------------------------------------------------
