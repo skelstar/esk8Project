@@ -57,13 +57,10 @@ void zeroThrottleReadyToSend();
 
 //--------------------------------------------------------------
 
-// int sendIntervalMs = 200;
-
 bool throttleChanged = false;
 int throttle = 127;
 
-#define SEND_TO_BOARD_INTERVAL_MS 			500
-#define GET_VALUES_FROM_VESC_INTERVAL_MS	5000
+#define SEND_TO_BOARD_INTERVAL_MS 			400
 
 //--------------------------------------------------------------
 
@@ -80,11 +77,8 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 #define ROLE_BOARD        1
 #define ROLE_CONTROLLER    0
 
-//int role = ROLE_MASTER;
 int role = ROLE_CONTROLLER;
 bool radioNumber = 1;
-
-int sendIntervalMs = 200;
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 
@@ -217,11 +211,13 @@ void tFlashLeds_onDisable() {
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
+	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
 	setPixels(tFlashLedsColour);
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
+	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
 	setPixels(COLOUR_OFF);
 	return;
 }
@@ -381,7 +377,6 @@ void setup() {
 	esk8.begin(&radio, role, radioNumber, &debug);
 
 	u8g2.begin();
-	oled2LineMessage("AVG MOTOR CURRENT", "1000", "mAH");
 
 	sendMessage();
 
@@ -425,6 +420,10 @@ void loop() {
 		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
 		long now = millis();
 		oled2LineMessage("BATT. VOLTS", buf, "V");
+	}
+	else if (esk8.controllerPacket.throttle != 127) {
+		u8g2.clearBuffer();
+		u8g2.sendBuffer();
 	}
 
 	runner.execute();
