@@ -68,9 +68,9 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 //--------------------------------------------------------------
 
-#define SPI_MOSI        23 // Blue
-#define SPI_MISO        19 // Orange
-#define SPI_CLK			18 // Yellow
+// #define SPI_MOSI        23 // Blue
+// #define SPI_MISO        19 // Orange
+// #define SPI_CLK			18 // Yellow
 #define SPI_CE          33    // white/purple
 #define SPI_CS          26  // green
 
@@ -374,7 +374,7 @@ void setup() {
 
     btStop();   // turn bluetooth module off
 
-	esk8.begin(&radio, role, radioNumber, &debug);
+	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber, &debug);
 
 	u8g2.begin();
 
