@@ -86,7 +86,7 @@ RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 
 #define 	NUM_PIXELS 		8
 
-#define BRIGHTNESS	5
+CRGB leds[NUM_PIXELS];
 
 CRGB COLOUR_OFF = CRGB::Black;
 CRGB COLOUR_RED = CRGB::Red;
@@ -99,20 +99,6 @@ CRGB COLOUR_BRAKING = CRGB::Crimson;
 CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
 
 CRGB COLOUR_WHITE = CRGB::White;
-
-CRGB leds[NUM_PIXELS];
-
-// Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
-
-// uint32_t COLOUR_OFF = strip.Color(0, 0, 0);
-// uint32_t COLOUR_RED = strip.Color(255, 0, 0);
-// uint32_t COLOUR_GREEN = strip.Color(0, 255, 0);
-// uint32_t COLOUR_BLUE = strip.Color(0, 0, 255);
-// uint32_t COLOUR_WHITE = strip.Color(255, 255, 255);
-
-// uint32_t COLOUR_BRAKING = COLOUR_GREEN;
-// uint32_t COLOUR_THROTTLE_IDLE = COLOUR_WHITE;
-// uint32_t COLOUR_ACCELERATING = COLOUR_BLUE;
 
 //--------------------------------------------------------------------------------
 
@@ -368,6 +354,8 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
+	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
+
 	throttleChanged = true;	// initialise
 
     radio.begin();
@@ -464,7 +452,7 @@ void setupEncoder() {
 //--------------------------------------------------------------------------------
 void setPixels(CRGB c) {
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		leds[i] = c;		
+		leds[i] = c/10;		
 	}
 	FastLED.show();
 }
