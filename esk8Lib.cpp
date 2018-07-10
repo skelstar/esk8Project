@@ -13,7 +13,7 @@ byte addresses[][6] = {"1Node","2Node"};
 #define		RADIO_0			0
 #define 	PIPE_NUMBER		1
 
-#define 	CONTROLLER_SEND_INTERVAL	200 + 50
+#define 	CONTROLLER_SEND_INTERVAL	400 + 50
 #define 	BOARD_SEND_INTERVAL			4000
 
 volatile long _lastRxMillis;

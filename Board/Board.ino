@@ -21,27 +21,11 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 //--------------------------------------------------------------
 
-// struct Status_Type {
-// 	uint8_t status;
-// 	bool change;
-// };
-
-// Status_Type controllerStatus;
-// Status_Type vescStatus;
-
 bool controllerStatusChanged = true;
 bool controllerOnline = false;
 bool vescStatusChanged = true;
 int currentThrottle = 127;
 int currentEncoderButton = 0;
-
-//--------------------------------------------------------------------------------
-
-// #define LED_PIN     4
-// #define NUM_LEDS    17
-// #define BRIGHTNESS  64
-
-// Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
 
 //--------------------------------------------------------------------------------
 
@@ -52,11 +36,6 @@ int currentEncoderButton = 0;
 #define 	OLED_ADDR		0x3c
 
 bool radioNumber = 0;
-// blank DEV board
-// #define 	SPI_CE			22	// white - do we need it?
-// #define 	SPI_CS			5	// green
-// const char boardSetup[] = "DEV Board";
-
 // WEMOS TTGO
 #define 	SPI_CE			33	// white - do we need it?
 #define 	SPI_CS			26	// green
@@ -73,6 +52,12 @@ esk8Lib esk8;
 #define 	CONTROLLER_ONLINE_MS	500
 
 //--------------------------------------------------------------------------------
+// #define	STARTUP 			1 << 0
+// #define DEBUG 				1 << 1
+// #define CONTROLLER_COMMS 	1 << 2
+// #define HARDWARE			1 << 3
+// #define VESC_COMMS			1 << 4
+// #define ONLINE_STATUS		1 << 5
 #define	STARTUP 			1 << 0
 #define WARNING 			1 << 1
 #define ERROR 				1 << 2
@@ -201,6 +186,12 @@ void setup()
 
 	debug.init();
 
+	// debug.addOption(STARTUP, "STARTUP");
+	// debug.addOption(DEBUG, "DEBUG");
+	// debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS ");
+	// debug.addOption(HARDWARE, "HARDWARE");
+	// debug.addOption(VESC_COMMS, "VESC_COMMS");
+	// debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS");
@@ -209,7 +200,8 @@ void setup()
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(STATE, "STATE");
 
-	debug.setFilter( STARTUP );
+	//debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -220,17 +212,6 @@ void setup()
     // Setup serial connection to VESC
     Serial1.begin(9600);
 
-  //   strip.setBrightness(BRIGHTNESS);
-  //   strip.begin();
-  //   delay(50);
-  //   strip.show(); // Initialize all pixels to 'off'
-  //   for (int i=0; i<NUM_LEDS; i++) {
-		// strip.setPixelColor(i, strip.Color(0, 0, 0));
-  //   }
-  //   strip.show();
-
-    // initOLED();
-
     radio.begin();
 
 	esk8.begin(&radio, ROLE_BOARD, radioNumber, &debug);
@@ -238,6 +219,8 @@ void setup()
 	runner.startNow();
 	runner.addTask(tSendToVESC);
 	tSendToVESC.enable();
+
+	debug.print(STARTUP, "Starting Core 0 \n");
 
 	xTaskCreatePinnedToCore (
 		codeForRF24CommsRxTask,	// function
@@ -412,7 +395,7 @@ bool getVescValues() {
 	    
 		//Serial.println("rpm = " + String(vescValues.rpm) + "rpm");
 
-		Serial.println("Battery voltage = " + String(vescValues.inputVoltage) + "V");
+		// Serial.println("Battery voltage = " + String(vescValues.inputVoltage) + "V");
 
 		// Serial.println("Drawn energy (mAh) = " + String(vescValues.ampHours) + "mAh");
 		// Serial.println("Charged energy (mAh) = " + String(vescValues.ampHoursCharged) + "mAh");

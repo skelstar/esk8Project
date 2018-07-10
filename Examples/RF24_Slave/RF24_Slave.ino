@@ -32,12 +32,20 @@ esk8Lib esk8;
 
 /**********************************************************/
 
-#define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
-#define COMMUNICATION 	1 << 4
-
+// #define	STARTUP 		1 << 0
+// #define WARNING 		1 << 1
+// #define ERROR 			1 << 2
+// #define DEBUG 			1 << 3
+// #define COMMUNICATION 	1 << 4
+#define	STARTUP 			1 << 0
+#define WARNING 			1 << 1
+#define ERROR 				1 << 2
+#define DEBUG 				1 << 3
+#define CONTROLLER_COMMS 	1 << 4
+#define HARDWARE			1 << 5
+#define VESC_COMMS			1 << 6
+#define ONLINE_STATUS		1 << 7
+#define STATE 				1 << 8
 debugHelper debug;
 
 //--------------------------------------------------------------
