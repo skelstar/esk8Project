@@ -2,8 +2,7 @@
 #include <SPI.h>
 #include "RF24.h"
 #include <esk8Lib.h>
-// #include <Adafruit_NeoPixel.h>
-// #include <U8g2lib.h>
+#include <Adafruit_NeoPixel.h>
 
 #include <ESP8266VESC.h>
 #include "VescUart.h"
@@ -22,6 +21,14 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 //--------------------------------------------------------------
 
+// struct Status_Type {
+// 	uint8_t status;
+// 	bool change;
+// };
+
+// Status_Type controllerStatus;
+// Status_Type vescStatus;
+
 bool controllerStatusChanged = true;
 bool controllerOnline = false;
 bool vescStatusChanged = true;
@@ -30,13 +37,26 @@ int currentEncoderButton = 0;
 
 //--------------------------------------------------------------------------------
 
-// #define 	OLED_GND		12
-// #define 	OLED_PWR		27
-// #define 	OLED_SCL		22//25	// std ESP32
-// #define 	OLED_SDA		21//32	// std ESP32
-// #define 	OLED_ADDR		0x3c
+// #define LED_PIN     4
+// #define NUM_LEDS    17
+// #define BRIGHTNESS  64
+
+// Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUM_LEDS, LED_PIN, NEO_GRBW + NEO_KHZ800);
+
+//--------------------------------------------------------------------------------
+
+#define 	OLED_GND		12
+#define 	OLED_PWR		27
+#define 	OLED_SCL		25	// std ESP32
+#define 	OLED_SDA		32	// std ESP32
+#define 	OLED_ADDR		0x3c
 
 bool radioNumber = 0;
+// blank DEV board
+// #define 	SPI_CE			22	// white - do we need it?
+// #define 	SPI_CS			5	// green
+// const char boardSetup[] = "DEV Board";
+
 // WEMOS TTGO
 #define 	SPI_CE			33	// white - do we need it?
 #define 	SPI_CS			26	// green
@@ -55,6 +75,7 @@ esk8Lib esk8;
 //--------------------------------------------------------------------------------
 #define	STARTUP 			1 << 0
 #define WARNING 			1 << 1
+#define ERROR 				1 << 2
 #define DEBUG 				1 << 3
 #define CONTROLLER_COMMS 	1 << 4
 #define HARDWARE			1 << 5
@@ -66,11 +87,7 @@ debugHelper debug;
 
 volatile uint32_t otherNode;
 volatile long lastControllerPacketTime = 0;
-
-//--------------------------------------------------------------
-
-// U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE, OLED_SCL, OLED_SDA);
-//  #define 	OLED_CONTRAST_HIGH	100		// 256 highest
+volatile float packetData = 0.1;
 
 //--------------------------------------------------------------
 void loadPacketForController(bool gotDataFromVesc) {
@@ -80,8 +97,10 @@ void loadPacketForController(bool gotDataFromVesc) {
 	}
 	else {
 		// dummy data
-		esk8.boardPacket.batteryVoltage = 0;
-		debug.print(VESC_COMMS, "VESC OFFLINE \n");
+		esk8.boardPacket.batteryVoltage = packetData;
+		packetData += 0.1;
+
+		debug.print(VESC_COMMS, "VESC OFFLINE: mock data: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
 }
 
@@ -168,6 +187,7 @@ void tSendToVESC_callback() {
 	}
 	esp8266VESC.setNunchukValues(127, throttle, 0, 0);
 }
+
 //--------------------------------------------------------------------------------
 
 TaskHandle_t RF24CommsRxTask;
@@ -181,16 +201,15 @@ void setup()
 
 	debug.init();
 
-	debug.addOption(STARTUP, "STARTUP");
-	debug.addOption(ERROR, "ERROR");
 	debug.addOption(DEBUG, "DEBUG");
+	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS");
-	debug.addOption(HARDWARE, "HARDWARE");
 	debug.addOption(VESC_COMMS, "VESC_COMMS");
+	debug.addOption(ERROR, "ERROR");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(STATE, "STATE");
 
-	debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS );
+	debug.setFilter( STARTUP );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -199,20 +218,26 @@ void setup()
 	print_reset_reason(rtc_get_reset_reason(1), 1);
 
     // Setup serial connection to VESC
-
     Serial1.begin(9600);
-	debug.print(STARTUP, "Serial1 \n");
+
+  //   strip.setBrightness(BRIGHTNESS);
+  //   strip.begin();
+  //   delay(50);
+  //   strip.show(); // Initialize all pixels to 'off'
+  //   for (int i=0; i<NUM_LEDS; i++) {
+		// strip.setPixelColor(i, strip.Color(0, 0, 0));
+  //   }
+  //   strip.show();
+
+    // initOLED();
 
     radio.begin();
-	debug.print(STARTUP, "radio \n");
 
 	esk8.begin(&radio, ROLE_BOARD, radioNumber, &debug);
-	debug.print(STARTUP, "esk8 \n");
 
 	runner.startNow();
 	runner.addTask(tSendToVESC);
 	tSendToVESC.enable();
-	debug.print(STARTUP, "runner \n");
 
 	xTaskCreatePinnedToCore (
 		codeForRF24CommsRxTask,	// function
@@ -226,13 +251,7 @@ void setup()
 	debug.print(STARTUP, "loop() core: %d \n", xPortGetCoreID());
 }
 //*************************************************************
-
-// long updateOLEDtime = 0;
-// #define UPDATE_OLED_PERIOD	1050
-
 void loop() {
-
-	debug.print(STARTUP, ".");
 
 	bool timeToUpdateController = millis() - intervalStarts > esk8.getSendInterval();
 
@@ -257,7 +276,6 @@ void loop() {
 long nowms = 0;
 
 void codeForRF24CommsRxTask( void *parameter ) {
-	
 	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
 
 	for (;;) {
@@ -265,10 +283,8 @@ void codeForRF24CommsRxTask( void *parameter ) {
 		// if (millis()-nowms > 1000) {
 		// 	long oldnow = nowms;
 		// 	nowms = millis();
-		// 	debug.print(DEBUG, "%u %d \n", millis()/1000, millis()-oldnow);
+		// 	debug.print(STARTUP, "%u %d \n", millis()/1000, millis()-oldnow);
 		// }
-
-		debug.print(STARTUP, "-");
 
 		haveControllerData = esk8.checkForPacket();
 
@@ -283,60 +299,6 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	vTaskDelete(NULL);
 }
 //*************************************************************
-//--------------------------------------------------------------------------------
-// void initOLED() {
-
-//     // OLED
-//     // pinMode(OLED_GND, OUTPUT); digitalWrite(OLED_GND, LOW);
-//     // pinMode(OLED_PWR, OUTPUT); digitalWrite(OLED_PWR, HIGH);
-
-// 	u8g2.begin();
-// 	u8g2.setContrast(OLED_CONTRAST_HIGH);
-
-// 	u8g2.clearBuffer();
-// 	u8g2.setFont(u8g2_font_logisoso46_tf);	// u8g2_font_inr38_mr u8g2_font_logisoso46_tf u8g2_font_logisoso26_tf
-
-// 	int width = u8g2.getStrWidth("GO!");
-// 	int height = 46;
-
-// 	u8g2.drawStr((128/2)-(width/2), (64/2) + (height/2), "GO!");
-// 	u8g2.sendBuffer();
-// }
-//--------------------------------------------------------------
-// void showOnlineOfflineOLED(bool controllerOnline, bool vescOnline) {
-// 	u8g2.clearBuffer();
-// 	u8g2.setFont(u8g2_font_logisoso46_tf);	// u8g2_font_inr38_mr u8g2_font_logisoso46_tf u8g2_font_logisoso26_tf
-
-// 	int width = u8g2.getStrWidth("* *");
-// 	int height = 46;
-
-// 	if (controllerOnline && vescOnline) {
-// 		u8g2.drawStr((128/2)-(width/2), (64/2) + (height/2), "* *");
-// 	}
-// 	else if (controllerOnline && !vescOnline) {
-// 		u8g2.drawStr((128/2)-(width/2), (64/2) + (height/2), "* -");
-// 	}
-// 	else if (!controllerOnline && vescOnline) {
-// 		u8g2.drawStr((128/2)-(width/2), (64/2) + (height/2), "- *");
-// 	}
-// 	else {
-// 		u8g2.drawStr((128/2)-(width/2), (64/2) + (height/2), "- -");
-// 	}
-// 	u8g2.sendBuffer();
-// }
-// //--------------------------------------------------------------
-// void showBatteryVoltage() {
-// 	u8g2.clearBuffer();
-// 	u8g2.setFont(u8g2_font_logisoso46_tf);	// u8g2_font_inr38_mr u8g2_font_logisoso46_tf u8g2_font_logisoso26_tf
-
-// 	int width = u8g2.getStrWidth("39.1");
-// 	int height = 46;
-
-// 	u8g2.setCursor(0, (64/2) + (height/2));
-//  	u8g2.print(esk8.boardPacket.batteryVoltage, 1);
-// 	u8g2.sendBuffer();
-// }
-// //--------------------------------------------------------------
 void updateLEDs() {
 	// return;
 
