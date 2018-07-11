@@ -1,7 +1,6 @@
 #include <SPI.h>
 #include "RF24.h"
 #include <Rotary.h>
-#include <FastLED.h>
 
 #include <TaskScheduler.h>
 
@@ -10,8 +9,18 @@
 #include <esk8Lib.h>
 
 #include <U8g2lib.h>
+#include <Adafruit_NeoPixel.h>
 
 // #include "VescUart.h"
+//--------------------------------------------------------------------------------
+
+#define ENCODER_BUTTON_PIN	34	// 36 didn't work
+#define ENCODER_PIN_A		16
+#define ENCODER_PIN_B		4
+
+#define DEADMAN_SWITCH_PIN	25
+
+#define	PIXEL_PIN			5
 
 //--------------------------------------------------------------
 
@@ -37,7 +46,35 @@ volatile bool rxDataFromBoard = false;
 U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
 
 //--------------------------------------------------------------------------------
+#define BRIGHTNESS	20
 
+#define 	NUM_PIXELS 		8
+
+// CRGB leds[NUM_PIXELS];
+
+// CRGB COLOUR_OFF = CRGB::Black;
+// CRGB COLOUR_RED = CRGB::Red;
+// CRGB COLOUR_GREEN = CRGB::Green;
+// CRGB COLOUR_BLUE = CRGB::Blue;
+// CRGB COLOUR_PINK = CRGB::Pink;
+// CRGB COLOUR_ACCELERATING = CRGB::Navy;
+// CRGB COLOUR_BRAKING = CRGB::Crimson;
+// CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
+// CRGB COLOUR_WHITE = CRGB::White;
+
+Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+uint32_t COLOUR_OFF = leds.Color(0, 0, 0);
+uint32_t COLOUR_RED = leds.Color(255, 0, 0);
+uint32_t COLOUR_GREEN = leds.Color(0, 255, 0);
+uint32_t COLOUR_BLUE = leds.Color(0, 0, 255);
+uint32_t COLOUR_PINK = leds.Color(128, 0, 100);
+
+uint32_t COLOUR_ACCELERATING = COLOUR_BLUE;
+uint32_t COLOUR_BRAKING = COLOUR_PINK;
+uint32_t COLOUR_THROTTLE_IDLE = COLOUR_GREEN;
+
+//--------------------------------------------------------------
 const char compile_date[] = __DATE__ " " __TIME__;
 
 int mapEncoderToThrottleValue(int raw);
@@ -45,15 +82,6 @@ void setupEncoder();
 void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
 
-//--------------------------------------------------------------------------------
-
-#define ENCODER_BUTTON_PIN	34	// 36 didn't work
-#define ENCODER_PIN_A		16
-#define ENCODER_PIN_B		4
-
-#define DEADMAN_SWITCH_PIN	25
-
-#define	PIXEL_PIN			5
 
 //--------------------------------------------------------------
 
@@ -81,24 +109,6 @@ int role = ROLE_CONTROLLER;
 bool radioNumber = 1;
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
-
-//--------------------------------------------------------------
-
-#define 	NUM_PIXELS 		8
-
-CRGB leds[NUM_PIXELS];
-
-CRGB COLOUR_OFF = CRGB::Black;
-CRGB COLOUR_RED = CRGB::Red;
-CRGB COLOUR_GREEN = CRGB::Green;
-CRGB COLOUR_BLUE = CRGB::Blue;
-CRGB COLOUR_PINK = CRGB::Pink;
-
-CRGB COLOUR_ACCELERATING = CRGB::Navy;
-CRGB COLOUR_BRAKING = CRGB::Crimson;
-CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
-
-CRGB COLOUR_WHITE = CRGB::White;
 
 //--------------------------------------------------------------------------------
 
@@ -153,16 +163,16 @@ int encoderCounter = 0;
 
 Scheduler runner;
 
-#define FAST_FLASH_DURATION     300
+// #define FAST_FLASH_DURATION     300
 
-void tFastFlash_callback();
-Task tFastFlash(FAST_FLASH_DURATION, 2, &tFastFlash_callback);
-void tFastFlash_callback() {
-    if (tFastFlash.isLastIteration()) {
-        //setPixels(COLOUR_OFF);
-        tFastFlash.disable();
-    }
-}
+// void tFastFlash_callback();
+// Task tFastFlash(FAST_FLASH_DURATION, 2, &tFastFlash_callback);
+// void tFastFlash_callback() {
+//     if (tFastFlash.isLastIteration()) {
+//         //setPixels(COLOUR_OFF);
+//         tFastFlash.disable();
+//     }
+// }
 
 // void fastFlashLed(CRGB c) {
 // 	setPixels(c);
@@ -177,7 +187,7 @@ void tFastFlash_callback() {
 
 //------------------------------------------------------------------------------
 
-CRGB tFlashLedsColour = COLOUR_RED;
+// uint32_t tFlashLedsColour = COLOUR_RED;
 
 bool tFlashLeds_onEnable();
 void tFlashLeds_onDisable();
@@ -187,7 +197,7 @@ void tFlashLedsOff_callback();
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	setPixels(tFlashLedsColour);
+	setPixels(COLOUR_RED);
 	tFlashLeds.enable();
     return true;
 }
@@ -198,7 +208,7 @@ void tFlashLeds_onDisable() {
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
 	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
-	setPixels(tFlashLedsColour);
+	setPixels(COLOUR_RED);
 	return;
 }
 void tFlashLedsOff_callback() {
@@ -314,6 +324,7 @@ void encoderInterruptHandler() {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
 			throttleChanged = true;
 		}
 	}
@@ -321,6 +332,7 @@ void encoderInterruptHandler() {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
 			throttleChanged = true;
 		}
 	}
@@ -347,12 +359,14 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	debug | STARTUP | COMMUNICATION | ERROR | HARDWARE);
-	debug.setFilter( STARTUP | COMMUNICATION );
+	debug.setFilter( STARTUP | HARDWARE );
+
+	leds.setBrightness(BRIGHTNESS);
+	leds.begin();
+	leds.show();
 
 	Serial.printf("%s \n", compile_date);
     Serial.printf("esk8Project/Controller.ino \n");
-
-	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
 
 	throttleChanged = true;	// initialise
 
@@ -446,11 +460,11 @@ void setupEncoder() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
 }
 //--------------------------------------------------------------------------------
-void setPixels(CRGB c) {
-	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
-	// 	leds[i] = c/10;		
-	// }
-	// FastLED.show();
+void setPixels(uint32_t c) {
+	for (uint16_t i=0; i<NUM_PIXELS; i++) {
+		leds.setPixelColor(i, c);
+	}
+	leds.show();
 }
 //--------------------------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
