@@ -479,6 +479,7 @@ int mapEncoderToThrottleValue(int raw) {
 //--------------------------------------------------------------------------------
 void zeroThrottleReadyToSend() {
 	encoderCounter = 0;
+	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
 	throttle = 127;
 	throttleChanged = true;
     debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
