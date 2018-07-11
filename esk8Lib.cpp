@@ -23,16 +23,16 @@ volatile long _lastRxMillis;
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) {
+void esk8Lib::begin(RF24 *radio, int role, int radioNumber) {	//, debugHelper *debug) {
 
 	_radio = radio;
 	_role = role;
 
-	_debug = debug;
+	// _debug = debug;
 
-	_debug->print(STARTUP, "esk8Lib begin(RF24) \n");
-	_debug->print(STARTUP, "Radio: %d \n", radioNumber);
-	_debug->print(STARTUP, "Role: %s \n ", role == ROLE_CONTROLLER ? "MASTER" : "SLAVE");
+	// _debug->print(STARTUP, "esk8Lib begin(RF24) \n");
+	// _debug->print(STARTUP, "Radio: %d \n", radioNumber);
+	// _debug->print(STARTUP, "Role: %s \n ", role == ROLE_CONTROLLER ? "MASTER" : "SLAVE");
 
 	_radio->setPALevel(RF24_PA_MAX);
 

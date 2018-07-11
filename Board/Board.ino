@@ -201,7 +201,7 @@ void setup()
 	debug.addOption(STATE, "STATE");
 
 	//debug.setFilter( STARTUP );
-	debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS );
+	debug.setFilter( STARTUP );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -262,12 +262,6 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
 
 	for (;;) {
-
-		// if (millis()-nowms > 1000) {
-		// 	long oldnow = nowms;
-		// 	nowms = millis();
-		// 	debug.print(STARTUP, "%u %d \n", millis()/1000, millis()-oldnow);
-		// }
 
 		haveControllerData = esk8.checkForPacket();
 

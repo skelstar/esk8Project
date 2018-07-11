@@ -236,13 +236,13 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 //--------------------------------------------------------------
 void boardOfflineCallback() {
-	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
+	debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	tFlashLeds.enable();
 	oledMessage("OFFLINE");
 }
 
 void boardOnlineCallback() {
-	// debug.print(ONLINE_STATUS, "onlineCallback();\n");	
+	debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	tFlashLeds.disable();
 	u8g2.clearBuffer();
 	u8g2.sendBuffer();
@@ -314,7 +314,6 @@ void encoderInterruptHandler() {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
 			throttleChanged = true;
 		}
 	}
@@ -322,7 +321,6 @@ void encoderInterruptHandler() {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoderCounter: %d, throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
 			throttleChanged = true;
 		}
 	}
@@ -348,11 +346,11 @@ void setup() {
 	debug.addOption(BLE, "BLE");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
-    // debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
-	debug.setFilter( STARTUP | COMMUNICATION | HARDWARE | ONLINE_STATUS );	// DEBUG | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+ //    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	debug | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+	debug.setFilter( STARTUP | COMMUNICATION );
 
-	debug.print(STARTUP, "%s \n", compile_date);
-    debug.print(STARTUP, "esk8Project/Controller.ino \n");
+	Serial.printf("%s \n", compile_date);
+    Serial.printf("esk8Project/Controller.ino \n");
 
 	FastLED.addLeds<NEOPIXEL, PIXEL_PIN>(leds, NUM_PIXELS);
 
@@ -362,7 +360,8 @@ void setup() {
 
     btStop();   // turn bluetooth module off
 
-	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber, &debug);
+	// esk8.begin(&radio, ROLE_CONTROLLER, radioNumber, &debug);
+	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
 
 	u8g2.begin();
 
@@ -423,9 +422,6 @@ void loop() {
 **************************************************************/
 void codeForEncoderTask( void *parameter ) {
 
-	long task0now = 0;
-	long oldConnected = true;
-
 	setupEncoder();
 
 	// then loop forever	
@@ -451,10 +447,10 @@ void setupEncoder() {
 }
 //--------------------------------------------------------------------------------
 void setPixels(CRGB c) {
-	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		leds[i] = c/10;		
-	}
-	FastLED.show();
+	// for (uint16_t i=0; i<NUM_PIXELS; i++) {
+	// 	leds[i] = c/10;		
+	// }
+	// FastLED.show();
 }
 //--------------------------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {

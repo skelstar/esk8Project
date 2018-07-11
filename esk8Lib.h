@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <RF24.h>
-#include <debugHelper.h>
+// #include <debugHelper.h>
 
 //--------------------------------------------------------------------------------
 
@@ -19,12 +19,12 @@ struct ControllerStruct {
 	int encoderButton;
 };
 
-#define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
-#define COMMUNICATION 	1 << 4
-#define VESC_COMMS		1 << 5
+// #define	STARTUP 		1 << 0
+// #define WARNING 		1 << 1
+// #define ERROR 			1 << 2
+// #define DEBUG 			1 << 3
+// #define COMMUNICATION 	1 << 4
+// #define VESC_COMMS		1 << 5
 
 class esk8Lib
 {
@@ -36,8 +36,10 @@ class esk8Lib
 		};
 
 		esk8Lib();
-		void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
-
+		// void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
+		
+		void begin(RF24 *radio, int role, int radioNumber);
+		
 		int checkForPacket();
 		int packetChanged();
 		int sendThenReadACK();
@@ -57,7 +59,7 @@ class esk8Lib
 		RF24 *_radio;
 		int _role;
 		long _lastPacketReadTime;
-		debugHelper *_debug;
+		// debugHelper *_debug;
 		// ControllerStruct _oldControllerPacket;
 
 };
