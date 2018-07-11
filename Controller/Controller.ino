@@ -5,6 +5,7 @@
 #include <TaskScheduler.h>
 
 #include <myPushButton.h>
+#include <myPowerButtonManager.h>
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
@@ -75,6 +76,7 @@ uint32_t COLOUR_BRAKING = COLOUR_PINK;
 uint32_t COLOUR_THROTTLE_IDLE = COLOUR_GREEN;
 
 //--------------------------------------------------------------
+
 const char compile_date[] = __DATE__ " " __TIME__;
 
 int mapEncoderToThrottleValue(int raw);
@@ -82,6 +84,50 @@ void setupEncoder();
 void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
 
+//--------------------------------------------------------------
+
+int powerButtonIsPressed();
+void powerupEvent(int state);
+
+myPowerButtonManager powerButton(DEADMAN_SWITCH_PIN, HIGH, 3000, 3000, powerupEvent, powerButtonIsPressed);
+
+int powerButtonIsPressed() {
+	return digitalRead(DEADMAN_SWITCH_PIN) == 0 
+		&& digitalRead(ENCODER_BUTTON_PIN) == 0;
+}
+
+void powerupEvent(int state) {
+
+	switch (state) {
+		case powerButton.TN_TO_POWERING_UP:
+			setPixels(COLOUR_GREEN);
+			debug.print(STARTUP, "TN_TO_POWERING_UP \n");
+			break;
+		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
+			setPixels(COLOUR_OFF);
+			debug.print(STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
+			break;
+		case powerButton.TN_TO_RUNNING:
+			debug.print(STARTUP, "TN_TO_RUNNING \n");
+			break;
+		case powerButton.TN_TO_POWERING_DOWN:
+			setPixels(COLOUR_RED);
+			debug.print(STARTUP, "TN_TO_POWERING_DOWN \n");
+			break;
+		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
+			debug.print(STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
+			break;
+		case powerButton.TN_TO_POWER_OFF:
+			setPixels(COLOUR_OFF);
+			u8g2.clearBuffer();
+			u8g2.sendBuffer();
+			debug.print(STARTUP, "TN_TO_POWER_OFF \n");
+			delay(100);
+			esp_deep_sleep_start();
+			Serial.println("This will never be printed");
+			break;
+	}
+}
 
 //--------------------------------------------------------------
 
@@ -365,6 +411,8 @@ void setup() {
 	leds.begin();
 	leds.show();
 
+	powerButton.begin();
+
 	Serial.printf("%s \n", compile_date);
     Serial.printf("esk8Project/Controller.ino \n");
 
@@ -421,11 +469,14 @@ void loop() {
 		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
 		long now = millis();
 		oled2LineMessage("BATT. VOLTS", buf, "V");
+		setPixels(COLOUR_OFF);
 	}
 	else if (esk8.controllerPacket.throttle != 127) {
 		u8g2.clearBuffer();
 		u8g2.sendBuffer();
 	}
+
+	powerButton.serviceButton();
 
 	runner.execute();
 
