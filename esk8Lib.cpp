@@ -13,7 +13,7 @@ byte addresses[][6] = {"1Node","2Node"};
 #define		RADIO_0			0
 #define 	PIPE_NUMBER		1
 
-#define 	CONTROLLER_SEND_INTERVAL	200 + 50
+#define 	CONTROLLER_SEND_INTERVAL	400 + 50
 #define 	BOARD_SEND_INTERVAL			4000
 
 volatile long _lastRxMillis;
@@ -23,16 +23,16 @@ volatile long _lastRxMillis;
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(RF24 *radio, int role, int radioNumber, debugHelper *debug) {
+void esk8Lib::begin(RF24 *radio, int role, int radioNumber) {	//, debugHelper *debug) {
 
 	_radio = radio;
 	_role = role;
 
-	_debug = debug;
+	// _debug = debug;
 
-	_debug->print(STARTUP, "esk8Lib begin(RF24) \n");
-	_debug->print(STARTUP, "Radio: %d \n", radioNumber);
-	_debug->print(STARTUP, "Role: %s \n ", role == ROLE_CONTROLLER ? "MASTER" : "SLAVE");
+	// _debug->print(STARTUP, "esk8Lib begin(RF24) \n");
+	// _debug->print(STARTUP, "Radio: %d \n", radioNumber);
+	// _debug->print(STARTUP, "Role: %s \n ", role == ROLE_CONTROLLER ? "MASTER" : "SLAVE");
 
 	_radio->setPALevel(RF24_PA_MAX);
 
@@ -89,7 +89,7 @@ int esk8Lib::checkForPacket() {
 	return false;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::sendThenReadPacket() {
+int esk8Lib::sendThenReadACK() {
 
 	_radio->stopListening();
 
@@ -110,9 +110,7 @@ int esk8Lib::sendThenReadPacket() {
 	long startedWaiting = millis();
 	_radio->startListening();
 	while (_radio->available() == false) {
-		Serial.print(".");
 		if (millis()-startedWaiting > 50) {
-			// timeout
 			return ERR_TIMEOUT;
 		}
 	}

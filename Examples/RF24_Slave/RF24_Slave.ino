@@ -31,20 +31,21 @@ RF24 radio(SPI_CE, SPI_CS);
 esk8Lib esk8;
 
 /**********************************************************/
-//                                                                            // Topology
-// typedef enum { role_ping_out = 1, role_pong_back } role_e;                 // The various roles supported by this sketch
-// const char* role_friendly_name[] = { "invalid", "Ping out", "Pong back"};  // The debug-friendly names of those roles
-// role_e role = role_pong_back;                                              // The role of the current running sketch
 
-byte counter = 1;                                                          // A single byte to keep track of the data being sent back and forth
-//--------------------------------------------------------------------------------
-
-#define	STARTUP 		1 << 0
-#define WARNING 		1 << 1
-#define ERROR 			1 << 2
-#define DEBUG 			1 << 3
-#define COMMUNICATION 	1 << 4
-
+// #define	STARTUP 		1 << 0
+// #define WARNING 		1 << 1
+// #define ERROR 			1 << 2
+// #define DEBUG 			1 << 3
+// #define COMMUNICATION 	1 << 4
+#define	STARTUP 			1 << 0
+#define WARNING 			1 << 1
+#define ERROR 				1 << 2
+#define DEBUG 				1 << 3
+#define CONTROLLER_COMMS 	1 << 4
+#define HARDWARE			1 << 5
+#define VESC_COMMS			1 << 6
+#define ONLINE_STATUS		1 << 7
+#define STATE 				1 << 8
 debugHelper debug;
 
 //--------------------------------------------------------------
