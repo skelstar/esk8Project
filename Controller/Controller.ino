@@ -5,6 +5,7 @@
 #include <TaskScheduler.h>
 
 #include <myPushButton.h>
+#include <myPowerButtonManager.h>
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
@@ -40,6 +41,7 @@ esk8Lib esk8;
 
 volatile long lastRxFromBoard = 0;
 volatile bool rxDataFromBoard = false;
+portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
@@ -75,6 +77,7 @@ uint32_t COLOUR_BRAKING = COLOUR_PINK;
 uint32_t COLOUR_THROTTLE_IDLE = COLOUR_GREEN;
 
 //--------------------------------------------------------------
+
 const char compile_date[] = __DATE__ " " __TIME__;
 
 int mapEncoderToThrottleValue(int raw);
@@ -82,6 +85,57 @@ void setupEncoder();
 void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
 
+//--------------------------------------------------------------
+
+int powerButtonIsPressed();
+void powerupEvent(int state);
+
+myPowerButtonManager powerButton(DEADMAN_SWITCH_PIN, HIGH, 3000, 3000, powerupEvent, powerButtonIsPressed);
+
+int powerButtonIsPressed() {
+	return digitalRead(DEADMAN_SWITCH_PIN) == 0 
+		&& digitalRead(ENCODER_BUTTON_PIN) == 0;
+}
+
+void powerupEvent(int state) {
+
+	switch (state) {
+		case powerButton.TN_TO_POWERING_UP:
+			setPixels(COLOUR_GREEN);
+			oled2LineMessage("Powering", "Up!", "");
+			debug.print(STARTUP, "TN_TO_POWERING_UP \n");
+			break;
+		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
+			setPixels(COLOUR_OFF);
+			oledMessage("Ready...");
+			debug.print(STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
+			break;
+		case powerButton.TN_TO_RUNNING:
+			debug.print(STARTUP, "TN_TO_RUNNING \n");
+			u8g2.clearBuffer();
+			u8g2.sendBuffer();
+			break;
+		case powerButton.TN_TO_POWERING_DOWN:
+			setPixels(COLOUR_RED);
+			oled2LineMessage("Powering", "Down", "");
+			debug.print(STARTUP, "TN_TO_POWERING_DOWN \n");
+			break;
+		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
+			debug.print(STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
+			u8g2.clearBuffer();
+			u8g2.sendBuffer();
+			break;
+		case powerButton.TN_TO_POWER_OFF:
+			setPixels(COLOUR_OFF);
+			u8g2.clearBuffer();
+			u8g2.sendBuffer();
+			debug.print(STARTUP, "TN_TO_POWER_OFF \n");
+			delay(100);
+			esp_deep_sleep_start();
+			Serial.println("This will never be printed");
+			break;
+	}
+}
 
 //--------------------------------------------------------------
 
@@ -154,40 +208,14 @@ void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 }
 //--------------------------------------------------------------
 // lower number = more coarse
-#define ENCODER_COUNTER_MIN	-18 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX	10 		// acceleration (ie 15 divides 127-255 into 15)
+#define ENCODER_COUNTER_MIN		-20 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_COUNTER_MAX		15 		// acceleration (ie 15 divides 127-255 into 15)
 
 int encoderCounter = 0;
 
 //--------------------------------------------------------------------------------
 
 Scheduler runner;
-
-// #define FAST_FLASH_DURATION     300
-
-// void tFastFlash_callback();
-// Task tFastFlash(FAST_FLASH_DURATION, 2, &tFastFlash_callback);
-// void tFastFlash_callback() {
-//     if (tFastFlash.isLastIteration()) {
-//         //setPixels(COLOUR_OFF);
-//         tFastFlash.disable();
-//     }
-// }
-
-// void fastFlashLed(CRGB c) {
-// 	setPixels(c);
-//     tFastFlash.setIterations(2);
-//     tFastFlash.enable();
-// }
-
-// void fastFlashLed() {
-//     tFastFlash.setIterations(2);
-//     tFastFlash.enable();
-// }
-
-//------------------------------------------------------------------------------
-
-// uint32_t tFlashLedsColour = COLOUR_RED;
 
 bool tFlashLeds_onEnable();
 void tFlashLeds_onDisable();
@@ -220,7 +248,9 @@ void tFlashLedsOff_callback() {
 //--------------------------------------------------------------
 void sendMessage() {
 
+	taskENTER_CRITICAL(&mmux);
     int result = esk8.sendThenReadACK();
+    taskEXIT_CRITICAL(&mmux);
 
     if (result == esk8.CODE_SUCCESS) {
 		throttleChanged = false;
@@ -359,14 +389,16 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	debug | STARTUP | COMMUNICATION | ERROR | HARDWARE);
-	debug.setFilter( STARTUP | HARDWARE );
+	debug.setFilter( STARTUP );
 
 	leds.setBrightness(BRIGHTNESS);
 	leds.begin();
 	leds.show();
 
-	Serial.printf("%s \n", compile_date);
-    Serial.printf("esk8Project/Controller.ino \n");
+	powerButton.begin();
+
+	debug.print(STARTUP, "%s \n", compile_date);
+    debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
 	throttleChanged = true;	// initialise
 
@@ -412,7 +444,10 @@ void loop() {
 
 	boardCommsStatus.serviceState(connected);
 
-	if (throttleChanged && connected) {
+	if (powerButton.getState() != powerButton.STATE_RUNNING) {
+		// catch
+	}
+	else if (throttleChanged && connected) {
 		tSendControllerValues.restart();
 	}
 	else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
@@ -421,11 +456,14 @@ void loop() {
 		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
 		long now = millis();
 		oled2LineMessage("BATT. VOLTS", buf, "V");
+		setPixels(COLOUR_OFF);
 	}
 	else if (esk8.controllerPacket.throttle != 127) {
 		u8g2.clearBuffer();
 		u8g2.sendBuffer();
 	}
+
+	powerButton.serviceButton();
 
 	runner.execute();
 
@@ -461,10 +499,12 @@ void setupEncoder() {
 }
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
+	taskENTER_CRITICAL(&mmux);
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
 		leds.setPixelColor(i, c);
 	}
 	leds.show();
+	taskEXIT_CRITICAL(&mmux);
 }
 //--------------------------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
