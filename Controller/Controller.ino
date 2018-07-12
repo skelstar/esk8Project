@@ -41,6 +41,7 @@ esk8Lib esk8;
 
 volatile long lastRxFromBoard = 0;
 volatile bool rxDataFromBoard = false;
+portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
@@ -266,7 +267,9 @@ void tFlashLedsOff_callback() {
 //--------------------------------------------------------------
 void sendMessage() {
 
+	taskENTER_CRITICAL(&mmux);
     int result = esk8.sendThenReadACK();
+    taskEXIT_CRITICAL(&mmux);
 
     if (result == esk8.CODE_SUCCESS) {
 		throttleChanged = false;
@@ -413,8 +416,8 @@ void setup() {
 
 	powerButton.begin();
 
-	Serial.printf("%s \n", compile_date);
-    Serial.printf("esk8Project/Controller.ino \n");
+	debug.print(STARTUP, "%s \n", compile_date);
+    debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
 	throttleChanged = true;	// initialise
 
@@ -512,10 +515,12 @@ void setupEncoder() {
 }
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
+	taskENTER_CRITICAL(&mmux);
 	for (uint16_t i=0; i<NUM_PIXELS; i++) {
 		leds.setPixelColor(i, c);
 	}
 	leds.show();
+	taskEXIT_CRITICAL(&mmux);
 }
 //--------------------------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
