@@ -102,21 +102,28 @@ void powerupEvent(int state) {
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
 			setPixels(COLOUR_GREEN);
+			oled2LineMessage("Powering", "Up!", "");
 			debug.print(STARTUP, "TN_TO_POWERING_UP \n");
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
 			setPixels(COLOUR_OFF);
+			oledMessage("Ready...");
 			debug.print(STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
 			break;
 		case powerButton.TN_TO_RUNNING:
 			debug.print(STARTUP, "TN_TO_RUNNING \n");
+			u8g2.clearBuffer();
+			u8g2.sendBuffer();
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
 			setPixels(COLOUR_RED);
+			oled2LineMessage("Powering", "Down", "");
 			debug.print(STARTUP, "TN_TO_POWERING_DOWN \n");
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
 			debug.print(STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
+			u8g2.clearBuffer();
+			u8g2.sendBuffer();
 			break;
 		case powerButton.TN_TO_POWER_OFF:
 			setPixels(COLOUR_OFF);
@@ -201,40 +208,14 @@ void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 }
 //--------------------------------------------------------------
 // lower number = more coarse
-#define ENCODER_COUNTER_MIN	-18 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX	10 		// acceleration (ie 15 divides 127-255 into 15)
+#define ENCODER_COUNTER_MIN		-20 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_COUNTER_MAX		15 		// acceleration (ie 15 divides 127-255 into 15)
 
 int encoderCounter = 0;
 
 //--------------------------------------------------------------------------------
 
 Scheduler runner;
-
-// #define FAST_FLASH_DURATION     300
-
-// void tFastFlash_callback();
-// Task tFastFlash(FAST_FLASH_DURATION, 2, &tFastFlash_callback);
-// void tFastFlash_callback() {
-//     if (tFastFlash.isLastIteration()) {
-//         //setPixels(COLOUR_OFF);
-//         tFastFlash.disable();
-//     }
-// }
-
-// void fastFlashLed(CRGB c) {
-// 	setPixels(c);
-//     tFastFlash.setIterations(2);
-//     tFastFlash.enable();
-// }
-
-// void fastFlashLed() {
-//     tFastFlash.setIterations(2);
-//     tFastFlash.enable();
-// }
-
-//------------------------------------------------------------------------------
-
-// uint32_t tFlashLedsColour = COLOUR_RED;
 
 bool tFlashLeds_onEnable();
 void tFlashLeds_onDisable();
@@ -408,7 +389,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	debug | STARTUP | COMMUNICATION | ERROR | HARDWARE);
-	debug.setFilter( STARTUP | HARDWARE );
+	debug.setFilter( STARTUP );
 
 	leds.setBrightness(BRIGHTNESS);
 	leds.begin();
@@ -463,7 +444,10 @@ void loop() {
 
 	boardCommsStatus.serviceState(connected);
 
-	if (throttleChanged && connected) {
+	if (powerButton.getState() != powerButton.STATE_RUNNING) {
+		// catch
+	}
+	else if (throttleChanged && connected) {
 		tSendControllerValues.restart();
 	}
 	else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
