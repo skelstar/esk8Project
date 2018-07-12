@@ -82,8 +82,8 @@ void loadPacketForController(bool gotDataFromVesc) {
 	}
 	else {
 		// dummy data
-		esk8.boardPacket.batteryVoltage = packetData;
-		packetData += 0.1;
+		// esk8.boardPacket.batteryVoltage = packetData;
+		// packetData += 0.1;
 
 		debug.print(VESC_COMMS, "VESC OFFLINE: mock data: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
@@ -153,6 +153,8 @@ OnlineStatus vescStatus;
 uint8_t controllerCommsState;
 uint8_t vescCommsState;
 long lastControllerOfflineTime = 0;
+portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
+
 //--------------------------------------------------------------------------------
 
 Scheduler runner;
@@ -170,7 +172,12 @@ void tSendToVESC_callback() {
 	else {
 		debug.print(VESC_COMMS, "tSendToVESC: Controller OFFLINE (127) \n");
 	}
+
+	taskENTER_CRITICAL(&mmux);
+
 	esp8266VESC.setNunchukValues(127, throttle, 0, 0);
+
+    taskEXIT_CRITICAL(&mmux);
 }
 
 //--------------------------------------------------------------------------------
@@ -181,17 +188,9 @@ TaskHandle_t RF24CommsRxTask;
 
 void setup()
 {
-
     Serial.begin(9600);
 
 	debug.init();
-
-	// debug.addOption(STARTUP, "STARTUP");
-	// debug.addOption(DEBUG, "DEBUG");
-	// debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS ");
-	// debug.addOption(HARDWARE, "HARDWARE");
-	// debug.addOption(VESC_COMMS, "VESC_COMMS");
-	// debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(CONTROLLER_COMMS, "CONTROLLER_COMMS");
@@ -214,7 +213,7 @@ void setup()
 
     radio.begin();
 
-	esk8.begin(&radio, ROLE_BOARD, radioNumber, &debug);
+	esk8.begin(&radio, ROLE_BOARD, radioNumber);
 
 	runner.startNow();
 	runner.addTask(tSendToVESC);
