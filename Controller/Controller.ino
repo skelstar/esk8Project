@@ -47,6 +47,22 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
 
+//--------------------------------------------------------------
+
+// #define SPI_MOSI        23 // Blue
+// #define SPI_MISO        19 // Orange
+// #define SPI_CLK			18 // Yellow
+#define SPI_CE          33    // white/purple
+#define SPI_CS          26  // green
+
+#define ROLE_BOARD        1
+#define ROLE_CONTROLLER    0
+
+int role = ROLE_CONTROLLER;
+bool radioNumber = 1;
+
+RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
+
 //--------------------------------------------------------------------------------
 #define BRIGHTNESS	20
 
@@ -101,8 +117,7 @@ void powerupEvent(int state) {
 
 	switch (state) {
 		case powerButton.TN_TO_POWERING_UP:
-			setPixels(COLOUR_GREEN);
-			oled2LineMessage("Powering", "Up!", "");
+			setPixels(COLOUR_OFF);
 			debug.print(STARTUP, "TN_TO_POWERING_UP \n");
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
@@ -112,6 +127,7 @@ void powerupEvent(int state) {
 			break;
 		case powerButton.TN_TO_RUNNING:
 			debug.print(STARTUP, "TN_TO_RUNNING \n");
+			setPixels(COLOUR_OFF);
 			u8g2.clearBuffer();
 			u8g2.sendBuffer();
 			break;
@@ -126,6 +142,7 @@ void powerupEvent(int state) {
 			u8g2.sendBuffer();
 			break;
 		case powerButton.TN_TO_POWER_OFF:
+			radio.powerDown();
 			setPixels(COLOUR_OFF);
 			u8g2.clearBuffer();
 			u8g2.sendBuffer();
@@ -147,22 +164,6 @@ int throttle = 127;
 //--------------------------------------------------------------
 
 Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
-
-//--------------------------------------------------------------
-
-// #define SPI_MOSI        23 // Blue
-// #define SPI_MISO        19 // Orange
-// #define SPI_CLK			18 // Yellow
-#define SPI_CE          33    // white/purple
-#define SPI_CS          26  // green
-
-#define ROLE_BOARD        1
-#define ROLE_CONTROLLER    0
-
-int role = ROLE_CONTROLLER;
-bool radioNumber = 1;
-
-RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 
 //--------------------------------------------------------------------------------
 
@@ -350,7 +351,7 @@ void encoderInterruptHandler() {
 
 	bool canAccelerate = deadmanSwitch.isPressed();
 
-	if (result == DIR_CW && (canAccelerate || encoderCounter < 0)) {
+	if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
@@ -358,7 +359,7 @@ void encoderInterruptHandler() {
 			throttleChanged = true;
 		}
 	}
-	else if (result == DIR_CCW) {
+	else if (result == DIR_CW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
@@ -385,10 +386,9 @@ void setup() {
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(HARDWARE, "HARDWARE");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
-	debug.addOption(BLE, "BLE");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
- //    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	debug | STARTUP | COMMUNICATION | ERROR | HARDWARE);
+ //    debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
 	debug.setFilter( STARTUP );
 
 	leds.setBrightness(BRIGHTNESS);
@@ -428,7 +428,8 @@ void setup() {
 		NULL,			// parameter
 		1,				// priority
 		NULL,	// handle
-		0);				// port	
+		0
+	);				// port	
 }
 /**************************************************************
 					LOOP
@@ -454,9 +455,8 @@ void loop() {
 		rxDataFromBoard = false;
 		char buf[100];
 		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
-		long now = millis();
 		oled2LineMessage("BATT. VOLTS", buf, "V");
-		setPixels(COLOUR_OFF);
+		// setPixels(COLOUR_OFF);
 	}
 	else if (esk8.controllerPacket.throttle != 127) {
 		u8g2.clearBuffer();
