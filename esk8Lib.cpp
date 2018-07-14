@@ -1,6 +1,7 @@
 #include "Arduino.h"
 #include "esk8Lib.h"
 
+#define 	ROLE_LISTENER	2
 #define 	ROLE_BOARD		1
 #define 	ROLE_CONTROLLER	0
 
@@ -28,17 +29,13 @@ void esk8Lib::begin(RF24 *radio, int role, int radioNumber) {	//, debugHelper *d
 	_radio = radio;
 	_role = role;
 
-	// _debug = debug;
-
-	// _debug->print(STARTUP, "esk8Lib begin(RF24) \n");
-	// _debug->print(STARTUP, "Radio: %d \n", radioNumber);
-	// _debug->print(STARTUP, "Role: %s \n ", role == ROLE_CONTROLLER ? "MASTER" : "SLAVE");
-
 	_radio->setPALevel(RF24_PA_MAX);
 
-	_radio->enableAckPayload();                     // Allow optional ack payloads
+	if (_role != ROLE_LISTENER) {
+		_radio->enableAckPayload();                     // Allow optional ack payloads
+	}
 	_radio->enableDynamicPayloads();                // Ack payloads are dynamic payloads
-
+	
 	// Open a writing and reading pipe on each radio, with opposite addresses
 	if( radioNumber == RADIO_1 ){
 		_radio->openWritingPipe(addresses[RADIO_1]);
@@ -54,6 +51,9 @@ void esk8Lib::begin(RF24 *radio, int role, int radioNumber) {	//, debugHelper *d
 		_radio->startListening();
 		_radio->writeAckPayload(PIPE_NUMBER, &boardPacket, sizeof(boardPacket));
 	}
+	else if (role == ROLE_LISTENER) {
+		_radio->startListening();
+	}
 
 	_radio->printDetails();
 }
@@ -62,16 +62,12 @@ int esk8Lib::checkForPacket() {
 
 	if( _radio->available() ) {
 		while ( _radio->available() ) {                          	// While there is data ready
-			if (_role == ROLE_BOARD) {
+			if (_role == ROLE_BOARD || _role == ROLE_LISTENER) {
 				// save current throttle data
 				_radio->read( &controllerPacket, sizeof(controllerPacket) );         	// Get the payload
 				_lastPacketReadTime = millis();
 			}
-			else if (_role == ROLE_CONTROLLER) {
-				Serial.printf("ERROR: unhandled role type (Controller). \n");
-				// _radio->read( &boardPacket, sizeof(boardPacket) );         	// Get the payload
-				// _lastPacketReadTime = millis();
-			}
+			// Serial.printf("ERROR: unhandled role type (Controller). \n");
 		}
 
 		// This can be commented out to send empty payloads.
@@ -79,11 +75,7 @@ int esk8Lib::checkForPacket() {
 			_radio->writeAckPayload( PIPE_NUMBER, &boardPacket, sizeof(boardPacket) );  			
 			// _debug->print(COMMUNICATION, "checkForPacket():_radio->available() == true throttle=%d \n", controllerPacket.throttle);
 		}
-		else if (_role == ROLE_CONTROLLER) {
-			Serial.printf("ERROR: unhandled role type (Controller). \n");
-			//_radio->writeAckPayload( PIPE_NUMBER, &controllerPacket, sizeof(controllerPacket) );  			
-		}
-
+		// 	Serial.printf("ERROR: unhandled role type (Controller). \n");
 		return true;
 	}
 	return false;

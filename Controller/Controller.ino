@@ -389,7 +389,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | BLE | ONLINE_STATUS | TIMING );	debug | STARTUP | COMMUNICATION | ERROR | HARDWARE);
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | COMMUNICATION );
 
 	leds.setBrightness(BRIGHTNESS);
 	leds.begin();
