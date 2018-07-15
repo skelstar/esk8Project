@@ -5,22 +5,28 @@
 
 /**********************************************************/
                                                                            // Topology
-byte addresses[][6] = {"1Node","2Node"};              // Radio pipe addresses for the 2 nodes to communicate.
+byte addresses[][6] = {
+	"1Node",
+	"2Node"
+};              // Radio pipe addresses for the 2 nodes to communicate.
 // Role management: Set up role.  This sketch uses the same software for all the nodes
 // in this system.  Doing so greatly simplifies testing.  
-typedef enum { role_ping_out = 1, role_pong_back } role_e;                 // The various roles supported by this sketch
+typedef enum { 
+    role_ping_out = 1, 
+    role_pong_back 
+} role_e;                 // The various roles supported by this sketch
 const char* role_friendly_name[] = { "invalid", "Ping out", "Pong back"};  // The debug-friendly names of those roles
 
 //--------------------------------------------------------------
-// // WEMOS TTGO (BOARD)
+// Master
+// bool radioNumber = 1;
+// RF24 radio(22, 5);
+// role_e role = role_ping_out;                                              // The role of the current running sketch
+//--------------------------------------------------------------
+// Slave
 bool radioNumber = 0;
 RF24 radio(33, 26);
 role_e role = role_pong_back;                                              // The role of the current running sketch
-//--------------------------------------------------------------
-// // DEV BOARD (CONTROLLER)
-// bool radioNumber = 0;
-// RF24 radio(33, 26);
-// role_e role = role_pong_back;                                              // The role of the current running sketch
 //--------------------------------------------------------------
 
 
