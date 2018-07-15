@@ -200,7 +200,7 @@ void setup()
 	debug.addOption(STATE, "STATE");
 
 	//debug.setFilter( STARTUP );
-	debug.setFilter( STARTUP | VESC_COMMS );
+	debug.setFilter( STARTUP );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
