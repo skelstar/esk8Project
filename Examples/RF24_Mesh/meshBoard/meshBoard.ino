@@ -40,10 +40,13 @@ uint16_t active_nodes[max_active_nodes];
 short num_active_nodes = 0;
 short next_ping_node_index = 0;
 
+uint8_t _throttle;
+
 bool send_T(uint16_t to); // Prototypes for functions to send & handle messages
 bool send_N(uint16_t to);
 void handle_T(RF24NetworkHeader & header);
 void handle_N(RF24NetworkHeader & header);
+void handler_Throttle(RF24NetworkHeader & header);
 void add_node(uint16_t node);
 
 void setup() {
@@ -78,6 +81,14 @@ void loop() {
         case 'N':
             handle_N(header);
             break;
+        case 'A':
+        	handler_Throttle(header);
+        	if (send_Throttle(00) == true) {
+        		Serial.printf("Send %d to 00 \n", _throttle);
+        	} else {
+        		Serial.printf("Failed to send %d to 00 \n", _throttle);
+        	}
+        	break;
         default:
             Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
             network.read(header, 0, 0);
@@ -102,8 +113,8 @@ void loop() {
         bool ok;
 
         if (this_node > 00 || to == 00) { // Normal nodes send a 'T' ping
-            if (this_node != to) {
-                if (send_T(to) == true) {
+            if (this_node == 00) {
+                if (send_Throttle(to) == true) {
                     Serial.printf("%lu: APP Send ok\n\r", millis());
                 } else {
                     Serial.printf("%lu: APP Send failed\n\r", millis());
@@ -137,9 +148,6 @@ bool send_T(uint16_t to) {
     return network.write(header, & message, sizeof(unsigned long));
 }
 
-/**
- * Send an 'N' message, the active node list
- */
 bool send_N(uint16_t to) {
     RF24NetworkHeader header( /*to node*/ to, /*type*/ 'N' /*Time*/ );
 
@@ -148,10 +156,13 @@ bool send_N(uint16_t to) {
     return network.write(header, active_nodes, sizeof(active_nodes));
 }
 
-/**
- * Handle a 'T' message
- * Add the node to the list of active nodes
- */
+bool send_Throttle(uint16_t to) {
+    RF24NetworkHeader header( to, 'A' );
+
+    // The 'T' message that we send is just a ulong, containing the time
+    return network.write(header, &_throttle, sizeof(_throttle));
+}
+
 void handle_T(RF24NetworkHeader & header) {
 
     unsigned long message; // The 'T' message is just a ulong, containing the time
@@ -162,9 +173,6 @@ void handle_T(RF24NetworkHeader & header) {
         add_node(header.from_node);
 }
 
-/**
- * Handle an 'N' message, the active node list
- */
 void handle_N(RF24NetworkHeader & header) {
     static uint16_t incoming_nodes[max_active_nodes];
 
@@ -174,6 +182,13 @@ void handle_N(RF24NetworkHeader & header) {
     int i = 0;
     while (i < max_active_nodes && incoming_nodes[i] > 00)
         add_node(incoming_nodes[i++]);
+}
+
+void handler_Throttle(RF24NetworkHeader & header) {
+	static uint8_t throttle = 127;
+	network.read(header, &throttle, sizeof(throttle));
+	_throttle = throttle;
+	Serial.printf("Throttle from Controler: %d\n", _throttle);
 }
 
 /**

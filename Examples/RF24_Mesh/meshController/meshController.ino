@@ -36,6 +36,8 @@ const unsigned long interval =
     1000; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
 
+unsigned long _lastSentToBoard;
+
 const short max_active_nodes = 10; // Array of nodes we are aware of
 uint16_t active_nodes[max_active_nodes];
 short num_active_nodes = 0;
@@ -98,24 +100,23 @@ void loop() {
 
         bool ok;
 
-        if (this_node > 00 || to == 00) { // Normal nodes send a 'T' ping
-            // don't send
-        } else { // Base node sends the current active nodes out
-            if (send_N(to) == true) {
-                Serial.printf("%lu: APP Send ok\n\r", millis());
-            } else {
-                Serial.printf("%lu: APP Send failed\n\r", millis());
-                last_time_sent -= 100; // Try sending at a different time next time
-            }
-        }
-    }
+		if ( this_node > 00 || to == 00 ){                    // Normal nodes send a 'T' ping
+			ok = send_T(to);   
+		} else {                                                // Base node sends the current active nodes out
+			if ( to == 02 ) {
+				ok = send_Throttle( to );
+			} else {
+				ok = send_N(to);
+			}
+		}
 
-    //  delay(50);                          // Delay to allow completion of any
-    //  serial printing
-    //  if(!network.available()){
-    //      network.sleepNode(2,0);         // Sleep this node for 2 seconds or a
-    //      payload is received (interrupt 0 triggered), whichever comes first
-    //  }
+		if (ok) {                                              // Notify us of the result
+			Serial.printf("%lu: APP Send ok\n\r", millis());
+		} else {
+			Serial.printf("%lu: APP Send failed\n\r", millis());
+			last_time_sent -= 100;                            // Try sending at a different time next time
+		}
+    }
 }
 
 /**
@@ -128,7 +129,7 @@ bool send_T(uint16_t to) {
     unsigned long message = millis();
     Serial.printf("---------------------------------\n\r");
     Serial.printf("%lu: APP Sending %lu to 0%o...\n\r", millis(), message, to);
-    return network.write(header, & message, sizeof(unsigned long));
+    return network.write(header, &message, sizeof(unsigned long));
 }
 
 /**
@@ -140,6 +141,26 @@ bool send_N(uint16_t to) {
     Serial.printf("---------------------------------\n\r");
     Serial.printf("%lu: APP Sending active nodes to 0%o...\n\r", millis(), to);
     return network.write(header, active_nodes, sizeof(active_nodes));
+}
+
+bool send_Throttle(uint16_t to) {
+	static uint8_t throttle = 132;
+	RF24NetworkHeader header( to, 'A' );
+
+    Serial.printf("---------------------------------\n\r");
+    Serial.printf("%lu: APP Sending Throttle to 0%o...\n\r", millis(), to);
+    _lastSentToBoard = millis();
+    return network.write(header, &throttle, sizeof(throttle));	
+}
+
+void handle_Throttle(RF24NetworkHeader & header) {
+	static uint8_t throttle = 132;
+
+	long timeTaken = millis() - _lastSentToBoard;
+
+    network.read(header, &throttle, sizeof(throttle));
+    Serial.printf("%lu: APP Received throttle from 0%d, time taken: %u \n\r ", 
+    	header.from_node, timeTaken);
 }
 
 /**
