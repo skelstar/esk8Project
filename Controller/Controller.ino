@@ -391,7 +391,7 @@ void setup() {
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
 	debug.setFilter( STARTUP );
 
-	leds.setBrightness(BRIGHTNESS);
+  leds.setBrightness(BRIGHTNESS);
 	leds.begin();
 	leds.show();
 
