@@ -47,6 +47,8 @@ void handle_T(RF24NetworkHeader & header);
 void handle_N(RF24NetworkHeader & header);
 void add_node(uint16_t node);
 
+uint8_t _throttle;
+
 //--------------------------------------------------------------
 void setup() {
 
@@ -66,131 +68,30 @@ void setup() {
 //--------------------------------------------------------------
 void loop() {
 
-    network.update(); // Pump the network regularly
+    network.update(); 
 
-    while (network.available()) { // Is there anything ready for us?
+    while (network.available()) { 
 
-        RF24NetworkHeader header; // If so, take a look at it
+        RF24NetworkHeader header;
         network.peek(header);
 
-        switch (header.type) { // Dispatch the message to the correct handler.
-        case 'T':
-            handle_T(header);
-            break;
-        case 'N':
-            handle_N(header);
-            break;
-        default:
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-            network.read(header, 0, 0);
-            break;
+        switch (header.type) { 
+			case 'A':
+				handle_Throttle(header);
+				break;
+	        default:
+				Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
+				network.read(header, 0, 0);
+				break;
         };
     }
-
-    unsigned long now = millis(); // Send a ping to the next node every 'interval' ms
-    if (now - last_time_sent >= interval) {
-        last_time_sent = now;
-
-        uint16_t to = 00; // Who should we send to? By default, send to base
-
-        if (num_active_nodes) { // Or if we have active nodes,
-            to = active_nodes[next_ping_node_index++]; // Send to the next active node
-            if (next_ping_node_index > num_active_nodes) { // Have we rolled over?
-                next_ping_node_index = 0; // Next time start at the beginning
-                to = 00; // This time, send to node 00.
-            }
-        }
-
-        bool ok;
-
-        if (this_node > 00 || to == 00) { // Normal nodes send a 'T' ping
-            if (this_node != to) {
-                if (send_T(to) == true) {
-                    Serial.printf("%lu: APP Send ok\n\r", millis());
-                } else {
-                    Serial.printf("%lu: APP Send failed\n\r", millis());
-                    last_time_sent -= 100; // Try sending at a different time next time
-                }
-            } else {
-
-            }
-        } else { // Base node sends the current active nodes out
-            if (send_N(to) == true) {
-                Serial.printf("%lu: APP Send ok\n\r", millis());
-            } else {
-                Serial.printf("%lu: APP Send failed\n\r", millis());
-                last_time_sent -= 100; // Try sending at a different time next time
-            }
-        }
-    }
 }
 //--------------------------------------------------------------
-/**
- * Send a 'T' message, the current time
- */
-bool send_T(uint16_t to) {
-    RF24NetworkHeader header( /*to node*/ to, /*type*/ 'T' /*Time*/ );
-
-    // The 'T' message that we send is just a ulong, containing the time
-    unsigned long message = millis();
-    Serial.printf("---------------------------------\n\r");
-
-    Serial.printf("%lu: APP Sending %lu to 0%o...\n\r", millis(), message, to);
-    return network.write(header, & message, sizeof(unsigned long));
+void handle_Throttle(RF24NetworkHeader & header) {
+	
+	static uint8_t throttle = 127;
+	network.read(header, &throttle, sizeof(throttle));
+	_throttle = throttle;
+	Serial.printf("Throttle from Controler: %d\n", _throttle);
 }
 //--------------------------------------------------------------
-/**
- * Send an 'N' message, the active node list
- */
-bool send_N(uint16_t to) {
-    RF24NetworkHeader header( /*to node*/ to, /*type*/ 'N' /*Time*/ );
-
-    Serial.printf("---------------------------------\n\r");
-    Serial.printf("%lu: APP Sending active nodes to 0%o...\n\r", millis(), to);
-    return network.write(header, active_nodes, sizeof(active_nodes));
-}
-//--------------------------------------------------------------
-/**
- * Handle a 'T' message
- * Add the node to the list of active nodes
- */
-void handle_T(RF24NetworkHeader & header) {
-
-    unsigned long message; // The 'T' message is just a ulong, containing the time
-    network.read(header, & message, sizeof(unsigned long));
-    Serial.printf("%lu: APP Received %lu from 0%o\n\r", millis(), message, header.from_node);
-
-    if (header.from_node != this_node || header.from_node > 00) // If this message is from ourselves or the base, don't bother adding it to the active nodes.
-        add_node(header.from_node);
-}
-//--------------------------------------------------------------
-/**
- * Handle an 'N' message, the active node list
- */
-void handle_N(RF24NetworkHeader & header) {
-    static uint16_t incoming_nodes[max_active_nodes];
-
-    network.read(header, & incoming_nodes, sizeof(incoming_nodes));
-    Serial.printf("%lu: APP Received nodes from 0%o\n\r", millis(), header.from_node);
-
-    int i = 0;
-    while (i < max_active_nodes && incoming_nodes[i] > 00)
-        add_node(incoming_nodes[i++]);
-}
-//--------------------------------------------------------------
-/**
- * Add a particular node to the current list of active nodes
- */
-void add_node(uint16_t node) {
-
-    short i = num_active_nodes; // Do we already know about this node?
-    while (i--) {
-        if (active_nodes[i] == node)
-            break;
-    }
-
-    if (i == -1 && num_active_nodes < max_active_nodes) { // If not, add it to the table
-        active_nodes[num_active_nodes++] = node;
-        Serial.printf("%lu: APP Added 0%o to list of active nodes.\n\r", millis(), node);
-    }
-}
