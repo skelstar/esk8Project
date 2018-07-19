@@ -38,7 +38,7 @@ class esk8Lib
 		esk8Lib();
 		// void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
 		
-		void begin(RF24 *radio, int role, int radioNumber);
+		void begin(RF24 *radio, int role);
 		
 		int checkForPacket();
 		int packetChanged();
@@ -57,10 +57,9 @@ class esk8Lib
 
 	private:
 		RF24 *_radio;
+		RF24Network *_network;
 		int _role;
 		long _lastPacketReadTime;
-		// debugHelper *_debug;
-		// ControllerStruct _oldControllerPacket;
 
 };
 
