@@ -8,6 +8,11 @@
 #define 	CONTROLLER_SEND_INTERVAL	400 + 50
 #define 	BOARD_SEND_INTERVAL			4000
 
+#define 	MSG_CONTROLLER_PACKET 		'A'
+#define 	MSG_CONTROLLER_PACKET_ACK	'a'
+#define 	MSG_BOARD_PACKET			'B'
+#define 	MSG_BOARD_PACKET_ACK		'b'
+
 const uint16_t node_address_set[10] = { 00, 02, 05, 012, 015, 022, 025, 032, 035, 045 };
 
 //--------------------------------------------------------------------------------
@@ -55,75 +60,68 @@ int esk8Lib::available() {
 	
 	while (_network->available()) {
 
+		esp_task_wdt_feed();
+
 		RF24NetworkHeader header; // If so, take a look at it
         _network->peek(header);
 
         switch (header.type) {
-			case 'A':	// message from Controller
+			case MSG_CONTROLLER_PACKET:	{ 
 				_lastControllerCommsTime = millis();
 				handle_Controller_Message(header);
 				return true;
-			case 'a':	// acknowledge of 'A'
+			}
+			case MSG_CONTROLLER_PACKET_ACK:	{
 				handle_ACK_Message(header);
 				_lastBoardCommsTime = millis();
 				return false;
-			case 'B':	// message from Board
+			}
+			case MSG_BOARD_PACKET: { // message from Board
 				_lastBoardCommsTime = millis();
 				handle_Board_Message(header);
 				return true;
-			case 'b': 	// acknowledge of 'B'
+			}
+			case MSG_BOARD_PACKET_ACK: { 	
 				_lastControllerCommsTime = millis();
 				return false;
-	        default:
+			}
+	        default: {
 				Serial.printf("*** WARNING *** Unknown message type '%c' \n\r", header.type);
 				_network->read(header, 0, 0);
 				return false;
-        };
-
-		uint32_t fails, success;  
-		_network->failures(&fails,&success);  	
-		Serial.printf("fails: %d success: %d \n", fails, success);
+			}
+        }
 	}
 	return false;
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::send(char messageType) {
-	if (_role == CONTROLLER) {
-		if (messageType == 'A') {
-    		// Serial.printf("%lu: APP Sending &controllerPacket to 0%o... \n\r", millis(), _other_node);
-			RF24NetworkHeader header( _other_node, 'A' );
-			_lastControllerCommsTime = millis();
-			return _network->multicast( header, &controllerPacket, sizeof(controllerPacket), /* level */ 1 );
-		} else {
-			Serial.printf("Unhandled messageType in send() %c \n", messageType);
-		}
+
+	if ( messageType == MSG_CONTROLLER_PACKET ) {
+		RF24NetworkHeader header( _other_node, messageType );
+		_lastControllerCommsTime = millis();
+		return _network->multicast( header, &controllerPacket, sizeof(controllerPacket), /* level */ 1 );
 	}
-	else if (_role == BOARD) {
-		switch (messageType) {
-			case 'B': {
-				RF24NetworkHeader header( _other_node, 'B' );
-				_lastBoardCommsTime = millis();
-				return _network->write( header, &boardPacket, sizeof(boardPacket) );
-				}
-				break;
-			case 'a': {	// 'A' ACK
-				RF24NetworkHeader header( _other_node, 'a' );
-				_lastBoardCommsTime = millis();
-				return _network->write( header, 0, 0 );
-				}
-				break;
-			default:
-				Serial.printf("Unhandled messageType in send() %c \n", messageType);
-				return false;
-				break;
-		}
+	else if ( messageType == MSG_CONTROLLER_PACKET_ACK ) {
+		RF24NetworkHeader header( _other_node, messageType );
+		_lastBoardCommsTime = millis();
+		return _network->write( header, 0, 0 );
+	}
+	else if ( messageType == MSG_BOARD_PACKET ) {
+		RF24NetworkHeader header( _other_node, messageType );
+		_lastBoardCommsTime = millis();
+		return _network->write( header, &boardPacket, sizeof(boardPacket) );
+	}
+	else {
+		Serial.printf("Unhandled messageType in send() %c \n", messageType);
+		return false;
 	}
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::handle_Controller_Message(RF24NetworkHeader& header) {
     _network->read(header, &controllerPacket, sizeof(controllerPacket));
     // send ACK
-    send('a');
+    send(MSG_CONTROLLER_PACKET_ACK);
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::handle_ACK_Message(RF24NetworkHeader& header) {

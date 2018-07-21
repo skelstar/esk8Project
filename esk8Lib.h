@@ -6,6 +6,9 @@
 #include <RF24.h>
 #include <RF24Network.h > 
 
+#include <esp_int_wdt.h>
+#include <esp_task_wdt.h>
+
 // #include <debugHelper.h>
 
 //--------------------------------------------------------------------------------

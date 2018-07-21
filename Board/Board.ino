@@ -244,7 +244,7 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	for (;;) {
 
 		if ( esk8.available() ) {
-			debug.print(CONTROLLER_COMMS, "Received message \n");
+			debug.print(CONTROLLER_COMMS, "Received message: throttle=%d \n", esk8.controllerPacket.throttle);
 			tSendToVESC.restart();	// send straight away
 		}
 
