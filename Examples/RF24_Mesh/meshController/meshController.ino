@@ -54,6 +54,8 @@ void setup() {
 
     this_node = node_address_set[NODE_ADDRESS]; // Which node are we?
 
+    Serial.printf("Address: %0o \n", this_node);
+
     SPI.begin(); // Bring up the RF network
     
     radio.begin();

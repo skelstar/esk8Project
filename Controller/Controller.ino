@@ -1,5 +1,7 @@
 #include <SPI.h>
 #include "RF24.h"
+#include <RF24Network.h > 
+
 #include <Rotary.h>
 
 #include <TaskScheduler.h>
@@ -62,23 +64,12 @@ int role = ROLE_CONTROLLER;
 bool radioNumber = 1;
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
+RF24Network network(radio);
 
 //--------------------------------------------------------------------------------
 #define BRIGHTNESS	20
 
 #define 	NUM_PIXELS 		8
-
-// CRGB leds[NUM_PIXELS];
-
-// CRGB COLOUR_OFF = CRGB::Black;
-// CRGB COLOUR_RED = CRGB::Red;
-// CRGB COLOUR_GREEN = CRGB::Green;
-// CRGB COLOUR_BLUE = CRGB::Blue;
-// CRGB COLOUR_PINK = CRGB::Pink;
-// CRGB COLOUR_ACCELERATING = CRGB::Navy;
-// CRGB COLOUR_BRAKING = CRGB::Crimson;
-// CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
-// CRGB COLOUR_WHITE = CRGB::White;
 
 Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -250,23 +241,17 @@ void tFlashLedsOff_callback() {
 void sendMessage() {
 
 	taskENTER_CRITICAL(&mmux);
-    int result = esk8.sendThenReadACK();
+    bool success = esk8.send('A');
     taskEXIT_CRITICAL(&mmux);
 
-    if (result == esk8.CODE_SUCCESS) {
+    if (success) {
 		throttleChanged = false;
 		lastRxFromBoard = millis();
 		rxDataFromBoard = true;
-        debug.print(COMMUNICATION, "sendMessage(): batteryVoltage:%.1f \n", esk8.boardPacket.batteryVoltage);
-    }
-    else if (result == esk8.ERR_NOT_SEND_OK) {
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
-    }
-    else if (result == esk8.ERR_TIMEOUT) {
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_TIMEOUT \n");
+        debug.print(COMMUNICATION, "sendMessage():  \n");
     }
     else {
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): UNKNOWN_CODE %d \n", result);    
+        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
 }
 
@@ -389,9 +374,9 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | COMMUNICATION );
 
-  leds.setBrightness(BRIGHTNESS);
+  	leds.setBrightness(BRIGHTNESS);
 	leds.begin();
 	leds.show();
 
@@ -402,12 +387,13 @@ void setup() {
 
 	throttleChanged = true;	// initialise
 
+	SPI.begin();
+
     radio.begin();
 
     btStop();   // turn bluetooth module off
 
-	// esk8.begin(&radio, ROLE_CONTROLLER, radioNumber, &debug);
-	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
+	esk8.begin(&radio, &network, esk8.CONTROLLER);
 
 	u8g2.begin();
 
@@ -441,7 +427,7 @@ bool oldConnected = false;
 
 void loop() {
 
-	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
+	bool connected = esk8.boardOnline();	// millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
 	boardCommsStatus.serviceState(connected);
 
@@ -461,6 +447,10 @@ void loop() {
 	else if (esk8.controllerPacket.throttle != 127) {
 		u8g2.clearBuffer();
 		u8g2.sendBuffer();
+	}
+
+	if ( esk8.available() ) {
+		debug.print(COMMUNICATION, "Message received from Board \n");
 	}
 
 	powerButton.serviceButton();

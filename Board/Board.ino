@@ -35,13 +35,13 @@ int currentEncoderButton = 0;
 #define 	OLED_SDA		32	// std ESP32
 #define 	OLED_ADDR		0x3c
 
-bool radioNumber = 0;
 // WEMOS TTGO
 #define 	SPI_CE			33	// white - do we need it?
 #define 	SPI_CS			26	// green
 const char boardSetup[] = "WEMOS TTGO Board";
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
+RF24Network network(radio);
 
 esk8Lib esk8;
 
@@ -73,21 +73,6 @@ debugHelper debug;
 volatile uint32_t otherNode;
 volatile long lastControllerPacketTime = 0;
 volatile float packetData = 0.1;
-
-//--------------------------------------------------------------
-void loadPacketForController(bool gotDataFromVesc) {
-
-	if (gotDataFromVesc) {
-		debug.print(VESC_COMMS, "VESC online\n");
-	}
-	else {
-		// dummy data
-		// esk8.boardPacket.batteryVoltage = packetData;
-		// packetData += 0.1;
-
-		debug.print(VESC_COMMS, "VESC OFFLINE: mock data: %.1f\n", esk8.boardPacket.batteryVoltage);
-	}
-}
 
 //--------------------------------------------------------------------------------
 
@@ -166,8 +151,8 @@ void tSendToVESC_callback() {
 	int throttle = 127;
 
 	if (esk8.controllerOnline()) {
-		debug.print(VESC_COMMS, "tSendToVESC: throttle=%d \n", esk8.controllerPacket.throttle);
 		throttle = esk8.controllerPacket.throttle;
+		debug.print(VESC_COMMS, "tSendToVESC: throttle=%d \n", throttle);
 	}
 	else {
 		debug.print(VESC_COMMS, "tSendToVESC: Controller OFFLINE (127) \n");
@@ -200,7 +185,7 @@ void setup()
 	debug.addOption(STATE, "STATE");
 
 	//debug.setFilter( STARTUP );
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | CONTROLLER_COMMS );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -213,7 +198,7 @@ void setup()
 
     radio.begin();
 
-	esk8.begin(&radio, ROLE_BOARD, radioNumber);
+	esk8.begin(&radio, &network, esk8.BOARD);
 
 	runner.startNow();
 	runner.addTask(tSendToVESC);
@@ -238,19 +223,16 @@ void loop() {
 	bool timeToUpdateController = millis() - intervalStarts > esk8.getSendInterval();
 
 	if (timeToUpdateController) {
+		debug.print(CONTROLLER_COMMS, "timeToUpdateController\n");
 		intervalStarts = millis();
 		// update controller
 		bool success = getVescValues();
+		esk8.send('B');
 
 		bool vescStatusChanged = vescStatus.serviceState(success);
-
-		//update with data if VESC offline
-		loadPacketForController(success);
 	}
 
 	runner.execute();
-
-	// updateLEDs();
 
 	delay(10);
 }
@@ -262,7 +244,10 @@ void codeForRF24CommsRxTask( void *parameter ) {
 
 	for (;;) {
 
-		haveControllerData = esk8.checkForPacket();
+		if ( esk8.available() ) {
+			debug.print(CONTROLLER_COMMS, "Received message \n");
+			tSendToVESC.restart();	// send straight away
+		}
 
 		bool controllerOnline = esk8.controllerOnline();
 
@@ -273,82 +258,6 @@ void codeForRF24CommsRxTask( void *parameter ) {
 		delay(50);
 	}
 	vTaskDelete(NULL);
-}
-//*************************************************************
-void updateLEDs() {
-	// return;
-
-	// bool changed;
-	// bool throttleChanged = currentThrottle != esk8.controllerPacket.throttle;
-	// bool encoderButtonChanged = currentEncoderButton != esk8.controllerPacket.encoderButton; 
-
-	// if (!controllerStatusChanged && !vescStatusChanged && !throttleChanged && !encoderButtonChanged) {
-	// 	return;
-	// }
-
-	// debug.print(STATE, "controllerStatusChanged: %d \n", controllerStatusChanged);
-	// debug.print(STATE, "vescStatusChanged: %d \n", vescStatusChanged);
-	// debug.print(STATE, "currentThrottle != esk8.controllerPacket.throttle: %d \n", 
-	// 	currentThrottle != esk8.controllerPacket.throttle);
-	// debug.print(STATE, "currentEncoderButton != esk8.controllerPacket.encoderButton: %d \n", 
-	// 	currentEncoderButton != esk8.controllerPacket.encoderButton);
-
-	// for (int i = 0; i < NUM_LEDS; i++) {
-	// 	switch (i) {
-	// 		case 0:	// controller online status
-	// 		case 1: // VESC online
-	// 			if (controllerCommsState == ST_ONLINE) {
-	// 				strip.setPixelColor(i, strip.Color(0, 255, 0));
-	// 			} else {
-	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
-	// 			}
-	// 			break;
-	// 		case 3: // VESC online
-	// 		case 4: // VESC online
-	// 		 	if (vescCommsState == ST_ONLINE) {
-	// 		 		strip.setPixelColor(i, strip.Color(0, 255, 0));
-	// 		 	} else {
-	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
-	// 			}
-	// 			break;
-	// 		case 6:
-	// 		case 7:
-	// 			if (controllerCommsState == ST_ONLINE) {
-	// 				if (throttleChanged) {
-	// 					if (esk8.controllerPacket.throttle > 127) {
-	// 			 			strip.setPixelColor(i, strip.Color(0, 0, 255));	
-	// 			 		} else if (esk8.controllerPacket.throttle < 127) {
-	// 			 			strip.setPixelColor(i, strip.Color(0, 255, 0));	
-	// 			 		} else {
-	// 						strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
-	// 				 	}
-	// 			 	}
-	// 			}
-	// 			else if (controllerStatusChanged) {
-	// 				strip.setPixelColor(i, strip.Color(0, 0, 0));	
-	// 			}
-	// 			break;
-	// 		case 9:
-	// 		case 10:
-	// 			if (encoderButtonChanged) {
-	// 				if (esk8.controllerPacket.encoderButton == 1) {
-	// 					strip.setPixelColor(i, strip.Color(0, 0, 255));	
-	// 				} else {
-	// 					strip.setPixelColor(i, strip.Color(0, 0, 0));
-	// 				}
-	// 			}
-	// 			break;
-	// 		default:
-	// 			strip.setPixelColor(i, strip.Color(0, 0, 0));
-	// 			break;
-	// 	}
-
-	// 	strip.show();
-	// 	controllerStatusChanged = false;
-	// 	vescStatusChanged = false;
-	// 	currentThrottle = esk8.controllerPacket.throttle;
-	// 	currentEncoderButton = esk8.controllerPacket.encoderButton;
-	// }
 }
 //--------------------------------------------------------------------------------
 bool getVescValues() {

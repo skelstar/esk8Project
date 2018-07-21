@@ -58,6 +58,8 @@ void setup() {
 
     this_node = node_address_set[NODE_ADDRESS]; // Which node are we?
 
+    Serial.printf("Address: %0o \n", this_node);
+
     SPI.begin(); // Bring up the RF network
     radio.begin();
     radio.setPALevel(RF24_PA_HIGH);
@@ -75,24 +77,24 @@ void loop() {
         network.peek(header);
 
         switch (header.type) { // Dispatch the message to the correct handler.
-        case 'T':
-            handle_T(header);
-            break;
-        case 'N':
-            handle_N(header);
-            break;
-        case 'A':
-        	handler_Throttle(header);
-        	if (send_Throttle(00) == true) {
-        		Serial.printf("Send %d to 00 \n", _throttle);
-        	} else {
-        		Serial.printf("Failed to send %d to 00 \n", _throttle);
-        	}
-        	break;
-        default:
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-            network.read(header, 0, 0);
-            break;
+	        // case 'T':
+	        //     handle_T(header);
+	        //     break;
+	        // case 'N':
+	        //     handle_N(header);
+	        //     break;
+	        case 'A':
+	        	handler_Throttle(header);
+	        	if (send_Throttle(00) == true) {
+	        		Serial.printf("Send %d to 00 \n", _throttle);
+	        	} else {
+	        		Serial.printf("Failed to send %d to 00 \n", _throttle);
+	        	}
+	        	break;
+	        default:
+	            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
+	            network.read(header, 0, 0);
+	            break;
         };
     }
 }

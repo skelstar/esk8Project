@@ -4,6 +4,8 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <RF24.h>
+#include <RF24Network.h > 
+
 // #include <debugHelper.h>
 
 //--------------------------------------------------------------------------------
@@ -35,32 +37,43 @@ class esk8Lib
 			ERR_TIMEOUT
 		};
 
+		enum RoleType {
+			CONTROLLER,
+			BOARD,
+			LISTENER
+		};
+
 		esk8Lib();
-		// void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
 		
-		void begin(RF24 *radio, int role);
-		
-		int checkForPacket();
-		int packetChanged();
-		int sendThenReadACK();
+		void begin(RF24 *radio, RF24Network *network, RoleType role);
+		int available();
+
+		int send(char messageType);
+
+		void handle_Controller_Message(RF24NetworkHeader& header);
+		void handle_Board_Message(RF24NetworkHeader& header);
+
 		int controllerOnline();
-		int controllerOnline(int period);
 		int boardOnline();
-		int getSendInterval();
+
+		long getSendInterval();
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
 
-		// VESC_DATA vescdata;
-
-
-
 	private:
 		RF24 *_radio;
 		RF24Network *_network;
-		int _role;
-		long _lastPacketReadTime;
+		RoleType _role;
+		uint16_t _this_node;
+		uint16_t _other_node;
+		
+		long _lastSentToController;
+		long _lastSentToBoard;
 
+		long _lastPacketReadTime;
+		long _lastControllerCommsTime;
+		long _lastBoardCommsTime;
 };
 
 #endif
