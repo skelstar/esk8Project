@@ -223,7 +223,6 @@ void loop() {
 	bool timeToUpdateController = millis() - intervalStarts > esk8.getSendInterval();
 
 	if (timeToUpdateController) {
-		debug.print(CONTROLLER_COMMS, "timeToUpdateController\n");
 		intervalStarts = millis();
 		// update controller
 		bool success = getVescValues();

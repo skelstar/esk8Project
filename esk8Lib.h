@@ -51,6 +51,7 @@ class esk8Lib
 		int send(char messageType);
 
 		void handle_Controller_Message(RF24NetworkHeader& header);
+		void handle_ACK_Message(RF24NetworkHeader& header);
 		void handle_Board_Message(RF24NetworkHeader& header);
 
 		int controllerOnline();

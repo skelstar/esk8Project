@@ -58,12 +58,13 @@ int esk8Lib::available() {
 		RF24NetworkHeader header; // If so, take a look at it
         _network->peek(header);
 
-        switch (header.type) { // Dispatch the message to the correct handler.
+        switch (header.type) {
 			case 'A':	// message from Controller
 				_lastControllerCommsTime = millis();
 				handle_Controller_Message(header);
 				return true;
 			case 'a':	// acknowledge of 'A'
+				handle_ACK_Message(header);
 				_lastBoardCommsTime = millis();
 				return false;
 			case 'B':	// message from Board
@@ -91,28 +92,42 @@ int esk8Lib::send(char messageType) {
 		if (messageType == 'A') {
     		// Serial.printf("%lu: APP Sending &controllerPacket to 0%o... \n\r", millis(), _other_node);
 			RF24NetworkHeader header( _other_node, 'A' );
-			_lastSentToBoard = millis();
+			_lastControllerCommsTime = millis();
 			return _network->multicast( header, &controllerPacket, sizeof(controllerPacket), /* level */ 1 );
 		} else {
 			Serial.printf("Unhandled messageType in send() %c \n", messageType);
 		}
 	}
 	else if (_role == BOARD) {
-		if (messageType == 'B') {
-			RF24NetworkHeader header( _other_node, 'B' );
-			_lastSentToController = millis();
-			return _network->write( header, &boardPacket, sizeof(boardPacket) );
-		} else {
-			Serial.printf("Unhandled messageType in send() %c \n", messageType);
+		switch (messageType) {
+			case 'B': {
+				RF24NetworkHeader header( _other_node, 'B' );
+				_lastBoardCommsTime = millis();
+				return _network->write( header, &boardPacket, sizeof(boardPacket) );
+				}
+				break;
+			case 'a': {	// 'A' ACK
+				RF24NetworkHeader header( _other_node, 'a' );
+				_lastBoardCommsTime = millis();
+				return _network->write( header, 0, 0 );
+				}
+				break;
+			default:
+				Serial.printf("Unhandled messageType in send() %c \n", messageType);
+				return false;
+				break;
 		}
-	}
-	else {
-		Serial.printf("Unhandled role in send(): %d \n", _role);
 	}
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::handle_Controller_Message(RF24NetworkHeader& header) {
     _network->read(header, &controllerPacket, sizeof(controllerPacket));
+    // send ACK
+    send('a');
+}
+//---------------------------------------------------------------------------------
+void esk8Lib::handle_ACK_Message(RF24NetworkHeader& header) {
+	_network->read(header, 0, 0);
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::handle_Board_Message(RF24NetworkHeader& header) {
@@ -124,7 +139,7 @@ int esk8Lib::controllerOnline() {
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::boardOnline() {
-	return (millis()-_lastBoardCommsTime) < CONTROLLER_SEND_INTERVAL;
+	return (millis()-_lastBoardCommsTime) < (CONTROLLER_SEND_INTERVAL * 1.1);	// 10% threshold
 }
 //---------------------------------------------------------------------------------
 long esk8Lib::getSendInterval() {

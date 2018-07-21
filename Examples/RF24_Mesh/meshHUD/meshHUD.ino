@@ -1,7 +1,7 @@
 #if (defined(__AVR__))
-  #include <avr\ pgmspace.h > 
+	#include <avr\ pgmspace.h > 
 #else
-  #include <pgmspace.h > 
+	#include <pgmspace.h > 
 #endif
 #include <RF24.h > 
 #include <RF24Network.h > 
@@ -27,8 +27,13 @@ uint8_t NODE_ADDRESS = 2; // Use numbers 0 through to select an address from the
 
 /***********************************************************************/
 /***********************************************************************/
+// #define SPI_CE	22
+// #define SPI_CS 	5
+#define SPI_CE	33
+#define SPI_CS 	26
 
-RF24 radio(22, 5); // CE & CS pins to use (Using 7,8 on Uno,Nano)
+RF24 radio(SPI_CE, SPI_CS); // CE & CS pins to use (Using 7,8 on Uno,Nano)
+
 RF24Network network(radio);
 
 uint16_t this_node; // Our node address
