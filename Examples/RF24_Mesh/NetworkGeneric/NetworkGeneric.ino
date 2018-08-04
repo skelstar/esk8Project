@@ -113,13 +113,13 @@ void setup() {
 		    this_node = node_address_set[1]; // Which node are we?
 		    break;
 	    case 10292:
-		    this_node = node_address_set[3]; // Which node are we?
+		    this_node = node_address_set[2]; // Which node are we?
 			break;
 	    case 57808:		// antenna
-		    this_node = node_address_set[2]; // Which node are we?
+		    this_node = node_address_set[3]; // Which node are we?
 			break;
 		case 39045:
-		    this_node = node_address_set[2]; // Which node are we?
+		    this_node = node_address_set[4]; // Which node are we?
 			break;
 		default:
 			Serial.printf("NOTE: node not configured! \n\n");
@@ -131,6 +131,7 @@ void setup() {
     SPI.begin(); // Bring up the RF network
     radio.begin();
     radio.setPALevel(RF24_PA_HIGH);
+    radio.printDetails();
     network.begin( /*channel*/ 100, /*node address*/ this_node);
 }
 
@@ -159,34 +160,47 @@ void loop() {
     unsigned long now = millis(); // Send a ping to the next node every 'interval' ms
     if (now - last_time_sent >= interval) {
         last_time_sent = now;
-        uint16_t to = 00; // Who should we send to? By default, send to base
 
-        if (num_active_nodes) { // Or if we have active nodes,
-            to = active_nodes[next_ping_node_index++]; // Send to the next active node
-            if (next_ping_node_index > num_active_nodes) { // Have we rolled over?
-                next_ping_node_index = 0; // Next time start at the beginning
-                to = 00; // This time, send to node 00.
-            }
-        }
+        uint16_t to = getNextNodeToSendTo();
+
         bool ok;
 
-        if (this_node > 00 || to == 00) { // Normal nodes send a 'T' ping
-            ok = send_T(to);
-        } else { // Base node sends the current active nodes out
-            ok = send_N(to);
-        }
+        if (this_node != to) {
 
-        if (ok) { // Notify us of the result
-            Serial.printf(" %lu: APP Send ok \n\r", millis());
-        } else {
-            Serial.printf(" %lu: APP Send failed \n\r", millis());
-            last_time_sent -= 100; // Try sending at a different time next time
-        }
+	        if (this_node > 00 || to == 00) { // Normal nodes send a 'T' ping
+	            ok = send_T(to);
+	        } else { // Base node sends the current active nodes out
+	            ok = send_N(to);
+	        }
+
+	        if (ok) { // Notify us of the result
+	            Serial.printf(" %lu: APP Send ok \n\r", millis());
+	        } else {
+	            Serial.printf(" %lu: APP Send failed \n\r", millis());
+	            last_time_sent -= 100; // Try sending at a different time next time
+	        }
+	    }
     }
     //  delay(50);                          // Delay to allow completion of any serial printing
     //  if(!network.available()){
     //      network.sleepNode(2,0);         // Sleep this node for 2 seconds or a payload is received (interrupt 0 triggered), whichever comes first
     //  }
+}
+
+/**
+
+ */
+int16_t getNextNodeToSendTo() {
+	uint16_t _to = 00; // Who should we send to? By default, send to base
+
+	if (num_active_nodes) { // Or if we have active nodes,
+		_to = active_nodes[next_ping_node_index++]; // Send to the next active node
+		if (next_ping_node_index > num_active_nodes) { // Have we rolled over?
+			next_ping_node_index = 0; // Next time start at the beginning
+			_to = 00; // This time, send to node 00.
+		}
+	}
+	return _to;
 }
 /**
  * Send a 'T' message, the current time
@@ -197,8 +211,8 @@ bool send_T(uint16_t to) {
     // The 'T' message that we send is just a ulong, containing the time
     unsigned long message = millis();
     Serial.printf("---------------------------------\n\r");
-    Serial.printf("%lu: APP Sending %lu to 0%o...", millis(), message, to);
-    return network.write(header, & message, sizeof(unsigned long));
+    Serial.printf("%lu: send_T() %lu to 0%o...", millis(), message, to);
+    return network.write(header, &message, sizeof(unsigned long));
 }
 /**
  * Send an 'N' message, the active node list
@@ -207,7 +221,7 @@ bool send_N(uint16_t to) {
     RF24NetworkHeader header( /*to node*/ to, /*type*/ 'N' /*Time*/ );
 
     Serial.printf("---------------------------------\n\r");
-    Serial.printf("%lu: APP Sending active nodes to 0%o...", millis(), to);
+    Serial.printf("%lu: Sending active nodes to 0%o...", millis(), to);
     return network.write(header, active_nodes, sizeof(active_nodes));
 }
 /**
@@ -217,7 +231,7 @@ bool send_N(uint16_t to) {
 void handle_T(RF24NetworkHeader & header) {
     unsigned long message; // The 'T' message is just a ulong, containing the time
     network.read(header, & message, sizeof(unsigned long));
-    Serial.printf("-----> %lu: APP Received %lu from 0%o\n\r", millis(), message, header.from_node);
+    Serial.printf("-----> %lu: Received %lu from 0%o\n\r", millis(), message, header.from_node);
     if (header.from_node != this_node || header.from_node > 00) // If this message is from ourselves or the base, don't bother adding it to the active nodes.
         add_node(header.from_node);
 }
@@ -227,10 +241,15 @@ void handle_T(RF24NetworkHeader & header) {
 void handle_N(RF24NetworkHeader & header) {
     static uint16_t incoming_nodes[max_active_nodes];
     network.read(header, &incoming_nodes, sizeof(incoming_nodes));
-    Serial.printf("%lu: APP Received nodes from 0%o: ", millis(), header.from_node);
+    Serial.printf("-----> %lu: Received nodes from 0%o: ", millis(), header.from_node);
     int i = 0;
     while (i < max_active_nodes && incoming_nodes[i] > 00) {
-    	Serial.printf("%o ", incoming_nodes[i]);
+    	if (incoming_nodes[i] == this_node) {
+	    	Serial.printf("*%o ", incoming_nodes[i]);
+    	}
+    	else {
+	    	Serial.printf("%o ", incoming_nodes[i]);
+    	}
         add_node(incoming_nodes[i++]);
     }
     Serial.println();
@@ -248,6 +267,6 @@ void add_node(uint16_t node) {
 
     if (i == -1 && num_active_nodes < max_active_nodes) { // If not, add it to the table
         active_nodes[num_active_nodes++] = node;
-        Serial.printf("%lu: APP Added 0%o to list of active nodes.\n\r", millis(), node);
+        Serial.printf("%lu: +++ Added 0%o to list of active nodes.\n\r", millis(), node);
     }
 }
