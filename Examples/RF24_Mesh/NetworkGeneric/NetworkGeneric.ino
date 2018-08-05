@@ -61,33 +61,12 @@
 
 debugHelper debug;
 
-
 /***********************************************************************
 ************* Set the Node Address *************************************
 /***********************************************************************/
-// These are the Octal addresses that will be assigned
-const uint16_t node_address_set[10] = {
-    00,
-    02,
-    05,
-    012,
-    015,
-    022,
-    025,
-    032,
-    035,
-    045
-};
 
 // https://github.com/nRF24/RF24Network/blob/master/examples/Network_Ping/Network_Ping.ino
 
-// 0 = Master
-// 1-2 (02,05)   = Children of Master(00)
-// 3,5 (012,022) = Children of (02)
-// 4,6 (015,025) = Children of (05)
-// 7   (032)     = Child of (02)
-// 8,9 (035,045) = Children of (05)
-uint8_t NODE_ADDRESS = 0; // Use numbers 0 through to select an address from the array
 /***********************************************************************/
 /***********************************************************************/
 RF24 radio(33, 26); // CE & CS pins to use (Using 7,8 on Uno,Nano)
@@ -97,8 +76,13 @@ uint16_t this_node; // Our node address
 
 const unsigned long interval = 1000; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
+
 const short max_active_nodes = 10; // Array of nodes we are aware of
 uint16_t active_nodes[max_active_nodes];
+bool other_nodes[max_active_nodes];
+int num_fails_before_remove = 5;
+int fail_count[max_active_nodes];
+
 short num_active_nodes = 0;
 short next_ping_node_index = 0;
 
@@ -123,39 +107,41 @@ void setup() {
     uint64_t chipid = ESP.getEfuseMac();	//The chip ID is essentially its MAC address(length: 6 bytes).
 	switch ((uint32_t) (chipid>>32)) {
 		case 36306:
-	    	this_node = node_address_set[0]; // 00
+	    	this_node = 0; // 00
 			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
 	    	break;
     	case 39989:
-		    this_node = node_address_set[1]; // 02
-			debug.setFilter( STARTUP | ERROR | PRINT_RX | PRINT_TX );
+		    this_node = 1;
+			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 		    break;
 	    case 10292:
-		    this_node = node_address_set[3]; // 05
-			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_TX | PRINT_RX );
+		    this_node = 2;
+			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 			break;
 	    case 57808:		// antenna
-		    this_node = node_address_set[2]; // 12
-			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
+		    this_node = 3;
+			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 			break;
 		case 39045:
-		    this_node = node_address_set[4]; // 15
-			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
+		    this_node = 4;
+			debug.setFilter( STARTUP | ERROR | PRINT_RX );
+			break;
+		case 59618:
+			this_node = 5;
+			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 			break;
 		default:
-			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
+			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 			debug.print(STARTUP, "NOTE: node not configured! \n\n");
 			break;		
 	}
-	// debug.setFilter( STARTUP );
 
     debug.print(STARTUP, "\n\r\\esk8Project\\Examples\\RF24_Mesh\\NetworkGeneric\n\r");
 
 	debug.print(STARTUP, "ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
-	// debug.print(STARTUP, "%08X\n", (uint32_t)chipid);//print Low 4bytes.
 	debug.print(STARTUP, "%08u\n", (uint32_t)chipid);//print Low 4bytes.
 
-    debug.print(STARTUP, "this_node: 0%o\n", this_node);
+    debug.print(STARTUP, "this_node: 0%d\n", this_node);
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
@@ -196,18 +182,23 @@ void loop() {
 
         if (this_node != to) {
 
-	        if ( this_node > 00 ) { // Normal nodes send a 'T' ping
+	        if ( this_node > 0 ) { // Normal nodes send a 'T' ping
 	            ok = send_T(to);
 	        } else { // Base node sends the current active nodes out
         	    debug.print(PRINT_TX, "---------------------------------\n\r");
-			    debug.print(PRINT_TX, "(N) Sending active nodes ---> 0%o...", to);
+			    debug.print(PRINT_TX, "(N) Sending active nodes ---> 0%d...", to);
 	            ok = send_N(to);
 	        }
 
 	        if ( ok ) { // Notify us of the result
-	            debug.print(PRINT_OK, "send_T() ---> 0%o... OK! \n\r", to);
+	            fail_count[to] = 0;
+	            debug.print(PRINT_OK, "send_T() ---> 0%d... OK! \n\r", to);
         	} else {
-            	debug.print(ERROR, "send_T() ---> 0%o... FAILED!!! \n\r", to);
+            	fail_count[to]++;
+            	debug.print(ERROR, "send_T() ---> 0%d... FAILED!!! (count = %d) \n\r", to, fail_count[to]);
+            	if (fail_count[to] >= num_fails_before_remove) {
+            		remove_other_node(to);
+            	}
 	            last_time_sent -= 100; // Try sending at a different time next time
 	        }
 	    }
@@ -222,13 +213,13 @@ void loop() {
 
  */
 int16_t getNextNodeToSendTo() {
-	uint16_t _to = 00; // Who should we send to? By default, send to base
+	uint16_t _to = 0; // Who should we send to? By default, send to base
 
 	if (num_active_nodes) { // Or if we have active nodes,
 		_to = active_nodes[next_ping_node_index++]; // Send to the next active node
 		if (next_ping_node_index > num_active_nodes) { // Have we rolled over?
 			next_ping_node_index = 0; // Next time start at the beginning
-			_to = 00; // This time, send to node 00.
+			_to = 0; // This time, send to node 0.
 		}
 	}
 	return _to;
@@ -257,8 +248,8 @@ bool send_N(uint16_t to) {
 void handle_T(RF24NetworkHeader & header) {
     unsigned long message; // The 'T' message is just a ulong, containing the time
     network.read(header, & message, sizeof(unsigned long));
-    debug.print(PRINT_RX, "-----> Received %lu from 0%o\n\r", message, header.from_node);
-    if (header.from_node != this_node || header.from_node > 00) {
+    debug.print(PRINT_RX, "-----> Received %lu from 0%d\n\r", message, header.from_node);
+    if (header.from_node != this_node || header.from_node > 0) {
         add_node(header.from_node);
     }
 }
@@ -272,14 +263,14 @@ void handle_N(RF24NetworkHeader & header) {
 
     if (debug.hasOption(PRINT_RX)) {
         Serial.printf("---------------------------------------------\n");
-	    Serial.printf("-----> Received nodes from 0%o: ", header.from_node);
+	    Serial.printf("-----> Received nodes from 0%d: ", header.from_node);
 	    int i = 0;
-	    while (i < max_active_nodes && incoming_nodes[i] > 00) {
+	    while (i < max_active_nodes && incoming_nodes[i] > 0) {
 	    	if (incoming_nodes[i] == this_node) {
-		    	Serial.printf("*%o ", incoming_nodes[i]);
+		    	Serial.printf("*%d ", incoming_nodes[i]);
 	    	}
 	    	else {
-		    	Serial.printf("%o ", incoming_nodes[i]);
+		    	Serial.printf("%d ", incoming_nodes[i]);
 	    	}
 	        add_node(incoming_nodes[i++]);
 	    }
@@ -291,6 +282,11 @@ void handle_N(RF24NetworkHeader & header) {
  */
 void add_node(uint16_t node) {
 
+	if (other_nodes[node] == false) {
+		other_nodes[node] = true;
+		fail_count[node] = 0;
+	}
+
     short i = num_active_nodes; // Do we already know about this node?
     while (i--) {
         if (active_nodes[i] == node)
@@ -299,6 +295,11 @@ void add_node(uint16_t node) {
 
     if (i == -1 && num_active_nodes < max_active_nodes) { // If not, add it to the table
         active_nodes[num_active_nodes++] = node;
-        debug.print(PRINT_RX, "%lu: +++ Added 0%o to list of active nodes.\n\r", millis(), node);
+        debug.print(PRINT_RX, "%lu: +++ Added 0%d to list of active nodes.\n\r", millis(), node);
     }
+}
+
+void remove_other_node(uint16_t otherNode) {
+	other_nodes[otherNode] = false;
+	debug.print(WARNING, "Removed node from list -> %d \n", otherNode);
 }
