@@ -46,8 +46,21 @@
 #include <RF24Network.h> 
 #include <RF24.h> 
 #include <SPI.h>
+#include <debugHelper.h>
 
 #define SERIAL_DEBUG
+
+//--------------------------------------------------------------
+
+#define	STARTUP 			1 << 0	// 0
+#define WARNING 			1 << 1	// 2
+#define ERROR 				1 << 2	// 4
+#define PRINT_OK 			1 << 3	// 8
+#define PRINT_RX 			1 << 4	// 16
+#define PRINT_TX			1 << 5	// 32
+
+debugHelper debug;
+
 
 /***********************************************************************
 ************* Set the Node Address *************************************
@@ -98,35 +111,51 @@ void add_node(uint16_t node);
 void setup() {
 
     Serial.begin(9600);
-    Serial.printf("\n\r\\esk8Project\\Examples\\RF24_Mesh\\NetworkGeneric\n\r");
+
+	debug.init();
+	debug.addOption(WARNING, "WARNING");
+	debug.addOption(STARTUP, "STARTUP");
+	debug.addOption(ERROR, "ERROR");
+	debug.addOption(PRINT_OK, "PRINT_OK");
+	debug.addOption(PRINT_RX, "");
+	debug.addOption(PRINT_TX, "PRINT_TX");
 
     uint64_t chipid = ESP.getEfuseMac();	//The chip ID is essentially its MAC address(length: 6 bytes).
-	Serial.printf("ESP32 Chip ID = %04u ", (uint16_t)(chipid>>32));//print High 2 bytes
-	// Serial.printf("%08X\n", (uint32_t)chipid);//print Low 4bytes.
-	Serial.printf("%08u\n", (uint32_t)chipid);//print Low 4bytes.
-
 	switch ((uint32_t) (chipid>>32)) {
 		case 36306:
-	    	this_node = node_address_set[0]; // Which node are we?
+	    	this_node = node_address_set[0]; // 00
+			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
 	    	break;
     	case 39989:
-		    this_node = node_address_set[1]; // Which node are we?
+		    this_node = node_address_set[1]; // 02
+			debug.setFilter( STARTUP | ERROR | PRINT_RX | PRINT_TX );
 		    break;
 	    case 10292:
-		    this_node = node_address_set[2]; // Which node are we?
+		    this_node = node_address_set[3]; // 05
+			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_TX | PRINT_RX );
 			break;
 	    case 57808:		// antenna
-		    this_node = node_address_set[3]; // Which node are we?
+		    this_node = node_address_set[2]; // 12
+			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
 			break;
 		case 39045:
-		    this_node = node_address_set[4]; // Which node are we?
+		    this_node = node_address_set[4]; // 15
+			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
 			break;
 		default:
-			Serial.printf("NOTE: node not configured! \n\n");
+			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
+			debug.print(STARTUP, "NOTE: node not configured! \n\n");
 			break;		
 	}
+	// debug.setFilter( STARTUP );
 
-    Serial.printf("this_node: 0%o\n", this_node);
+    debug.print(STARTUP, "\n\r\\esk8Project\\Examples\\RF24_Mesh\\NetworkGeneric\n\r");
+
+	debug.print(STARTUP, "ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
+	// debug.print(STARTUP, "%08X\n", (uint32_t)chipid);//print Low 4bytes.
+	debug.print(STARTUP, "%08u\n", (uint32_t)chipid);//print Low 4bytes.
+
+    debug.print(STARTUP, "this_node: 0%o\n", this_node);
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
@@ -151,7 +180,7 @@ void loop() {
             handle_N(header);
             break;
         default:
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
+            debug.print(WARNING, "*** WARNING *** Unknown message type %c\n\r", header.type);
             network.read(header, 0, 0);
             break;
         };
@@ -167,16 +196,18 @@ void loop() {
 
         if (this_node != to) {
 
-	        if (this_node > 00 || to == 00) { // Normal nodes send a 'T' ping
+	        if ( this_node > 00 ) { // Normal nodes send a 'T' ping
 	            ok = send_T(to);
 	        } else { // Base node sends the current active nodes out
+        	    debug.print(PRINT_TX, "---------------------------------\n\r");
+			    debug.print(PRINT_TX, "(N) Sending active nodes ---> 0%o...", to);
 	            ok = send_N(to);
 	        }
 
-	        if (ok) { // Notify us of the result
-	            Serial.printf(" %lu: APP Send ok \n\r", millis());
-	        } else {
-	            Serial.printf(" %lu: APP Send failed \n\r", millis());
+	        if ( ok ) { // Notify us of the result
+	            debug.print(PRINT_OK, "send_T() ---> 0%o... OK! \n\r", to);
+        	} else {
+            	debug.print(ERROR, "send_T() ---> 0%o... FAILED!!! \n\r", to);
 	            last_time_sent -= 100; // Try sending at a different time next time
 	        }
 	    }
@@ -210,8 +241,6 @@ bool send_T(uint16_t to) {
 
     // The 'T' message that we send is just a ulong, containing the time
     unsigned long message = millis();
-    Serial.printf("---------------------------------\n\r");
-    Serial.printf("%lu: send_T() %lu to 0%o...", millis(), message, to);
     return network.write(header, &message, sizeof(unsigned long));
 }
 /**
@@ -219,9 +248,6 @@ bool send_T(uint16_t to) {
  */
 bool send_N(uint16_t to) {
     RF24NetworkHeader header( /*to node*/ to, /*type*/ 'N' /*Time*/ );
-
-    Serial.printf("---------------------------------\n\r");
-    Serial.printf("%lu: Sending active nodes to 0%o...", millis(), to);
     return network.write(header, active_nodes, sizeof(active_nodes));
 }
 /**
@@ -231,28 +257,34 @@ bool send_N(uint16_t to) {
 void handle_T(RF24NetworkHeader & header) {
     unsigned long message; // The 'T' message is just a ulong, containing the time
     network.read(header, & message, sizeof(unsigned long));
-    Serial.printf("-----> %lu: Received %lu from 0%o\n\r", millis(), message, header.from_node);
-    if (header.from_node != this_node || header.from_node > 00) // If this message is from ourselves or the base, don't bother adding it to the active nodes.
+    debug.print(PRINT_RX, "-----> Received %lu from 0%o\n\r", message, header.from_node);
+    if (header.from_node != this_node || header.from_node > 00) {
         add_node(header.from_node);
+    }
 }
 /**
  * Handle an 'N' message, the active node list
  */
 void handle_N(RF24NetworkHeader & header) {
+    
     static uint16_t incoming_nodes[max_active_nodes];
     network.read(header, &incoming_nodes, sizeof(incoming_nodes));
-    Serial.printf("-----> %lu: Received nodes from 0%o: ", millis(), header.from_node);
-    int i = 0;
-    while (i < max_active_nodes && incoming_nodes[i] > 00) {
-    	if (incoming_nodes[i] == this_node) {
-	    	Serial.printf("*%o ", incoming_nodes[i]);
-    	}
-    	else {
-	    	Serial.printf("%o ", incoming_nodes[i]);
-    	}
-        add_node(incoming_nodes[i++]);
-    }
-    Serial.println();
+
+    if (debug.hasOption(PRINT_RX)) {
+        Serial.printf("---------------------------------------------\n");
+	    Serial.printf("-----> Received nodes from 0%o: ", header.from_node);
+	    int i = 0;
+	    while (i < max_active_nodes && incoming_nodes[i] > 00) {
+	    	if (incoming_nodes[i] == this_node) {
+		    	Serial.printf("*%o ", incoming_nodes[i]);
+	    	}
+	    	else {
+		    	Serial.printf("%o ", incoming_nodes[i]);
+	    	}
+	        add_node(incoming_nodes[i++]);
+	    }
+        Serial.printf("\n---------------------------------------------\n");
+	}
 }
 /**
  * Add a particular node to the current list of active nodes
@@ -267,6 +299,6 @@ void add_node(uint16_t node) {
 
     if (i == -1 && num_active_nodes < max_active_nodes) { // If not, add it to the table
         active_nodes[num_active_nodes++] = node;
-        Serial.printf("%lu: +++ Added 0%o to list of active nodes.\n\r", millis(), node);
+        debug.print(PRINT_RX, "%lu: +++ Added 0%o to list of active nodes.\n\r", millis(), node);
     }
 }
