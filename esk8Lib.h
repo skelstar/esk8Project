@@ -16,12 +16,14 @@
 struct BoardStruct{
 	// int32_t rpm;
 	float batteryVoltage;
+	long id;
 };
 
 
 struct ControllerStruct {
 	int throttle;
 	int encoderButton;
+	long id;
 };
 
 // #define	STARTUP 		1 << 0
@@ -71,7 +73,7 @@ class esk8Lib
 		RoleType _role;
 		uint16_t _this_node;
 		uint16_t _other_node;
-		
+
 		long _lastSentToController;
 		long _lastSentToBoard;
 

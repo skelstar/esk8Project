@@ -74,7 +74,7 @@ RF24Network network(radio);
 
 uint16_t this_node; // Our node address
 
-const unsigned long interval = 1000; // ms       // Delay manager to send pings regularly.
+unsigned long interval = 1000; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
 
 const short max_active_nodes = 10; // Array of nodes we are aware of
@@ -108,14 +108,16 @@ void setup() {
 	switch ((uint32_t) (chipid>>32)) {
 		case 36306:
 	    	this_node = 0; // 00
-			debug.setFilter( STARTUP | ERROR | PRINT_OK | PRINT_RX );
+			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 	    	break;
     	case 39989:
 		    this_node = 1;
 			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 		    break;
 	    case 10292:
+	    	// multicast
 		    this_node = 2;
+		    interval = 5000;
 			debug.setFilter( STARTUP | ERROR | PRINT_RX );
 			break;
 	    case 57808:		// antenna
@@ -148,6 +150,10 @@ void setup() {
     radio.setPALevel(RF24_PA_HIGH);
     radio.printDetails();
     network.begin( /*channel*/ 100, /*node address*/ this_node);
+
+    if ( this_node > 0 ) {
+    	network.multicastLevel( 1 );
+    }
 }
 
 void loop() {
@@ -180,7 +186,25 @@ void loop() {
 
         bool ok;
 
-        if (this_node != to) {
+        if (this_node == 2) {
+        	if ( send_T(-1) ) { // Notify us of the result
+	            fail_count[to] = 0;
+	            debug.print(PRINT_OK, "send_T() ---> 0%d... OK! \n\r", to);
+        	} else {
+            	fail_count[to]++;
+            	debug.print(ERROR, "send_T() ---> 0%d... FAILED!!! (count = %d) \n\r", to, fail_count[to]);
+            	if (fail_count[to] >= num_fails_before_remove) {
+            		remove_other_node(to);
+            	}
+	            last_time_sent -= 100; // Try sending at a different time next time
+
+		        	// send to root
+		        if ( send_T(0) == false ) {
+	            	debug.print(ERROR, "send_T() ---> 0... FAILED!!! \n\r");
+		        }
+	        }
+        }
+        else if (this_node != to) {
 
 	        if ( this_node > 0 ) { // Normal nodes send a 'T' ping
 	            ok = send_T(to);
@@ -232,6 +256,10 @@ bool send_T(uint16_t to) {
 
     // The 'T' message that we send is just a ulong, containing the time
     unsigned long message = millis();
+
+    if (this_node == 2) {
+    	return network.multicast(header, &message, sizeof(unsigned long), 1);
+    }
     return network.write(header, &message, sizeof(unsigned long));
 }
 /**
@@ -248,7 +276,12 @@ bool send_N(uint16_t to) {
 void handle_T(RF24NetworkHeader & header) {
     unsigned long message; // The 'T' message is just a ulong, containing the time
     network.read(header, & message, sizeof(unsigned long));
-    debug.print(PRINT_RX, "-----> Received %lu from 0%d\n\r", message, header.from_node);
+    if ( header.to_node == 64 ) {
+	    debug.print(PRINT_RX, "-----> Received %lu from 0%d (MULTICAST) \n\r", message, header.from_node);
+    }
+    else {
+	    debug.print(PRINT_RX, "-----> Received %lu from 0%d \n\r", message, header.from_node);
+	}
     if (header.from_node != this_node || header.from_node > 0) {
         add_node(header.from_node);
     }

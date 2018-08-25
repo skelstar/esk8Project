@@ -246,6 +246,7 @@ void codeForRF24CommsRxTask( void *parameter ) {
 		if ( esk8.available() ) {
 			debug.print(CONTROLLER_COMMS, "Received message: throttle=%d \n", esk8.controllerPacket.throttle);
 			tSendToVESC.restart();	// send straight away
+			esp_task_wdt_feed();
 		}
 
 		bool controllerOnline = esk8.controllerOnline();

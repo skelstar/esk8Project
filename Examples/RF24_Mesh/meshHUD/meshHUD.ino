@@ -9,6 +9,11 @@
 
 // https://github.com/nRF24/RF24Network/blob/master/examples/Network_Ping/Network_Ping.ino
 
+#define     NODE_BOARD          00
+#define     NODE_CONTROLLER     01
+#define     NODE_HUD            02
+#define     NODE_TEST           03
+
 /***********************************************************************/
 /***********************************************************************/
 RF24 radio(33, 26); // CE & CS pins to use (Using 7,8 on Uno,Nano)
@@ -32,12 +37,22 @@ void setup() {
     uint64_t chipid = ESP.getEfuseMac();    //The chip ID is essentially its MAC address(length: 6 bytes).
     Serial.printf("ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
 
-    this_node = 01;
+    switch ((uint16_t)(chipid>>32)) {
+        case 39045:
+            this_node = NODE_TEST;
+            break;
+        default:
+            this_node = NODE_HUD;
+            break;
+    }
+
     Serial.printf("this_node: 0%o\n\n", this_node);
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
     radio.setPALevel(RF24_PA_HIGH);
+    radio.printDetails();
+
     network.begin( /*channel*/ 100, /*node address*/ this_node);
 }
 //--------------------------------------------------------------
@@ -63,7 +78,7 @@ void loop() {
     if (millis() - last_time_sent >= interval) {
         last_time_sent = millis();
 
-        uint16_t to = 00; // This time, send to node 00.
+        uint16_t to = NODE_BOARD; // This time, send to node 00.
 
         bool ok = send_T(to);
 
@@ -89,7 +104,7 @@ void handle_T(RF24NetworkHeader & header) {
     unsigned long message;
     network.read(header, & message, sizeof(unsigned long));
 
-    if (header.from_node == 00) {
+    if (header.from_node == NODE_BOARD) {
         Serial.printf("-----> Id received %lu from 0%o\n\r", message, header.from_node);
     }
     else {

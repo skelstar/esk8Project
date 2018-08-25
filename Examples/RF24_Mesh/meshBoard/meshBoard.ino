@@ -7,6 +7,12 @@
 #include <RF24.h> 
 #include <SPI.h>
 
+
+#define     NODE_BOARD          00
+#define     NODE_CONTROLLER     01
+#define     NODE_HUD            02
+#define     NODE_TEST           03
+
 // https://github.com/nRF24/RF24Network/blob/master/examples/Network_Ping/Network_Ping.ino
 
 /***********************************************************************/
@@ -32,7 +38,7 @@ void setup() {
     uint64_t chipid = ESP.getEfuseMac();    //The chip ID is essentially its MAC address(length: 6 bytes).
     Serial.printf("ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
 
-    this_node = 00;
+    this_node = NODE_BOARD;
     Serial.printf("this_node: 0%o\n\n", this_node);
 
     SPI.begin(); // Bring up the RF network
@@ -50,29 +56,29 @@ void loop() {
         network.peek(header);
 
         switch (header.type) { // Dispatch the message to the correct handler.
-        case 'T':
-            handle_T(header);
-            break;
-        default:
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-            network.read(header, 0, 0);
-            break;
+	        case 'T':
+	            handle_T(header);
+	            break;
+	        default:
+	            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
+	            network.read(header, 0, 0);
+	            break;
         };
     }
 
-    if (millis() - last_time_sent >= interval) {
-        last_time_sent = millis();
+    // if (millis() - last_time_sent >= interval) {
+    //     last_time_sent = millis();
 
-        uint16_t to = 02; // This time, send to node 00.
+    //     uint16_t to = NODE_CONTROLLER;
 
-        bool ok = send_T(to);
+    //     bool ok = send_T(to);
 
-        if (ok) { // Notify us of the result
-            // Serial.printf(" %lu: APP Send ok \n\r", millis());
-        } else {
-            Serial.printf("ERROR: Send to %u failed \n\r", to);
-        }
-    }
+    //     if (ok) { // Notify us of the result
+    //         // Serial.printf(" %lu: APP Send ok \n\r", millis());
+    //     } else {
+    //         Serial.printf("ERROR: Send to NODE_CONTROLLER (%u) failed \n\r", to);
+    //     }
+    // }
 }
 //--------------------------------------------------------------
 bool send_T(uint16_t to) {
@@ -89,7 +95,7 @@ void handle_T(RF24NetworkHeader & header) {
     unsigned long message;
     network.read(header, & message, sizeof(unsigned long));
 
-    if (header.from_node == 02) {
+    if (header.from_node == NODE_CONTROLLER) {
     	if (last_id_received + 1 != message) {
     		Serial.printf("Sync Error! (missed %d packets from 02) - %u seconds\n", 
     			message - last_id_received, 
@@ -98,10 +104,12 @@ void handle_T(RF24NetworkHeader & header) {
     	}
     	last_id_received = message;
     	if (last_id_received % 10 == 0) {
-    		bool ok = send_T(01);
-    		if (ok == false) {
-    			Serial.printf("Failed sending to HUD \n");
-    		}
+    		// if ( send_T(NODE_HUD) == false ) {
+    		// 	Serial.printf("Failed sending to HUD \n");
+    		// }
+    		// if ( send_T(NODE_TEST) == false ) {
+    		// 	Serial.printf("Failed sending to NODE_TEST (0%o) \n", NODE_TEST);
+    		// }
     	}
     }
     else {

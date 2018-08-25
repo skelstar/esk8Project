@@ -227,13 +227,13 @@ void tFlashLeds_onDisable() {
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
+	// debug.print(HARDWARE, "tFlashLedsOn_callback\n");
 	setPixels(COLOUR_RED);
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
+	// debug.print(HARDWARE, "tFlashLedsOff_callback\n");
 	setPixels(COLOUR_OFF);
 	return;
 }
@@ -262,13 +262,13 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 //--------------------------------------------------------------
 void boardOfflineCallback() {
-	debug.print(ONLINE_STATUS, "offlineCallback();\n");
+	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	tFlashLeds.enable();
 	oledMessage("OFFLINE");
 }
 
 void boardOnlineCallback() {
-	debug.print(ONLINE_STATUS, "onlineCallback();\n");	
+	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	tFlashLeds.disable();
 	u8g2.clearBuffer();
 	u8g2.sendBuffer();
@@ -374,7 +374,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS );
+	debug.setFilter( STARTUP | HARDWARE | COMMUNICATION );
 
   	leds.setBrightness(BRIGHTNESS);
 	leds.begin();
@@ -456,6 +456,8 @@ void loop() {
 	powerButton.serviceButton();
 
 	runner.execute();
+
+	esp_task_wdt_feed();
 
 	delay(10);
 }

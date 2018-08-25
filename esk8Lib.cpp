@@ -52,6 +52,7 @@ void esk8Lib::begin(RF24 *radio, RF24Network *network, RoleType role) {	//, debu
 	_radio->printDetails();
 
 	controllerPacket.throttle = 127;
+	controllerPacket.id = 0;
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::available() {
@@ -64,6 +65,8 @@ int esk8Lib::available() {
 
 		RF24NetworkHeader header; // If so, take a look at it
         _network->peek(header);
+
+    	Serial.printf("Message handled %c \n", header.type);
 
         switch (header.type) {
 			case MSG_CONTROLLER_PACKET:	{ 
@@ -98,14 +101,16 @@ int esk8Lib::available() {
 int esk8Lib::send(char messageType) {
 
 	if ( messageType == MSG_CONTROLLER_PACKET ) {
+		Serial.printf("Sending MSG_CONTROLLER_PACKET\n");
 		RF24NetworkHeader header( _other_node, messageType );
 		_lastControllerCommsTime = millis();
+		controllerPacket.id ++;
 		return _network->multicast( header, &controllerPacket, sizeof(controllerPacket), /* level */ 1 );
 	}
 	else if ( messageType == MSG_CONTROLLER_PACKET_ACK ) {
 		RF24NetworkHeader header( _other_node, messageType );
 		_lastBoardCommsTime = millis();
-		return _network->write( header, 0, 0 );
+		return _network->write( header, &controllerPacket.id, sizeof(controllerPacket.id) );
 	}
 	else if ( messageType == MSG_BOARD_PACKET ) {
 		RF24NetworkHeader header( _other_node, messageType );
@@ -119,6 +124,7 @@ int esk8Lib::send(char messageType) {
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::handle_Controller_Message(RF24NetworkHeader& header) {
+	Serial.printf("Controller message handled \n");
     _network->read(header, &controllerPacket, sizeof(controllerPacket));
     // send ACK
     send(MSG_CONTROLLER_PACKET_ACK);

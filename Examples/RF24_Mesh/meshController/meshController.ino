@@ -7,6 +7,11 @@
 #include <RF24.h> 
 #include <SPI.h>
 
+#define     NODE_BOARD          00
+#define     NODE_CONTROLLER     01
+#define     NODE_HUD            02
+#define     NODE_TEST           03
+
 // https://github.com/nRF24/RF24Network/blob/master/examples/Network_Ping/Network_Ping.ino
 
 /***********************************************************************/
@@ -16,7 +21,7 @@ RF24Network network(radio);
 
 uint16_t this_node; // Our node address
 
-const unsigned long interval = 500; // ms       // Delay manager to send pings regularly.
+const unsigned long interval = 200; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
 
 unsigned long last_id_received = -1;
@@ -31,8 +36,9 @@ void setup() {
     uint64_t chipid = ESP.getEfuseMac();    //The chip ID is essentially its MAC address(length: 6 bytes).
     Serial.printf("ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
 
-    this_node = 02;
-    Serial.printf("this_node: 0%o\n\n", this_node);
+    this_node = NODE_CONTROLLER;
+    Serial.printf("this_node: 0%o\n", this_node);
+    Serial.printf("Sending every: %ums\n", interval);
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
@@ -62,14 +68,12 @@ void loop() {
     if (millis() - last_time_sent >= interval) {
         last_time_sent = millis();
 
-        uint16_t to = 00; // This time, send to node 00.
+        uint16_t to = NODE_BOARD;
 
-        bool ok = send_T(to);
-
-        if (ok) { // Notify us of the result
+        if ( send_T(to) == true ) { // Notify us of the result
             //Serial.printf(" %lu: APP Send ok \n\r", millis());
         } else {
-            Serial.printf(" %lu: APP Send failed \n\r", millis());
+            Serial.printf(" %lu: APP Send to 0%o failed \n\r", to, millis());
         }
     }
 }
