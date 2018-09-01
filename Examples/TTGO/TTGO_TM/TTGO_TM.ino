@@ -101,7 +101,7 @@ unsigned long testFillScreen() {
   yield();
   tft.fillScreen(ILI9341_RED);
   yield();
-  tft.fillScreen(ILI9341_GREEN);
+  tft.fillScreen(ILI9341_NAVY);
   yield();
   tft.fillScreen(ILI9341_BLUE);
   yield();
