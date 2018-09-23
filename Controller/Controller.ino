@@ -11,6 +11,7 @@
 
 #include <U8g2lib.h>
 #include <Adafruit_NeoPixel.h>
+#include <driver/adc.h>
 
 // #include "VescUart.h"
 //--------------------------------------------------------------------------------
@@ -22,6 +23,20 @@
 #define DEADMAN_SWITCH_PIN	25
 
 #define	PIXEL_PIN			5
+
+#define FSR_BUTTON_LEFT_PIN	35
+#define FSR_BUTTON_RIGHT_PIN 33
+
+#define FSR_BUTTON_LEFT		ADC1_GPIO35_CHANNEL     
+#define FSR_BUTTON_RIGHT	ADC1_GPIO33_CHANNEL
+
+#define FSR_MODE			1
+#define ENCODER_MODE		0
+
+int mode = FSR_MODE;
+int baseLineLeft = 0;
+int baseLineRight = 0;
+
 
 //--------------------------------------------------------------
 
@@ -167,52 +182,52 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 //--------------------------------------------------------------------------------
 
-#define 	OFF_STATE_HIGH		HIGH
-#define 	OFF_STATE_LOW       0
-#define 	PUSH_BUTTON_PULLUP  true
+// #define 	OFF_STATE_HIGH		HIGH
+// #define 	OFF_STATE_LOW       0
+// #define 	PUSH_BUTTON_PULLUP  true
 
-void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam );
-myPushButton deadmanSwitch(DEADMAN_SWITCH_PIN, PUSH_BUTTON_PULLUP, OFF_STATE_HIGH, listener_deadmanSwitch);
-void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
+// void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam );
+// myPushButton deadmanSwitch(DEADMAN_SWITCH_PIN, PUSH_BUTTON_PULLUP, OFF_STATE_HIGH, listener_deadmanSwitch);
+// void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 
-	switch (eventCode) {
+// 	switch (eventCode) {
 
-		// case deadmanSwitch.EV_BUTTON_PRESSED:
-		// case deadmanSwitch.EV_HELD_SECONDS:
-		case deadmanSwitch.EV_RELEASED:
-            if (esk8.controllerPacket.throttle > 127) {
-			 	zeroThrottleReadyToSend();
-			}
-			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
-			break;
-	}
-}
+// 		// case deadmanSwitch.EV_BUTTON_PRESSED:
+// 		// case deadmanSwitch.EV_HELD_SECONDS:
+// 		case deadmanSwitch.EV_RELEASED:
+//             if (esk8.controllerPacket.throttle > 127) {
+// 			 	zeroThrottleReadyToSend();
+// 			}
+// 			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
+// 			break;
+// 	}
+// }
 
-void listener_encoderButton( int eventCode, int eventPin, int eventParam );
-myPushButton encoderButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_encoderButton);
-void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
+// void listener_encoderButton( int eventCode, int eventPin, int eventParam );
+// myPushButton encoderButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_encoderButton);
+// void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 
-	switch (eventCode) {
+// 	switch (eventCode) {
 
-		case encoderButton.EV_BUTTON_PRESSED:
-            esk8.controllerPacket.encoderButton = 1;
-			break;
+// 		case encoderButton.EV_BUTTON_PRESSED:
+//             esk8.controllerPacket.encoderButton = 1;
+// 			break;
 
-		case encoderButton.EV_RELEASED:
-            esk8.controllerPacket.encoderButton = 0;
-            zeroThrottleReadyToSend();
-			break;
+// 		case encoderButton.EV_RELEASED:
+//             esk8.controllerPacket.encoderButton = 0;
+//             zeroThrottleReadyToSend();
+// 			break;
 
-		case encoderButton.EV_HELD_SECONDS:
-			break;
-	}
-}
+// 		case encoderButton.EV_HELD_SECONDS:
+// 			break;
+// 	}
+// }
 //--------------------------------------------------------------
 // lower number = more coarse
-#define ENCODER_COUNTER_MIN		-20 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX		15 		// acceleration (ie 15 divides 127-255 into 15)
+// #define ENCODER_COUNTER_MIN		-20 	// decceleration (ie -20 divides 0-127 into 20)
+// #define ENCODER_COUNTER_MAX		15 		// acceleration (ie 15 divides 127-255 into 15)
 
-int encoderCounter = 0;
+// int encoderCounter = 0;
 
 //--------------------------------------------------------------------------------
 
@@ -250,7 +265,7 @@ void tFlashLedsOff_callback() {
 void sendMessage() {
 
 	taskENTER_CRITICAL(&mmux);
-    int result = esk8.sendThenReadACK();
+    int result = 0;	//esk8.sendThenReadACK();
     taskEXIT_CRITICAL(&mmux);
 
     if (result == esk8.CODE_SUCCESS) {
@@ -346,27 +361,34 @@ OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 
 //------------------------------------------------------------------------------
 
-void encoderInterruptHandler() {
-	unsigned char result = rotary.process();
+// void encoderInterruptHandler() {
+// 	unsigned char result = rotary.process();
 
-	bool canAccelerate = deadmanSwitch.isPressed();
+// 	bool canAccelerate = deadmanSwitch.isPressed();
 
-	if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
-		if (encoderCounter < ENCODER_COUNTER_MAX) {
-			encoderCounter++;
-			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-			throttleChanged = true;
-		}
-	}
-	else if (result == DIR_CW) {
-		if (encoderCounter > ENCODER_COUNTER_MIN) {
-			encoderCounter--;
-			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-			throttleChanged = true;
-		}
-	}
+// 	if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
+// 		if (encoderCounter < ENCODER_COUNTER_MAX) {
+// 			encoderCounter++;
+// 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+// 			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+// 			throttleChanged = true;
+// 		}
+// 	}
+// 	else if (result == DIR_CW) {
+// 		if (encoderCounter > ENCODER_COUNTER_MIN) {
+// 			encoderCounter--;
+// 			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+// 			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+// 			throttleChanged = true;
+// 		}
+// 	}
+// }
+
+//--------------------------------------------------------------
+
+
+int getBaslinePressure(adc1_channel_t adcPin) {
+	return adc1_get_voltage(adcPin);
 }
 
 //--------------------------------------------------------------
@@ -391,23 +413,29 @@ void setup() {
  //    debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
 	debug.setFilter( STARTUP );
 
-  leds.setBrightness(BRIGHTNESS);
+	leds.setBrightness(BRIGHTNESS);
 	leds.begin();
 	leds.show();
 
-	powerButton.begin();
+	// powerButton.begin();
+	pinMode(FSR_BUTTON_LEFT_PIN, INPUT);
+	pinMode(FSR_BUTTON_RIGHT_PIN, INPUT);
+	adc1_config_width(ADC_WIDTH_12Bit);
+	baseLineLeft = getBaslinePressure(FSR_BUTTON_LEFT);
+	baseLineRight = getBaslinePressure(FSR_BUTTON_RIGHT);
+
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
 	throttleChanged = true;	// initialise
 
-    radio.begin();
+    // radio.begin();
 
     btStop();   // turn bluetooth module off
 
 	// esk8.begin(&radio, ROLE_CONTROLLER, radioNumber, &debug);
-	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
+	// esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
 
 	u8g2.begin();
 
@@ -474,29 +502,42 @@ void loop() {
 **************************************************************/
 void codeForEncoderTask( void *parameter ) {
 
-	setupEncoder();
+	// setupEncoder();
 
 	// then loop forever	
 	for (;;) {
 
-		encoderButton.serviceEvents();
+		int brake = getBrakeValue();
+		int accel = getAccelValue();
 
-		deadmanSwitch.serviceEvents();
+		Serial.printf("acc: %d brake: %d \n", accel, brake);
 
-		delay(10);
+		// encoderButton.serviceEvents();
+
+		// deadmanSwitch.serviceEvents();
+
+		delay(200);
 	}
 
 	vTaskDelete(NULL);
 }
-//**************************************************************
-void setupEncoder() {
-
-	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
-	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
-
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
+//--------------------------------------------------------------
+int getAccelValue() {
+	return adc1_get_voltage(FSR_BUTTON_LEFT);
 }
+
+int getBrakeValue() {
+	return adc1_get_voltage(FSR_BUTTON_RIGHT);
+}
+//**************************************************************
+// void setupEncoder() {
+
+// 	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+// 	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+
+// 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
+// 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
+// }
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
 	taskENTER_CRITICAL(&mmux);
@@ -507,23 +548,23 @@ void setPixels(uint32_t c) {
 	taskEXIT_CRITICAL(&mmux);
 }
 //--------------------------------------------------------------------------------
-int mapEncoderToThrottleValue(int raw) {
-	int mappedThrottle = 0;
-	int rawMiddle = 0;
+// int mapEncoderToThrottleValue(int raw) {
+// 	int mappedThrottle = 0;
+// 	int rawMiddle = 0;
 
-	if (raw >= rawMiddle) {
-		return map(raw, rawMiddle, ENCODER_COUNTER_MAX, 127, 255);
-	}
-	return map(raw, ENCODER_COUNTER_MIN, rawMiddle, 0, 127);
-}
-//--------------------------------------------------------------------------------
-void zeroThrottleReadyToSend() {
-	encoderCounter = 0;
-	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-	throttle = 127;
-	throttleChanged = true;
-    debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
-}
+// 	if (raw >= rawMiddle) {
+// 		return map(raw, rawMiddle, ENCODER_COUNTER_MAX, 127, 255);
+// 	}
+// 	return map(raw, ENCODER_COUNTER_MIN, rawMiddle, 0, 127);
+// }
+// //--------------------------------------------------------------------------------
+// void zeroThrottleReadyToSend() {
+// 	encoderCounter = 0;
+// 	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+// 	throttle = 127;
+// 	throttleChanged = true;
+//     debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
+// }
 //--------------------------------------------------------------
 void oled2LineMessage(char* line1, char* line2, char* unit) {
 	
