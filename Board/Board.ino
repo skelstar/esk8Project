@@ -5,7 +5,8 @@
 #include <Adafruit_NeoPixel.h>
 
 #include <ESP8266VESC.h>
-#include "VescUart.h"
+#include <VescUart.h>
+
 #include "datatypes.h"
 #include <U8g2lib.h>
 #include <myPushButton.h>
@@ -45,6 +46,8 @@ RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
 
 esk8Lib esk8;
 
+VescUart UART;
+
 #define 	ROLE_BOARD 		1
 #define 	ROLE_CONTROLLER 0
 
@@ -81,22 +84,19 @@ void loadPacketForController(bool gotDataFromVesc) {
 		debug.print(VESC_COMMS, "VESC online\n");
 	}
 	else {
-		// dummy data
-		// esk8.boardPacket.batteryVoltage = packetData;
-		// packetData += 0.1;
-
 		debug.print(VESC_COMMS, "VESC OFFLINE: mock data: %.1f\n", esk8.boardPacket.batteryVoltage);
 	}
 }
 
 //--------------------------------------------------------------------------------
 
-#define 	VESC_UART_RX	16	// orange - VESC 5
-#define 	VESC_UART_TX	17	// green - VESC 6
+#define 	VESC_UART_RX		16		// orange - VESC 5
+#define 	VESC_UART_TX		17		// green - VESC 6
+#define 	VESC_UART_BAUDRATE	19200	// old: 9600
 
 HardwareSerial Serial1(2);
 
-ESP8266VESC esp8266VESC = ESP8266VESC(Serial1);
+//--------------------------------------------------------------
 
 bool vescConnected = false;
 bool controllerHasBeenOnline = false;
@@ -105,6 +105,7 @@ bool haveControllerData;
 long lastControllerOnlineTime = 0;
 
 //--------------------------------------------------------------
+
 #define	TN_ONLINE 	1
 #define	ST_ONLINE 	2
 #define	TN_OFFLINE  3
@@ -175,7 +176,10 @@ void tSendToVESC_callback() {
 
 	taskENTER_CRITICAL(&mmux);
 
-	esp8266VESC.setNunchukValues(127, throttle, 0, 0);
+	UART.nunchuck.valueY = throttle;
+	UART.nunchuck.lowerButton = false;
+
+	UART.setNunchuckValues();
 
     taskEXIT_CRITICAL(&mmux);
 }
@@ -209,7 +213,12 @@ void setup()
 	print_reset_reason(rtc_get_reset_reason(1), 1);
 
     // Setup serial connection to VESC
-    Serial1.begin(9600);
+    Serial1.begin(VESC_UART_BAUDRATE);
+
+	while (!Serial) {;}
+
+	/** Define which ports to use as UART */
+	UART.setSerialPort(&Serial1);
 
     radio.begin();
 
@@ -250,8 +259,6 @@ void loop() {
 
 	runner.execute();
 
-	// updateLEDs();
-
 	delay(10);
 }
 //*************************************************************
@@ -262,7 +269,7 @@ void codeForRF24CommsRxTask( void *parameter ) {
 
 	for (;;) {
 
-		haveControllerData = esk8.checkForPacket();
+		haveControllerData = esk8.checkForPacket(); //radio
 
 		bool controllerOnline = esk8.controllerOnline();
 
@@ -275,142 +282,29 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	vTaskDelete(NULL);
 }
 //*************************************************************
-void updateLEDs() {
-	// return;
 
-	// bool changed;
-	// bool throttleChanged = currentThrottle != esk8.controllerPacket.throttle;
-	// bool encoderButtonChanged = currentEncoderButton != esk8.controllerPacket.encoderButton; 
-
-	// if (!controllerStatusChanged && !vescStatusChanged && !throttleChanged && !encoderButtonChanged) {
-	// 	return;
-	// }
-
-	// debug.print(STATE, "controllerStatusChanged: %d \n", controllerStatusChanged);
-	// debug.print(STATE, "vescStatusChanged: %d \n", vescStatusChanged);
-	// debug.print(STATE, "currentThrottle != esk8.controllerPacket.throttle: %d \n", 
-	// 	currentThrottle != esk8.controllerPacket.throttle);
-	// debug.print(STATE, "currentEncoderButton != esk8.controllerPacket.encoderButton: %d \n", 
-	// 	currentEncoderButton != esk8.controllerPacket.encoderButton);
-
-	// for (int i = 0; i < NUM_LEDS; i++) {
-	// 	switch (i) {
-	// 		case 0:	// controller online status
-	// 		case 1: // VESC online
-	// 			if (controllerCommsState == ST_ONLINE) {
-	// 				strip.setPixelColor(i, strip.Color(0, 255, 0));
-	// 			} else {
-	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
-	// 			}
-	// 			break;
-	// 		case 3: // VESC online
-	// 		case 4: // VESC online
-	// 		 	if (vescCommsState == ST_ONLINE) {
-	// 		 		strip.setPixelColor(i, strip.Color(0, 255, 0));
-	// 		 	} else {
-	// 				strip.setPixelColor(i, strip.Color(255, 0, 0));
-	// 			}
-	// 			break;
-	// 		case 6:
-	// 		case 7:
-	// 			if (controllerCommsState == ST_ONLINE) {
-	// 				if (throttleChanged) {
-	// 					if (esk8.controllerPacket.throttle > 127) {
-	// 			 			strip.setPixelColor(i, strip.Color(0, 0, 255));	
-	// 			 		} else if (esk8.controllerPacket.throttle < 127) {
-	// 			 			strip.setPixelColor(i, strip.Color(0, 255, 0));	
-	// 			 		} else {
-	// 						strip.setPixelColor(i, strip.Color(0, 0, 0, 255));
-	// 				 	}
-	// 			 	}
-	// 			}
-	// 			else if (controllerStatusChanged) {
-	// 				strip.setPixelColor(i, strip.Color(0, 0, 0));	
-	// 			}
-	// 			break;
-	// 		case 9:
-	// 		case 10:
-	// 			if (encoderButtonChanged) {
-	// 				if (esk8.controllerPacket.encoderButton == 1) {
-	// 					strip.setPixelColor(i, strip.Color(0, 0, 255));	
-	// 				} else {
-	// 					strip.setPixelColor(i, strip.Color(0, 0, 0));
-	// 				}
-	// 			}
-	// 			break;
-	// 		default:
-	// 			strip.setPixelColor(i, strip.Color(0, 0, 0));
-	// 			break;
-	// 	}
-
-	// 	strip.show();
-	// 	controllerStatusChanged = false;
-	// 	vescStatusChanged = false;
-	// 	currentThrottle = esk8.controllerPacket.throttle;
-	// 	currentEncoderButton = esk8.controllerPacket.encoderButton;
-	// }
-}
-//--------------------------------------------------------------------------------
 bool getVescValues() {
-
-	// struct VESCValues
-	// {
-	//		float temperatureMosfet1 = 0.0f;
-	//		float temperatureMosfet2 = 0.0f;
-	//		float temperatureMosfet3 = 0.0f;
-	//		float temperatureMosfet4 = 0.0f;
-	//		float temperatureMosfet5 = 0.0f;
-	//		float temperatureMosfet6 = 0.0f;
-	//		float temperaturePCB = 0.0f;
-	//		float avgMotorCurrent = 0.0f;
-	//		float avgInputCurrent = 0.0f;
-	//		float dutyCycleNow = 0.0f;
-	//		int32_t rpm = 0;
-	//		float inputVoltage = 0.0f;
-	//		float ampHours = 0.0f;
-	//		float ampHoursCharged = 0.0f;
-	//		float wattHours = 0.0f;
-	//		float wattHoursCharged = 0.0f;
-	//		int32_t tachometer = 0;
-	//		int32_t tachometerAbs = 0;
-	//		mc_fault_code faultCode = FAULT_CODE_NONE;
-	// };
-
 
     VESCValues vescValues;
 
-	if (esp8266VESC.getVESCValues(vescValues) == true) {
-		vescConnected = true;
-		esk8.boardPacket.batteryVoltage = vescValues.inputVoltage;
-		// Serial.println("Average motor current = " + String(vescValues.avgMotorCurrent) + "A");
-		// Serial.println("Average battery current = " + String(vescValues.avgInputCurrent) + "A");
-		// Serial.println("Duty cycle = " + String(vescValues.dutyCycleNow) + "%");
-	    
-		//Serial.println("rpm = " + String(vescValues.rpm) + "rpm");
+    if ( UART.getVescValues() ) {
+    	vescConnected = true;
+		// Serial.println(UART.data.rpm);
+		Serial.println(UART.data.inpVoltage);
+		// Serial.println(UART.data.ampHours);
+		// Serial.println(UART.data.tachometerAbs);
 
-		// Serial.println("Battery voltage = " + String(vescValues.inputVoltage) + "V");
+		esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
+    }
+    else {
+    	vescConnected = false;
+    }
 
-		// Serial.println("Drawn energy (mAh) = " + String(vescValues.ampHours) + "mAh");
-		// Serial.println("Charged energy (mAh) = " + String(vescValues.ampHoursCharged) + "mAh");
-
-		// Serial.println("Drawn energy (Wh) = " + String(vescValues.wattHours) + "Wh");
-		// Serial.println("Charged energy (Wh) = " + String(vescValues.wattHoursCharged) + "Wh");
-
-		// String(vescValues.ampHours).toCharArray(myVescValues.ampHours, 7);
-		// String(vescValues.rpm).toCharArray(myVescValues.rpm, 7);
-			// String(vescValues.inputVoltage).toCharArray(myVescValues.battery, 7);
-		// myVescValues.battery = vescValues.inputVoltage;
-		// String(vescValues.avgMotorCurrent).toCharArray(myVescValues.avgMotorCurrent, 7);
-		// String(vescValues.dutyCycleNow).toCharArray(myVescValues.dutyCycleNow, 7);
-	}
-	else
-	{
-		vescConnected = false;
-		debug.print(VESC_COMMS, "The VESC values could not be read!\n");
-	}
-	return vescConnected;
+    return vescConnected;
 }
+
 //--------------------------------------------------------------------------------
+
 void print_reset_reason(RESET_REASON reason, int cpu)
 {
 	debug.print(STARTUP, "Reboot reason (CPU%d): ", cpu);
