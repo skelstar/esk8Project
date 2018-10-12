@@ -1,8 +1,11 @@
 #include <SPI.h>
 #include "RF24.h"
-#include <Rotary.h>
 
 #include <TaskScheduler.h>
+
+#include <Wire.h>
+#include "i2cEncoderLib.h"
+// #include <Rotary.h>
 
 #include <myPushButton.h>
 #include <myPowerButtonManager.h>
@@ -17,19 +20,17 @@
 // #include "VescUart.h"
 //--------------------------------------------------------------------------------
 
-#define ENCODER_BUTTON_PIN	26	// 34	// 36 didn't work
-#define ENCODER_PIN_A		34	// 16
-#define ENCODER_PIN_B		17	// 4
+// #define ENCODER_BUTTON_PIN	26	// 34	// 36 didn't work
+// #define ENCODER_PIN_A		34	// 16
+// #define ENCODER_PIN_B		17	// 4
 
 #define DEADMAN_SWITCH_PIN	25
 
 #define	PIXEL_PIN			16	// was 5
 
-
 #define M5_BUTTON_A			39
 #define M5_BUTTON_B			38
 #define M5_BUTTON_C			37
-
 
 //--------------------------------------------------------------
 
@@ -44,6 +45,17 @@
 debugHelper debug;
 
 esk8Lib esk8;
+
+//--------------------------------------------------------------------------------
+
+// lower number = more coarse
+#define ENCODER_COUNTER_MIN	-20 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_COUNTER_MAX	 15 	// acceleration (ie 15 divides 127-255 into 15)
+
+i2cEncoderLib encoder(0x30); //Initialize the I2C encoder class with the I2C address 0x30 is the address with all the jumper open
+
+int32_t encoderCounter;
+uint8_t encoder_status;
 
 //--------------------------------------------------------------
 
@@ -117,8 +129,7 @@ void powerupEvent(int state);
 myPowerButtonManager powerButton(DEADMAN_SWITCH_PIN, HIGH, 3000, 3000, powerupEvent, powerButtonIsPressed);
 
 int powerButtonIsPressed() {
-	return digitalRead(DEADMAN_SWITCH_PIN) == 0 
-		&& digitalRead(ENCODER_BUTTON_PIN) == 0;
+	return false;	// digitalRead(DEADMAN_SWITCH_PIN) == 0 && digitalRead(ENCODER_BUTTON_PIN) == 0;
 }
 
 void powerupEvent(int state) {
@@ -130,7 +141,7 @@ void powerupEvent(int state) {
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
 			setPixels(COLOUR_OFF);
-			oledMessage("Ready...");
+			// oledMessage("Ready...");
 			debug.print(STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
 			break;
 		case powerButton.TN_TO_RUNNING:
@@ -171,7 +182,7 @@ int throttle = 127;
 
 //--------------------------------------------------------------
 
-Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
+//Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 //--------------------------------------------------------------------------------
 
@@ -196,33 +207,26 @@ void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
 	}
 }
 
-void listener_encoderButton( int eventCode, int eventPin, int eventParam );
-myPushButton encoderButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_encoderButton);
-void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
+// void listener_encoderButton( int eventCode, int eventPin, int eventParam );
+// myPushButton encoderButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_encoderButton);
+// void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
 
-	switch (eventCode) {
+// 	switch (eventCode) {
 
-		case encoderButton.EV_BUTTON_PRESSED:
-            esk8.controllerPacket.encoderButton = 1;
-			break;
+// 		case encoderButton.EV_BUTTON_PRESSED:
+//             esk8.controllerPacket.encoderButton = 1;
+// 			break;
 
-		case encoderButton.EV_RELEASED:
-            esk8.controllerPacket.encoderButton = 0;
-            zeroThrottleReadyToSend();
-			break;
+// 		case encoderButton.EV_RELEASED:
+//             esk8.controllerPacket.encoderButton = 0;
+//             zeroThrottleReadyToSend();
+// 			break;
 
-		case encoderButton.EV_HELD_SECONDS:
-			break;
-	}
-}
+// 		case encoderButton.EV_HELD_SECONDS:
+// 			break;
+// 	}
+// }
 //--------------------------------------------------------------
-// lower number = more coarse
-#define ENCODER_COUNTER_MIN		-20 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX		15 		// acceleration (ie 15 divides 127-255 into 15)
-
-int encoderCounter = 0;
-
-//--------------------------------------------------------------------------------
 
 Scheduler runner;
 
@@ -291,7 +295,7 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 void boardOfflineCallback() {
 	debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	tFlashLeds.enable();
-	oledMessage("OFFLINE");
+	// oledMessage("OFFLINE");
 }
 
 void boardOnlineCallback() {
@@ -358,44 +362,47 @@ OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 
 //------------------------------------------------------------------------------
 
-void encoderInterruptHandler() {
+void encoderEventHandler() {
 
-	unsigned char result = rotary.process();
+	bool canAccelerate = true;// deadmanSwitch.isPressed();
 
-	bool canAccelerate = deadmanSwitch.isPressed();
+	int newCounter = encoder.readCounterByte(); //Read only the first byte of the counter register
 
-	if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
-		if (encoderCounter < ENCODER_COUNTER_MAX) {
-			encoderCounter++;
-			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-			throttleChanged = true;
-		}
+	bool accelerating = newCounter > encoderCounter;
+	bool decelerating = newCounter < encoderCounter;
+
+	if (accelerating && (canAccelerate || encoderCounter < 0)) {
+		encoderCounter = newCounter;
+		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		throttleChanged = true;
 	}
-	else if (result == DIR_CW) {
-		if (encoderCounter > ENCODER_COUNTER_MIN) {
-			encoderCounter--;
-			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-			throttleChanged = true;
-		}
+	else if (decelerating) {
+		encoderCounter = newCounter;
+		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		throttleChanged = true;
+	}
+	else if (encoder.readStatus(E_PUSH)) {
+		debug.print(HARDWARE, "Encoder button pushed \n");
 	}
 }
 
 void m5ButtonInterruptHandler() {
 	int m5Astate = digitalRead(M5_BUTTON_A);
 	if (m5Astate == 0 && encoderCounter == 0) {
-		encoderCounter++;
-		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-		throttleChanged = true;	}
+		// encoderCounter++;
+		// esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		// debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		// throttleChanged = true;	
+	}
 	else if (m5Astate == 1 && encoderCounter > 0) {
-		encoderCounter--;
-		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-		throttleChanged = true;	
+		// encoderCounter--;
+		// esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		// debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		// throttleChanged = true;	
 	} else {
-		debug.print(HARDWARE, "void m5ButtonInterruptHandler() %d %d {\n", encoderCounter, m5Astate);
+		// debug.print(HARDWARE, "void m5ButtonInterruptHandler() %d %d {\n", encoderCounter, m5Astate);
 	}
 }
 
@@ -521,7 +528,10 @@ void codeForEncoderTask( void *parameter ) {
 	// then loop forever	
 	for (;;) {
 
-		encoderButton.serviceEvents();
+		//encoderButton.serviceEvents();
+		if (encoder.updateStatus()) {
+			encoderEventHandler();
+		}
 
 		deadmanSwitch.serviceEvents();
 
@@ -538,11 +548,12 @@ void setupM5Button() {
 
 void setupEncoder() {
 
-	pinMode(ENCODER_PIN_A, INPUT);
-	pinMode(ENCODER_PIN_B, INPUT);
-
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
+	encoder.begin(( INTE_DISABLE | LEDE_DISABLE | WRAP_DISABLE | DIRE_RIGHT | IPUP_DISABLE | RMOD_X1 )); //INTE_ENABLE | LEDE_ENABLE | 
+	encoder.writeCounter(0);
+	encoder.writeMax(ENCODER_COUNTER_MAX);
+	encoder.writeMin(ENCODER_COUNTER_MIN);
+	encoder.writeLEDA(0x00);
+	encoder.writeLEDB(0x00);
 }
 //--------------------------------------------------------------------------------
 void setPixels(uint32_t c) {
