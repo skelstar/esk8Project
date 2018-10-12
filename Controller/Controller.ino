@@ -9,19 +9,27 @@
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
-#include <U8g2lib.h>
+// #include <U8g2lib.h>
 #include <Adafruit_NeoPixel.h>
+#include <M5Stack.h>
+
 
 // #include "VescUart.h"
 //--------------------------------------------------------------------------------
 
-#define ENCODER_BUTTON_PIN	34	// 36 didn't work
-#define ENCODER_PIN_A		16
-#define ENCODER_PIN_B		4
+#define ENCODER_BUTTON_PIN	26	// 34	// 36 didn't work
+#define ENCODER_PIN_A		34	// 16
+#define ENCODER_PIN_B		17	// 4
 
 #define DEADMAN_SWITCH_PIN	25
 
-#define	PIXEL_PIN			5
+#define	PIXEL_PIN			16	// was 5
+
+
+#define M5_BUTTON_A			39
+#define M5_BUTTON_B			38
+#define M5_BUTTON_C			37
+
 
 //--------------------------------------------------------------
 
@@ -45,15 +53,15 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
-U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
+//U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
 
 //--------------------------------------------------------------
 
 // #define SPI_MOSI        23 // Blue
 // #define SPI_MISO        19 // Orange
 // #define SPI_CLK			18 // Yellow
-#define SPI_CE          33    // white/purple
-#define SPI_CS          26  // green
+#define SPI_CE          5 //33    // white/purple
+#define SPI_CS          13	//26  // green
 
 #define ROLE_BOARD        1
 #define ROLE_CONTROLLER    0
@@ -128,8 +136,8 @@ void powerupEvent(int state) {
 		case powerButton.TN_TO_RUNNING:
 			debug.print(STARTUP, "TN_TO_RUNNING \n");
 			setPixels(COLOUR_OFF);
-			u8g2.clearBuffer();
-			u8g2.sendBuffer();
+			//u8g2.clearBuffer();
+			//u8g2.sendBuffer();
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
 			setPixels(COLOUR_RED);
@@ -138,14 +146,14 @@ void powerupEvent(int state) {
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
 			debug.print(STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
-			u8g2.clearBuffer();
-			u8g2.sendBuffer();
+			//u8g2.clearBuffer();
+			//u8g2.sendBuffer();
 			break;
 		case powerButton.TN_TO_POWER_OFF:
 			radio.powerDown();
 			setPixels(COLOUR_OFF);
-			u8g2.clearBuffer();
-			u8g2.sendBuffer();
+			//u8g2.clearBuffer();
+			//u8g2.sendBuffer();
 			debug.print(STARTUP, "TN_TO_POWER_OFF \n");
 			delay(100);
 			esp_deep_sleep_start();
@@ -226,24 +234,28 @@ void tFlashLedsOff_callback();
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	setPixels(COLOUR_RED);
+	// setPixels(COLOUR_RED);
+	M5.Lcd.fillScreen(RED);
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLeds_onDisable() {
-	setPixels(COLOUR_OFF);
+	// setPixels(COLOUR_OFF);
+	M5.Lcd.fillScreen(BLACK);
 	tFlashLeds.disable();
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
 	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
-	setPixels(COLOUR_RED);
+	// setPixels(COLOUR_RED);
+	M5.Lcd.fillScreen(RED);
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
 	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
-	setPixels(COLOUR_OFF);
+	// setPixels(COLOUR_OFF);
+	M5.Lcd.fillScreen(BLACK);
 	return;
 }
 //--------------------------------------------------------------
@@ -285,8 +297,8 @@ void boardOfflineCallback() {
 void boardOnlineCallback() {
 	debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	tFlashLeds.disable();
-	u8g2.clearBuffer();
-	u8g2.sendBuffer();
+	//u8g2.clearBuffer();
+	//u8g2.sendBuffer();
 }
 //--------------------------------------------------------------
 #define	TN_ONLINE 	1
@@ -347,6 +359,7 @@ OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 //------------------------------------------------------------------------------
 
 void encoderInterruptHandler() {
+
 	unsigned char result = rotary.process();
 
 	bool canAccelerate = deadmanSwitch.isPressed();
@@ -369,6 +382,23 @@ void encoderInterruptHandler() {
 	}
 }
 
+void m5ButtonInterruptHandler() {
+	int m5Astate = digitalRead(M5_BUTTON_A);
+	if (m5Astate == 0 && encoderCounter == 0) {
+		encoderCounter++;
+		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		throttleChanged = true;	}
+	else if (m5Astate == 1 && encoderCounter > 0) {
+		encoderCounter--;
+		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		throttleChanged = true;	
+	} else {
+		debug.print(HARDWARE, "void m5ButtonInterruptHandler() %d %d {\n", encoderCounter, m5Astate);
+	}
+}
+
 //--------------------------------------------------------------
 
 volatile uint32_t otherNode;
@@ -388,12 +418,22 @@ void setup() {
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
- //    debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
+	//debug.setFilter( STARTUP );
 
-  leds.setBrightness(BRIGHTNESS);
+  	leds.setBrightness(BRIGHTNESS);
 	leds.begin();
 	leds.show();
+
+	// initialize the M5Stack object
+	M5.begin(true, false, false); //lcd, sd, serial
+
+	//text print
+	M5.Lcd.fillScreen(BLACK);
+	M5.Lcd.setCursor(10, 10);
+	M5.Lcd.setTextColor(WHITE);
+	M5.Lcd.setTextSize(1);
+	M5.Lcd.printf("Display Test!");
 
 	powerButton.begin();
 
@@ -409,7 +449,7 @@ void setup() {
 	// esk8.begin(&radio, ROLE_CONTROLLER, radioNumber, &debug);
 	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
 
-	u8g2.begin();
+	//u8g2.begin();
 
 	sendMessage();
 
@@ -459,8 +499,8 @@ void loop() {
 		// setPixels(COLOUR_OFF);
 	}
 	else if (esk8.controllerPacket.throttle != 127) {
-		u8g2.clearBuffer();
-		u8g2.sendBuffer();
+		//u8g2.clearBuffer();
+		//u8g2.sendBuffer();
 	}
 
 	powerButton.serviceButton();
@@ -476,6 +516,8 @@ void codeForEncoderTask( void *parameter ) {
 
 	setupEncoder();
 
+	setupM5Button();
+
 	// then loop forever	
 	for (;;) {
 
@@ -489,10 +531,15 @@ void codeForEncoderTask( void *parameter ) {
 	vTaskDelete(NULL);
 }
 //**************************************************************
+void setupM5Button() {
+	pinMode(M5_BUTTON_A, INPUT_PULLUP);
+	attachInterrupt(digitalPinToInterrupt(M5_BUTTON_A), m5ButtonInterruptHandler, CHANGE);
+}
+
 void setupEncoder() {
 
-	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
-	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+	pinMode(ENCODER_PIN_A, INPUT);
+	pinMode(ENCODER_PIN_B, INPUT);
 
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
@@ -527,33 +574,33 @@ void zeroThrottleReadyToSend() {
 //--------------------------------------------------------------
 void oled2LineMessage(char* line1, char* line2, char* unit) {
 	
-	u8g2.clearBuffer();
+	//u8g2.clearBuffer();
 	// line1
-	u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf
-	u8g2.drawStr(0, 10, line1);
+	//u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf
+	//u8g2.drawStr(0, 10, line1);
 	// unit
-	u8g2_uint_t unitWidth = u8g2.getStrWidth((const char*) unit);
-	u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf u8g2_font_helvR08_tf
-	u8g2.drawStr(128-unitWidth, 32, unit);
+	//u8g2_uint_t unitWidth = //u8g2.getStrWidth((const char*) unit);
+	//u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf u8g2_font_helvR08_tf
+	//u8g2.drawStr(128-unitWidth, 32, unit);
 	//line2
-	u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
-	u8g2_uint_t width = u8g2.getStrWidth((const char*) line2);
-	int unitOffset = unitWidth + 2;
-	if (strcmp(unit, "") == 0) {
-		unitOffset = 0;
-	}
-	u8g2.drawStr(128-width-unitOffset, 32, line2);
+	//u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
+	//u8g2_uint_t width = //u8g2.getStrWidth((const char*) line2);
+	// int unitOffset = unitWidth + 2;
+	// if (strcmp(unit, "") == 0) {
+	// 	unitOffset = 0;
+	// }
+	//u8g2.drawStr(128-width-unitOffset, 32, line2);
 
-	u8g2.sendBuffer();
+	//u8g2.sendBuffer();
 }
 //--------------------------------------------------------------
 void oledMessage(char* line1) {
 	
-	u8g2.clearBuffer();
+	//u8g2.clearBuffer();
 	// line1
-	u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
-	u8g2_uint_t width = u8g2.getStrWidth((const char*) line1);
-	u8g2.drawStr(64-(width/2), (32/2)+(18/2), line1);
-	u8g2.sendBuffer();
+	//u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
+	//u8g2_uint_t width = //u8g2.getStrWidth((const char*) line1);
+	//u8g2.drawStr(64-(width/2), (32/2)+(18/2), line1);
+	//u8g2.sendBuffer();
 }
 //--------------------------------------------------------------

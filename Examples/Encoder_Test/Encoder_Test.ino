@@ -5,9 +5,9 @@
 #include <myPushButton.h>
 #include <debugHelper.h>
 //--------------------------------------------------------------
-#define ENCODER_BUTTON_PIN	34	// 36 didn't work
-#define ENCODER_PIN_A		16
-#define ENCODER_PIN_B		17
+#define ENCODER_BUTTON_PIN	26	// 34	// 36 didn't work
+#define ENCODER_PIN_A		21	// 16
+#define ENCODER_PIN_B		22	// 4
 //--------------------------------------------------------------
 
 #define	STARTUP 		1 << 0
@@ -32,7 +32,7 @@ void encoderInterruptHandler() {
 	
 	unsigned char result = rotary.process();
 
-	// debug.print(DEBUG, "Encoder event \n");
+	debug.print(DEBUG, "Encoder event \n");
 
 	if (result == DIR_CW) {
 		debug.print(DEBUG, "CW \n");
