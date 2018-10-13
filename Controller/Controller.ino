@@ -47,6 +47,8 @@ debugHelper debug;
 
 esk8Lib esk8;
 
+#define 	ENCODER_MODULE_ADDR		0x4
+
 //--------------------------------------------------------------------------------
 
 // lower number = more coarse
@@ -232,26 +234,46 @@ void tFlashLedsOff_callback();
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	// setPixels(COLOUR_RED);
+	ledOn();
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLeds_onDisable() {
-	// setPixels(COLOUR_OFF);
+	ledOff();
 	tFlashLeds.disable();
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
+	ledOn();
 	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
-	// setPixels(COLOUR_RED);
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
+	ledOff();
 	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
-	// setPixels(COLOUR_OFF);
 	return;
 }
+
+#define ENCODER_MODULE_LED_CMD	1
+#define ENCODER_MODULE_LED_COLOUR_BLACK	0
+#define ENCODER_MODULE_LED_COLOUR_RED	1
+#define ENCODER_MODULE_LED_COLOUR_BLUE	2
+#define ENCODER_MODULE_LED_COLOUR_GREEN	3
+
+void ledOn() {
+	// Wire.beginTransmission(ENCODER_MODULE_ADDR);
+	// Wire.write(ENCODER_MODULE_LED_CMD);
+	// Wire.write(ENCODER_MODULE_LED_COLOUR_RED);
+	// Wire.endTransmission();
+}
+void ledOff() {
+	// Wire.beginTransmission(ENCODER_MODULE_ADDR);
+	// Wire.write(ENCODER_MODULE_LED_CMD);
+	// Wire.write(ENCODER_MODULE_LED_COLOUR_BLACK);
+	// Wire.endTransmission();
+}
+
 //--------------------------------------------------------------
 void sendMessage() {
 
@@ -446,10 +468,7 @@ void setup() {
 
     btStop();   // turn bluetooth module off
 
-	// esk8.begin(&radio, ROLE_CONTROLLER, radioNumber, &debug);
 	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
-
-	//u8g2.begin();
 
 	sendMessage();
 
@@ -533,31 +552,16 @@ void codeForEncoderTask( void *parameter ) {
 		// 	encoderEventHandler();
 		// }
 
-		Wire.requestFrom(0x4, 4);
+		delay(500);
 
-		// Wire.beginTransmission(0x4);
+		Wire.requestFrom(ENCODER_MODULE_ADDR, 4);
+
+		// Wire.beginTransmission(ENCODER_MODULE_ADDR);
 		while (Wire.available()) {
 			char c = Wire.read();
 			Serial.printf("%02x", c);
 		}
 		Serial.println(" ---");
-
-		if (millis() - now > 2000) {
-			now = millis();
-			Wire.beginTransmission(0x4);
-			Wire.write(255);
-			Wire.write(0);
-			Wire.write(0);
-			Wire.endTransmission();
-		}
-
-		// byte error = Wire.endTransmission();
-		// if (error == 0) {
-		// 	Serial.printf("I2C device found!\n");
-		// }
-		// else if (error==4) {
-		// 	Serial.printf("Unknow error\n");
-		// }
 
 		deadmanSwitch.serviceEvents();
 
