@@ -262,16 +262,16 @@ void tFlashLedsOff_callback() {
 #define ENCODER_MODULE_LED_COLOUR_GREEN	3
 
 void ledOn() {
-	// Wire.beginTransmission(ENCODER_MODULE_ADDR);
-	// Wire.write(ENCODER_MODULE_LED_CMD);
-	// Wire.write(ENCODER_MODULE_LED_COLOUR_RED);
-	// Wire.endTransmission();
+	Wire.beginTransmission(ENCODER_MODULE_ADDR);
+	Wire.write(ENCODER_MODULE_LED_CMD);
+	Wire.write(ENCODER_MODULE_LED_COLOUR_RED);
+	Wire.endTransmission();
 }
 void ledOff() {
-	// Wire.beginTransmission(ENCODER_MODULE_ADDR);
-	// Wire.write(ENCODER_MODULE_LED_CMD);
-	// Wire.write(ENCODER_MODULE_LED_COLOUR_BLACK);
-	// Wire.endTransmission();
+	Wire.beginTransmission(ENCODER_MODULE_ADDR);
+	Wire.write(ENCODER_MODULE_LED_CMD);
+	Wire.write(ENCODER_MODULE_LED_COLOUR_BLACK);
+	Wire.endTransmission();
 }
 
 //--------------------------------------------------------------
@@ -307,14 +307,11 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 void boardOfflineCallback() {
 	debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	tFlashLeds.enable();
-	// oledMessage("OFFLINE");
 }
 
 void boardOnlineCallback() {
 	debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	tFlashLeds.disable();
-	//u8g2.clearBuffer();
-	//u8g2.sendBuffer();
 }
 //--------------------------------------------------------------
 #define	TN_ONLINE 	1

@@ -35,19 +35,19 @@ arduino pin 4 =     OC1B  = PORTB <- _BV(4) = SOIC pin 3 (Analog 2)
  */
 
 #include <Adafruit_NeoPixel.h>
+#include <Wire.h>
 
 
 #define I2C_SLAVE_ADDRESS 0x4 // the 7-bit address (remember to change this when adapting this example)
 // Get this from https://github.com/rambo/TinyWire
-#include <TinyWireS.h>
 // The default buffer size, Can't recall the scope of defines right now
 #ifndef TWI_RX_BUFFER_SIZE
 #define TWI_RX_BUFFER_SIZE ( 4 )
 #endif
 //--------------------------------------------------------------
 
-#define BUTTON_PIN 	1
-#define LED_PIN 	1
+#define BUTTON_PIN 	4
+#define LED_PIN 	3
  
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, LED_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -72,7 +72,7 @@ uint8_t rx_data[TWI_RX_BUFFER_SIZE];
 void requestEvent()
 {  
 	for (int i = 0; i < reg_size; i++) {
-    	TinyWireS.send(i2c_regs[i]);	
+    	Wire.write(i2c_regs[i]);	
     }
 }
 
@@ -97,68 +97,52 @@ void receiveEvent(int numBytes)
         return;
     }
 
-    int command = TinyWireS.receive();
+    int command = Wire.read();
     if (command == ENCODER_MODULE_LED_CMD) {
-    	int colour = TinyWireS.receive();
+    	int colour = Wire.read();
     	setPixelColour(colour);
     }
 }
-
-#define 	MODE_LED 0
-#define 	MODE_BUTTON 1
 
 //--------------------------------------------------------------
 
 void setup()
 {
-    // pinMode(1, OUTPUT); // OC1A, also The only HW-PWM -pin supported by the tiny core analogWrite
-
     pixels.begin();
-	//pixels.setBrightness(50); // 1/3 brightness
-	//setPixelColour(ENCODER_MODULE_LED_COLOUR_GREEN);
-	// pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+	pixels.setBrightness(50); // 1/3 brightness
+	setPixelColour(ENCODER_MODULE_LED_COLOUR_GREEN);
 	pixels.show();
 
-    TinyWireS.begin(I2C_SLAVE_ADDRESS);
-    TinyWireS.onReceive(receiveEvent);
-    TinyWireS.onRequest(requestEvent);
+    Wire.begin(I2C_SLAVE_ADDRESS);
+    Wire.onReceive(receiveEvent);
+    Wire.onRequest(requestEvent);
+
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
 }
 
 void loop()
 {
-    TinyWireS_stop_check();
+    // TinyWireS_stop_check();
 
-    //i2c_regs[3] = digitalRead(BUTTON_PIN) == 1;
+    i2c_regs[3] = digitalRead(BUTTON_PIN) == 1;
 }
 
 //--------------------------------------------------------------
 void setPixelColour(int option) {
-	//changeMode(MODE_LED);
-	// switch (option) {
-	// 	case ENCODER_MODULE_LED_COLOUR_BLACK:
-	// 		pixels.setPixelColor(0, pixels.Color(0, 0, 0));
-	// 		break;
-	// 	case ENCODER_MODULE_LED_COLOUR_RED:
-			pixels.setPixelColor(0, pixels.Color(255, 0, 0));
-	// 		break;
-	// 	case ENCODER_MODULE_LED_COLOUR_BLUE:
-	// 		pixels.setPixelColor(0, pixels.Color(0, 0, 255));
-	// 		break;
-	// 	case ENCODER_MODULE_LED_COLOUR_GREEN:
-	// 		pixels.setPixelColor(0, pixels.Color(0, 255, 0));
-	// 		break;
-	// }
-	pixels.show();
-	//changeMode(MODE_BUTTON);
-}
-//--------------------------------------------------------------
-void changeMode(int mode) {
-	switch (mode) {
-		case MODE_LED:
-			pinMode(LED_PIN, OUTPUT);
+	switch (option) {
+		case ENCODER_MODULE_LED_COLOUR_BLACK:
+			pixels.setPixelColor(0, pixels.Color(0, 0, 0));
 			break;
-		case MODE_BUTTON:
-			pinMode(BUTTON_PIN, INPUT_PULLUP);
+		case ENCODER_MODULE_LED_COLOUR_RED:
+		pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+			break;
+		case ENCODER_MODULE_LED_COLOUR_BLUE:
+			pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+			break;
+		case ENCODER_MODULE_LED_COLOUR_GREEN:
+			pixels.setPixelColor(0, pixels.Color(0, 255, 0));
 			break;
 	}
+	pixels.show();
 }
+//--------------------------------------------------------------
