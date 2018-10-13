@@ -5,6 +5,7 @@
 
 #include <Wire.h>
 #include "i2cEncoderLib.h"
+// https://github.com/Fattoresaimon/i2cencoder/tree/master/Arduino%20Library
 // #include <Rotary.h>
 
 #include <myPushButton.h>
@@ -141,14 +142,11 @@ void powerupEvent(int state) {
 			break;
 		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
 			setPixels(COLOUR_OFF);
-			// oledMessage("Ready...");
 			debug.print(STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
 			break;
 		case powerButton.TN_TO_RUNNING:
 			debug.print(STARTUP, "TN_TO_RUNNING \n");
 			setPixels(COLOUR_OFF);
-			//u8g2.clearBuffer();
-			//u8g2.sendBuffer();
 			break;
 		case powerButton.TN_TO_POWERING_DOWN:
 			setPixels(COLOUR_RED);
@@ -157,14 +155,10 @@ void powerupEvent(int state) {
 			break;
 		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
 			debug.print(STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
-			//u8g2.clearBuffer();
-			//u8g2.sendBuffer();
 			break;
 		case powerButton.TN_TO_POWER_OFF:
 			radio.powerDown();
 			setPixels(COLOUR_OFF);
-			//u8g2.clearBuffer();
-			//u8g2.sendBuffer();
 			debug.print(STARTUP, "TN_TO_POWER_OFF \n");
 			delay(100);
 			esp_deep_sleep_start();
@@ -239,27 +233,23 @@ Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
 	// setPixels(COLOUR_RED);
-	M5.Lcd.fillScreen(RED);
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLeds_onDisable() {
 	// setPixels(COLOUR_OFF);
-	M5.Lcd.fillScreen(BLACK);
 	tFlashLeds.disable();
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
 	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
 	// setPixels(COLOUR_RED);
-	M5.Lcd.fillScreen(RED);
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
 	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
 	// setPixels(COLOUR_OFF);
-	M5.Lcd.fillScreen(BLACK);
 	return;
 }
 //--------------------------------------------------------------
@@ -384,7 +374,10 @@ void encoderEventHandler() {
 		throttleChanged = true;
 	}
 	else if (encoder.readStatus(E_PUSH)) {
-		debug.print(HARDWARE, "Encoder button pushed \n");
+		encoderCounter = 0;
+		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		throttleChanged = true;
 	}
 }
 
@@ -508,6 +501,11 @@ void loop() {
 	else if (esk8.controllerPacket.throttle != 127) {
 		//u8g2.clearBuffer();
 		//u8g2.sendBuffer();
+		M5.Lcd.fillScreen(BLACK);
+		M5.Lcd.setCursor(10, 10);
+		M5.Lcd.setTextColor(WHITE);
+		M5.Lcd.setTextSize(3);
+		M5.Lcd.printf("Encoder: %d", esk8.controllerPacket.throttle);
 	}
 
 	powerButton.serviceButton();
@@ -525,13 +523,41 @@ void codeForEncoderTask( void *parameter ) {
 
 	setupM5Button();
 
+	long now = millis();
+
 	// then loop forever	
 	for (;;) {
 
 		//encoderButton.serviceEvents();
-		if (encoder.updateStatus()) {
-			encoderEventHandler();
+		// if (encoder.updateStatus()) {
+		// 	encoderEventHandler();
+		// }
+
+		Wire.requestFrom(0x4, 4);
+
+		// Wire.beginTransmission(0x4);
+		while (Wire.available()) {
+			char c = Wire.read();
+			Serial.printf("%02x", c);
 		}
+		Serial.println(" ---");
+
+		if (millis() - now > 2000) {
+			now = millis();
+			Wire.beginTransmission(0x4);
+			Wire.write(255);
+			Wire.write(0);
+			Wire.write(0);
+			Wire.endTransmission();
+		}
+
+		// byte error = Wire.endTransmission();
+		// if (error == 0) {
+		// 	Serial.printf("I2C device found!\n");
+		// }
+		// else if (error==4) {
+		// 	Serial.printf("Unknow error\n");
+		// }
 
 		deadmanSwitch.serviceEvents();
 
@@ -584,34 +610,8 @@ void zeroThrottleReadyToSend() {
 }
 //--------------------------------------------------------------
 void oled2LineMessage(char* line1, char* line2, char* unit) {
-	
-	//u8g2.clearBuffer();
-	// line1
-	//u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf
-	//u8g2.drawStr(0, 10, line1);
-	// unit
-	//u8g2_uint_t unitWidth = //u8g2.getStrWidth((const char*) unit);
-	//u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf u8g2_font_helvR08_tf
-	//u8g2.drawStr(128-unitWidth, 32, unit);
-	//line2
-	//u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
-	//u8g2_uint_t width = //u8g2.getStrWidth((const char*) line2);
-	// int unitOffset = unitWidth + 2;
-	// if (strcmp(unit, "") == 0) {
-	// 	unitOffset = 0;
-	// }
-	//u8g2.drawStr(128-width-unitOffset, 32, line2);
-
-	//u8g2.sendBuffer();
 }
 //--------------------------------------------------------------
 void oledMessage(char* line1) {
-	
-	//u8g2.clearBuffer();
-	// line1
-	//u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
-	//u8g2_uint_t width = //u8g2.getStrWidth((const char*) line1);
-	//u8g2.drawStr(64-(width/2), (32/2)+(18/2), line1);
-	//u8g2.sendBuffer();
 }
 //--------------------------------------------------------------
