@@ -54,8 +54,9 @@ arduino pin 4 =     OC1B  = PORTB <- _BV(4) = SOIC pin 3 (Analog 2)
 #define ENCODER_COUNTER_MIN	-20 	// decceleration (ie -20 divides 0-127 into 20)
 #define ENCODER_COUNTER_MAX	 15 	// acceleration (ie 15 divides 127-255 into 15)
 
-#define BUTTON_PIN 	4
-#define LED_PIN 	3
+#define BUTTON_PIN 	3
+#define LED_PIN 	4
+
 #define INBUILT_LED 	13
  
 
@@ -66,19 +67,22 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 //--------------------------------------------------------------
 
-volatile uint8_t i2c_regs[] =
-{
-    0xDE, 
-    0xAD, 
-    0xBE, 
-    0xEF, 
-};
+// byte i2c_regs[] =
+// {
+//     0x00, 
+//     0x00, 
+//     0x00, 
+//     0x00, 
+// };
+
 // Tracks the current register pointer position
-const byte reg_size = sizeof(i2c_regs);
+//const byte reg_size = sizeof(i2c_regs);
+
+// http://www.gammon.com.au/i2c
 
 uint8_t rx_data[TWI_RX_BUFFER_SIZE];
 
-int encoderCounter = 0;
+volatile byte encoderCounter = 0;
 //--------------------------------------------------------------
 
 void encoderInterruptHandler() {
@@ -88,17 +92,17 @@ void encoderInterruptHandler() {
 	//bool canAccelerate = deadmanSwitch.isPressed();
 
 	// if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
-	if (result == DIR_CCW && encoderCounter < 0) {
+	if (result == DIR_CW) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
 			encoderCounter++;
-			i2c_regs[1] = encoderCounter;	
+			//i2c_regs[1] = encoderCounter;	
 			Serial.println(encoderCounter);
 		}
 	}
-	else if (result == DIR_CW) {
+	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
-			i2c_regs[1] = encoderCounter;		
+			//i2c_regs[1] = encoderCounter;		
 			Serial.println(encoderCounter);
 		}
 	}
@@ -111,10 +115,23 @@ void encoderInterruptHandler() {
  */
 void requestEvent()
 {  
-	Serial.println("requestEvent()");
-	for (int i = 0; i < reg_size; i++) {
-    	Wire.write(i2c_regs[i]);	
-    }
+	Serial.println("requestEvent(): ");
+
+	rx_data[0] = encoderCounter;
+	rx_data[1] = digitalRead(BUTTON_PIN);
+	rx_data[2] = digitalRead(ENCODER_BUTTON_PIN);
+
+	Wire.write(rx_data, sizeof rx_data);
+
+	Serial.print(encoderCounter); Serial.print("|");
+	Serial.print((uint8_t)digitalRead(BUTTON_PIN)); Serial.print("|");
+	Serial.print((uint8_t)digitalRead(ENCODER_BUTTON_PIN)); Serial.print("|");
+
+	// for (int i = 0; i < reg_size; i++) {
+ //    	Wire.write(i2c_regs[i]);	
+	// 	Serial.print(i2c_regs[i]); Serial.print("|");
+ //    }
+	Serial.println();
 }
 
 /**
@@ -163,7 +180,7 @@ void setup()
     Wire.onReceive(receiveEvent);
     Wire.onRequest(requestEvent);
 
-    // pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(BUTTON_PIN, INPUT_PULLUP);
     pinMode(ENCODER_BUTTON_PIN, INPUT_PULLUP);
     pinMode(INBUILT_LED, OUTPUT);
 }
@@ -172,7 +189,7 @@ void loop()
 {
     // TinyWireS_stop_check();
 
-    i2c_regs[2] = 88;	// digitalRead(BUTTON_PIN) == 1;
+    //i2c_regs[0] = digitalRead(BUTTON_PIN) == 1;
     encoderInterruptHandler();
     //pollEncoderPins();
 }

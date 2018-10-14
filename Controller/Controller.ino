@@ -524,6 +524,17 @@ void loop() {
 		M5.Lcd.printf("Encoder: %d", esk8.controllerPacket.throttle);
 	}
 
+	if (millis() - nowms > 500) {
+		nowms = millis();
+
+		Serial.printf("Bytes: %d ", Wire.requestFrom(ENCODER_MODULE_ADDR, 4));
+		while (Wire.available()) {
+			byte c = (byte)Wire.read();
+			Serial.printf("%d|", c);
+		}
+		Serial.println(" ---");
+	}
+
 	powerButton.serviceButton();
 
 	runner.execute();
@@ -548,17 +559,6 @@ void codeForEncoderTask( void *parameter ) {
 		// if (encoder.updateStatus()) {
 		// 	encoderEventHandler();
 		// }
-
-		delay(500);
-
-		Wire.requestFrom(ENCODER_MODULE_ADDR, 4);
-
-		// Wire.beginTransmission(ENCODER_MODULE_ADDR);
-		while (Wire.available()) {
-			char c = Wire.read();
-			Serial.printf("%02x", c);
-		}
-		Serial.println(" ---");
 
 		deadmanSwitch.serviceEvents();
 
