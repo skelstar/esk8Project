@@ -36,7 +36,7 @@ arduino pin 4 =     OC1B  = PORTB <- _BV(4) = SOIC pin 3 (Analog 2)
 
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
-
+#include <Rotary.h>
 
 #define I2C_SLAVE_ADDRESS 0x4 // the 7-bit address (remember to change this when adapting this example)
 // Get this from https://github.com/rambo/TinyWire
@@ -46,10 +46,23 @@ arduino pin 4 =     OC1B  = PORTB <- _BV(4) = SOIC pin 3 (Analog 2)
 #endif
 //--------------------------------------------------------------
 
+#define ENCODER_BUTTON_PIN	8	// 34	// 36 didn't work
+#define ENCODER_PIN_A		6	// 16
+#define ENCODER_PIN_B		5	// 4
+
+// lower number = more coarse
+#define ENCODER_COUNTER_MIN	-20 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_COUNTER_MAX	 15 	// acceleration (ie 15 divides 127-255 into 15)
+
 #define BUTTON_PIN 	4
 #define LED_PIN 	3
+#define INBUILT_LED 	13
  
+
+
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 //--------------------------------------------------------------
 
@@ -65,12 +78,40 @@ const byte reg_size = sizeof(i2c_regs);
 
 uint8_t rx_data[TWI_RX_BUFFER_SIZE];
 
+int encoderCounter = 0;
+//--------------------------------------------------------------
+
+void encoderInterruptHandler() {
+
+	unsigned char result = rotary.process();
+
+	//bool canAccelerate = deadmanSwitch.isPressed();
+
+	// if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
+	if (result == DIR_CCW && encoderCounter < 0) {
+		if (encoderCounter < ENCODER_COUNTER_MAX) {
+			encoderCounter++;
+			i2c_regs[1] = encoderCounter;	
+			Serial.println(encoderCounter);
+		}
+	}
+	else if (result == DIR_CW) {
+		if (encoderCounter > ENCODER_COUNTER_MIN) {
+			encoderCounter--;
+			i2c_regs[1] = encoderCounter;		
+			Serial.println(encoderCounter);
+		}
+	}
+}
+
+
 /**
  * This is called for each read request we receive, never put more than one byte of data (with TinyWireS.send) to the 
  * send-buffer when using this callback
  */
 void requestEvent()
 {  
+	Serial.println("requestEvent()");
 	for (int i = 0; i < reg_size; i++) {
     	Wire.write(i2c_regs[i]);	
     }
@@ -108,23 +149,32 @@ void receiveEvent(int numBytes)
 
 void setup()
 {
+	Serial.begin(9600);
+	Serial.println("Ready");
+
     pixels.begin();
 	pixels.setBrightness(50); // 1/3 brightness
 	setPixelColour(ENCODER_MODULE_LED_COLOUR_GREEN);
 	pixels.show();
 
+	setupEncoder();
+
     Wire.begin(I2C_SLAVE_ADDRESS);
     Wire.onReceive(receiveEvent);
     Wire.onRequest(requestEvent);
 
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
+    // pinMode(BUTTON_PIN, INPUT_PULLUP);
+    pinMode(ENCODER_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(INBUILT_LED, OUTPUT);
 }
 
 void loop()
 {
     // TinyWireS_stop_check();
 
-    i2c_regs[3] = digitalRead(BUTTON_PIN) == 1;
+    i2c_regs[2] = 88;	// digitalRead(BUTTON_PIN) == 1;
+    encoderInterruptHandler();
+    //pollEncoderPins();
 }
 
 //--------------------------------------------------------------
@@ -146,3 +196,11 @@ void setPixelColour(int option) {
 	pixels.show();
 }
 //--------------------------------------------------------------
+void setupEncoder() {
+
+	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+
+	// attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
+	// attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
+}
