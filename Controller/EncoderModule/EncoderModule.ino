@@ -17,114 +17,98 @@
  */
 
 
-/**
- * Pin notes by Suovula, see also http://hlt.media.mit.edu/?p=1229
- *
- * DIP and SOIC have same pinout, however the SOIC chips are much cheaper, especially if you buy more than 5 at a time
- * For nice breakout boards see https://github.com/rambo/attiny_boards
- *
- * Basically the arduino pin numbers map directly to the PORTB bit numbers.
- *
-// I2C
-arduino pin 0 = not(OC1A) = PORTB <- _BV(0) = SOIC pin 5 (I2C SDA, PWM)
-arduino pin 2 =           = PORTB <- _BV(2) = SOIC pin 7 (I2C SCL, Analog 1)
-// Timer1 -> PWM
-arduino pin 1 =     OC1A  = PORTB <- _BV(1) = SOIC pin 6 (PWM)
-arduino pin 3 = not(OC1B) = PORTB <- _BV(3) = SOIC pin 2 (Analog 3)
-arduino pin 4 =     OC1B  = PORTB <- _BV(4) = SOIC pin 3 (Analog 2)
- */
-
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
 #include <Rotary.h>
 
-#define I2C_SLAVE_ADDRESS 0x4 // the 7-bit address (remember to change this when adapting this example)
-// Get this from https://github.com/rambo/TinyWire
-// The default buffer size, Can't recall the scope of defines right now
-#ifndef TWI_RX_BUFFER_SIZE
-#define TWI_RX_BUFFER_SIZE ( 4 )
-#endif
-//--------------------------------------------------------------
+#define I2C_SLAVE_ADDRESS 0x4 
 
-#define ENCODER_BUTTON_PIN	8	// 34	// 36 didn't work
-#define ENCODER_PIN_A		6	// 16
-#define ENCODER_PIN_B		5	// 4
+/* ---------------------------------------------
+	pinouts
+----------------------------------------------*/
+
+#define ENCODER_BUTTON_PIN	8	
+#define ENCODER_PIN_A		5	
+#define ENCODER_PIN_B		6	
 
 // lower number = more coarse
 #define ENCODER_COUNTER_MIN	-20 	// decceleration (ie -20 divides 0-127 into 20)
 #define ENCODER_COUNTER_MAX	 15 	// acceleration (ie 15 divides 127-255 into 15)
 
-#define BUTTON_PIN 	3
-#define LED_PIN 	4
+#define DEADMAN_SW_PIN 		3
+#define LED_PIN 			4
 
-#define INBUILT_LED 	13
+#define INBUILT_LED 		13
  
-
 
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(1, LED_PIN, NEO_GRB + NEO_KHZ800);
 
+#define ENCODER_MODULE_LED_CMD	1
+#define ENCODER_MODULE_LED_COLOUR_BLACK	0
+#define ENCODER_MODULE_LED_COLOUR_RED	1
+#define ENCODER_MODULE_LED_COLOUR_BLUE	2
+#define ENCODER_MODULE_LED_COLOUR_GREEN	3
+
 Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
-//--------------------------------------------------------------
 
-// byte i2c_regs[] =
-// {
-//     0x00, 
-//     0x00, 
-//     0x00, 
-//     0x00, 
-// };
+#define ENCODER_IDX		0
+#define ENCODER_BTN_IDX	1
+#define DEADMAN_SWITCH_IDX	2
 
-// Tracks the current register pointer position
-//const byte reg_size = sizeof(i2c_regs);
+#define TWI_RX_BUFFER_SIZE	3
 
-// http://www.gammon.com.au/i2c
+uint8_t tx_data[TWI_RX_BUFFER_SIZE];
 
-uint8_t rx_data[TWI_RX_BUFFER_SIZE];
-
-volatile byte encoderCounter = 0;
+volatile int encoderCounter = 0;
+volatile byte encoderButton = 0;
+volatile byte deadmanSwitch = 0;
 //--------------------------------------------------------------
 
 void encoderInterruptHandler() {
 
 	unsigned char result = rotary.process();
 
-	//bool canAccelerate = deadmanSwitch.isPressed();
+	bool canAccelerate = deadmanSwitch == 0;
+	
+	byte minCount = ENCODER_COUNTER_MIN;
+	byte maxCount = ENCODER_COUNTER_MAX;
+	bool isBraking = encoderCounter < 0;
 
-	// if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
 	if (result == DIR_CW) {
 		if (encoderCounter < ENCODER_COUNTER_MAX) {
-			encoderCounter++;
-			//i2c_regs[1] = encoderCounter;	
-			Serial.println(encoderCounter);
+			if (canAccelerate || isBraking) {
+				encoderCounter++;
+			}
+			else {
+				Serial.print("Braking: "); Serial.print(isBraking); Serial.print(" CanAccel: "); Serial.println(canAccelerate); 
+			}
 		}
 	}
 	else if (result == DIR_CCW) {
 		if (encoderCounter > ENCODER_COUNTER_MIN) {
 			encoderCounter--;
-			//i2c_regs[1] = encoderCounter;		
 			Serial.println(encoderCounter);
 		}
 	}
 }
 
-
+//--------------------------------------------------------------
 /**
- * This is called for each read request we receive, never put more than one byte of data (with TinyWireS.send) to the 
- * send-buffer when using this callback
+ * Don't try and send more than once
  */
 void requestEvent()
 {  
 	Serial.println("requestEvent(): ");
 
-	rx_data[0] = encoderCounter;
-	rx_data[1] = digitalRead(BUTTON_PIN);
-	rx_data[2] = digitalRead(ENCODER_BUTTON_PIN);
+	tx_data[ENCODER_IDX] = encoderCounter;
+	tx_data[DEADMAN_SWITCH_IDX] = deadmanSwitch;
+	tx_data[ENCODER_BTN_IDX] = encoderButton;
 
-	Wire.write(rx_data, sizeof rx_data);
+	Wire.write(tx_data, sizeof tx_data);
 
 	Serial.print(encoderCounter); Serial.print("|");
-	Serial.print((uint8_t)digitalRead(BUTTON_PIN)); Serial.print("|");
+	Serial.print((uint8_t)digitalRead(DEADMAN_SW_PIN)); Serial.print("|");
 	Serial.print((uint8_t)digitalRead(ENCODER_BUTTON_PIN)); Serial.print("|");
 
 	// for (int i = 0; i < reg_size; i++) {
@@ -134,27 +118,10 @@ void requestEvent()
 	Serial.println();
 }
 
-/**
- * The I2C data received -handler
- *
- * This needs to complete before the next incoming transaction (start, data, restart/stop) on the bus does
- * so be quick, set flags for long running tasks to be called from the mainloop instead of running them directly,
- */
-
-
-#define ENCODER_MODULE_LED_CMD	1
-#define ENCODER_MODULE_LED_COLOUR_BLACK	0
-#define ENCODER_MODULE_LED_COLOUR_RED	1
-#define ENCODER_MODULE_LED_COLOUR_BLUE	2
-#define ENCODER_MODULE_LED_COLOUR_GREEN	3
+//--------------------------------------------------------------
 
 void receiveEvent(int numBytes)
 {
-    if (numBytes > TWI_RX_BUFFER_SIZE)
-    {
-        return;
-    }
-
     int command = Wire.read();
     if (command == ENCODER_MODULE_LED_CMD) {
     	int colour = Wire.read();
@@ -171,27 +138,25 @@ void setup()
 
     pixels.begin();
 	pixels.setBrightness(50); // 1/3 brightness
-	setPixelColour(ENCODER_MODULE_LED_COLOUR_GREEN);
+	setPixelColour(ENCODER_MODULE_LED_COLOUR_BLACK);
 	pixels.show();
 
-	setupEncoder();
+	setupHardware();
 
     Wire.begin(I2C_SLAVE_ADDRESS);
     Wire.onReceive(receiveEvent);
     Wire.onRequest(requestEvent);
-
-    pinMode(BUTTON_PIN, INPUT_PULLUP);
-    pinMode(ENCODER_BUTTON_PIN, INPUT_PULLUP);
-    pinMode(INBUILT_LED, OUTPUT);
 }
 
 void loop()
 {
-    // TinyWireS_stop_check();
+    deadmanSwitch = digitalRead(DEADMAN_SW_PIN);
+	
+	encoderButton = digitalRead(ENCODER_BUTTON_PIN);
 
-    //i2c_regs[0] = digitalRead(BUTTON_PIN) == 1;
     encoderInterruptHandler();
-    //pollEncoderPins();
+	
+	delay(10);
 }
 
 //--------------------------------------------------------------
@@ -213,11 +178,13 @@ void setPixelColour(int option) {
 	pixels.show();
 }
 //--------------------------------------------------------------
-void setupEncoder() {
+void setupHardware() {
 
 	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
 	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
 
-	// attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
-	// attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
+    pinMode(DEADMAN_SW_PIN, INPUT_PULLUP);
+    pinMode(ENCODER_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(INBUILT_LED, OUTPUT);
 }
+//--------------------------------------------------------------

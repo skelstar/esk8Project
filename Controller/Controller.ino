@@ -512,11 +512,8 @@ void loop() {
 		char buf[100];
 		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
 		oled2LineMessage("BATT. VOLTS", buf, "V");
-		// setPixels(COLOUR_OFF);
 	}
 	else if (esk8.controllerPacket.throttle != 127) {
-		//u8g2.clearBuffer();
-		//u8g2.sendBuffer();
 		M5.Lcd.fillScreen(BLACK);
 		M5.Lcd.setCursor(10, 10);
 		M5.Lcd.setTextColor(WHITE);
@@ -527,7 +524,13 @@ void loop() {
 	if (millis() - nowms > 500) {
 		nowms = millis();
 
-		Serial.printf("Bytes: %d ", Wire.requestFrom(ENCODER_MODULE_ADDR, 4));
+		Serial.printf("Encoder: ");
+		Wire.requestFrom(ENCODER_MODULE_ADDR, 3);
+
+		#define ENCODER_IDX		0
+		#define ENCODER_BTN_IDX	1
+		#define DEADMAN_SWITCH_IDX	2
+
 		while (Wire.available()) {
 			byte c = (byte)Wire.read();
 			Serial.printf("%d|", c);
