@@ -1,22 +1,3 @@
-/**
- * Example sketch for writing to and reading from a slave in transactional manner
- *
- * NOTE: You must not use delay() or I2C communications will fail, use tws_delay() instead (or preferably some smarter timing system)
- *
- * On write the first byte received is considered the register addres to modify/read
- * On each byte sent or read the register address is incremented (and it will loop back to 0)
- *
- * You can try this with the Arduino I2C REPL sketch at https://github.com/rambo/I2C/blob/master/examples/i2crepl/i2crepl.ino 
- * If you have bus-pirate remember that the older revisions do not like the slave streching the clock, this leads to all sorts of weird behaviour
- *
- * To read third value (register number 2 since counting starts at 0) send "[ 8 2 [ 9 r ]", value read should be 0xBE
- * If you then send "[ 9 r r r ]" you should get 0xEF 0xDE 0xAD as response (demonstrating the register counter looping back to zero)
- *
- * You need to have at least 8MHz clock on the ATTiny for this to work (and in fact I have so far tested it only on ATTiny85 @8MHz using internal oscillator)
- * Remember to "Burn bootloader" to make sure your chip is in correct mode 
- */
-
-
 #include <Adafruit_NeoPixel.h>
 #include <Wire.h>
 #include <Rotary.h>
@@ -86,7 +67,7 @@ void encoderInterruptHandler() {
 		}
 	}
 	else if (result == DIR_CCW) {
-		if (encoderCounter > ENCODER_COUNTER_MIN) {
+		if (encoderCounter > minCount) {
 			encoderCounter--;
 			Serial.println(encoderCounter);
 		}

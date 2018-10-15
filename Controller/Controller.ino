@@ -6,7 +6,6 @@
 #include <Wire.h>
 #include "i2cEncoderLib.h"
 // https://github.com/Fattoresaimon/i2cencoder/tree/master/Arduino%20Library
-// #include <Rotary.h>
 
 #include <myPushButton.h>
 #include <myPowerButtonManager.h>
@@ -16,14 +15,7 @@
 // #include <U8g2lib.h>
 #include <Adafruit_NeoPixel.h>
 #include <M5Stack.h>
-
-
-// #include "VescUart.h"
 //--------------------------------------------------------------------------------
-
-// #define ENCODER_BUTTON_PIN	26	// 34	// 36 didn't work
-// #define ENCODER_PIN_A		34	// 16
-// #define ENCODER_PIN_B		17	// 4
 
 #define DEADMAN_SWITCH_PIN	25
 
@@ -87,87 +79,11 @@ bool radioNumber = 1;
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 
 //--------------------------------------------------------------------------------
-#define BRIGHTNESS	20
-
-#define 	NUM_PIXELS 		8
-
-// CRGB leds[NUM_PIXELS];
-
-// CRGB COLOUR_OFF = CRGB::Black;
-// CRGB COLOUR_RED = CRGB::Red;
-// CRGB COLOUR_GREEN = CRGB::Green;
-// CRGB COLOUR_BLUE = CRGB::Blue;
-// CRGB COLOUR_PINK = CRGB::Pink;
-// CRGB COLOUR_ACCELERATING = CRGB::Navy;
-// CRGB COLOUR_BRAKING = CRGB::Crimson;
-// CRGB COLOUR_THROTTLE_IDLE = CRGB::Green;
-// CRGB COLOUR_WHITE = CRGB::White;
-
-Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
-
-uint32_t COLOUR_OFF = leds.Color(0, 0, 0);
-uint32_t COLOUR_RED = leds.Color(255, 0, 0);
-uint32_t COLOUR_GREEN = leds.Color(0, 255, 0);
-uint32_t COLOUR_BLUE = leds.Color(0, 0, 255);
-uint32_t COLOUR_PINK = leds.Color(128, 0, 100);
-
-uint32_t COLOUR_ACCELERATING = COLOUR_BLUE;
-uint32_t COLOUR_BRAKING = COLOUR_PINK;
-uint32_t COLOUR_THROTTLE_IDLE = COLOUR_GREEN;
-
-//--------------------------------------------------------------
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
 int mapEncoderToThrottleValue(int raw);
-void setupEncoder();
-void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
-
-//--------------------------------------------------------------
-
-int powerButtonIsPressed();
-void powerupEvent(int state);
-
-myPowerButtonManager powerButton(DEADMAN_SWITCH_PIN, HIGH, 3000, 3000, powerupEvent, powerButtonIsPressed);
-
-int powerButtonIsPressed() {
-	return false;	// digitalRead(DEADMAN_SWITCH_PIN) == 0 && digitalRead(ENCODER_BUTTON_PIN) == 0;
-}
-
-void powerupEvent(int state) {
-
-	switch (state) {
-		case powerButton.TN_TO_POWERING_UP:
-			setPixels(COLOUR_OFF);
-			debug.print(STARTUP, "TN_TO_POWERING_UP \n");
-			break;
-		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
-			setPixels(COLOUR_OFF);
-			debug.print(STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
-			break;
-		case powerButton.TN_TO_RUNNING:
-			debug.print(STARTUP, "TN_TO_RUNNING \n");
-			setPixels(COLOUR_OFF);
-			break;
-		case powerButton.TN_TO_POWERING_DOWN:
-			setPixels(COLOUR_RED);
-			oled2LineMessage("Powering", "Down", "");
-			debug.print(STARTUP, "TN_TO_POWERING_DOWN \n");
-			break;
-		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
-			debug.print(STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
-			break;
-		case powerButton.TN_TO_POWER_OFF:
-			radio.powerDown();
-			setPixels(COLOUR_OFF);
-			debug.print(STARTUP, "TN_TO_POWER_OFF \n");
-			delay(100);
-			esp_deep_sleep_start();
-			Serial.println("This will never be printed");
-			break;
-	}
-}
 
 //--------------------------------------------------------------
 
@@ -178,50 +94,93 @@ int throttle = 127;
 
 //--------------------------------------------------------------
 
-//Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
+#define ENCODER_MODULE_LED_CMD	1
+#define ENCODER_MODULE_LED_COLOUR_BLACK	0
+#define ENCODER_MODULE_LED_COLOUR_RED	1
+#define ENCODER_MODULE_LED_COLOUR_BLUE	2
+#define ENCODER_MODULE_LED_COLOUR_GREEN	3
 
-//--------------------------------------------------------------------------------
+#define ENCODER_IDX		0
+#define ENCODER_BTN_IDX	1
+#define DEADMAN_SWITCH_IDX	2
 
-#define 	OFF_STATE_HIGH		HIGH
-#define 	OFF_STATE_LOW       0
-#define 	PUSH_BUTTON_PULLUP  true
+class EncoderModule 
+{
+	typedef void ( *ButtonPressCallback )();
+	typedef void ( *EncoderChangedEventCallback )( int value );
 
-void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam );
-myPushButton deadmanSwitch(DEADMAN_SWITCH_PIN, PUSH_BUTTON_PULLUP, OFF_STATE_HIGH, listener_deadmanSwitch);
-void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
+	private:
+		byte deadmanSwitchState = 0;
+		byte encoderButtonState = 0;
+		int encoderCounterState = 0;
 
-	switch (eventCode) {
+		ButtonPressCallback _deadmanPressCallback;
+		ButtonPressCallback _encoderButtonPressCallback;
+		EncoderChangedEventCallback _encoderChangedEventCallback;
 
-		// case deadmanSwitch.EV_BUTTON_PRESSED:
-		// case deadmanSwitch.EV_HELD_SECONDS:
-		case deadmanSwitch.EV_RELEASED:
-            if (esk8.controllerPacket.throttle > 127) {
-			 	zeroThrottleReadyToSend();
+	public:
+
+		EncoderModule(ButtonPressCallback deadmanPressCallback, 
+			ButtonPressCallback encoderButtonPressCallback,
+			EncoderChangedEventCallback encoderChangedEventCallback) 
+		{
+			_deadmanPressCallback = deadmanPressCallback;
+			_encoderButtonPressCallback = encoderButtonPressCallback;
+			_encoderChangedEventCallback = encoderChangedEventCallback;
+		}
+
+		void setPixel(byte encoderLedColour) {
+			Wire.beginTransmission(ENCODER_MODULE_ADDR);
+			Wire.write(ENCODER_MODULE_LED_CMD);
+			Wire.write(encoderLedColour);
+			Wire.endTransmission();
+		}
+
+		void update() {
+			debug.print(HARDWARE, "Encoder: ");
+			Wire.requestFrom(ENCODER_MODULE_ADDR, 3);
+
+			if (Wire.available()) {
+				int encoderCounter = Wire.read();
+				byte encoderButtonNew = Wire.read();
+				byte deadmanSwitchNew = Wire.read();
+
+				debug.print(HARDWARE, "Rxd: %d %d %d", encoderCounter, encoderButtonNew, deadmanSwitchNew);
+
+				if (encoderCounterState != encoderCounter) {
+					encoderCounterState = encoderCounter;
+					_encoderChangedEventCallback(encoderCounter);
+				}
+
+				if (deadmanSwitchState == 0 && deadmanSwitchNew == 1) {
+					deadmanSwitchState = deadmanSwitchNew;
+					_deadmanPressCallback();
+				}
+				if (encoderButtonState == 0 && encoderButtonNew == 1) {
+					encoderButtonState == 0 && encoderButtonNew == 1;
+					_encoderButtonPressCallback();
+				}
 			}
-			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
-			break;
-	}
+			debug.print(HARDWARE, " ---");
+		}
+};
+
+void encoderChangedEvent(int value) {
+	debug.printf(HARDWARE, "encoderChangedEvent(%d); \n", value);
 }
 
-// void listener_encoderButton( int eventCode, int eventPin, int eventParam );
-// myPushButton encoderButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_encoderButton);
-// void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
+void deadmanSwitchPressed() {
+    if (esk8.controllerPacket.throttle > 127) {
+	 	zeroThrottleReadyToSend();
+	}
+	debug.printf(HARDWARE, "deadmanSwitchPressed(); \n");
+}
+void encoderButtonPressed() {
+	debug.printf(HARDWARE, "encoderButtonPressed(); \n");
+}
 
-// 	switch (eventCode) {
+EncoderModule encoderModule(&deadmanSwitchPressed, &encoderButtonPressed);
 
-// 		case encoderButton.EV_BUTTON_PRESSED:
-//             esk8.controllerPacket.encoderButton = 1;
-// 			break;
-
-// 		case encoderButton.EV_RELEASED:
-//             esk8.controllerPacket.encoderButton = 0;
-//             zeroThrottleReadyToSend();
-// 			break;
-
-// 		case encoderButton.EV_HELD_SECONDS:
-// 			break;
-// 	}
-// }
 //--------------------------------------------------------------
 
 Scheduler runner;
@@ -234,44 +193,25 @@ void tFlashLedsOff_callback();
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	ledOn();
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLeds_onDisable() {
-	ledOff();
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
 	tFlashLeds.disable();
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	ledOn();
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
 	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	ledOff();
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
 	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
 	return;
-}
-
-#define ENCODER_MODULE_LED_CMD	1
-#define ENCODER_MODULE_LED_COLOUR_BLACK	0
-#define ENCODER_MODULE_LED_COLOUR_RED	1
-#define ENCODER_MODULE_LED_COLOUR_BLUE	2
-#define ENCODER_MODULE_LED_COLOUR_GREEN	3
-
-void ledOn() {
-	Wire.beginTransmission(ENCODER_MODULE_ADDR);
-	Wire.write(ENCODER_MODULE_LED_CMD);
-	Wire.write(ENCODER_MODULE_LED_COLOUR_RED);
-	Wire.endTransmission();
-}
-void ledOff() {
-	Wire.beginTransmission(ENCODER_MODULE_ADDR);
-	Wire.write(ENCODER_MODULE_LED_CMD);
-	Wire.write(ENCODER_MODULE_LED_COLOUR_BLACK);
-	Wire.endTransmission();
 }
 
 //--------------------------------------------------------------
@@ -523,19 +463,6 @@ void loop() {
 
 	if (millis() - nowms > 500) {
 		nowms = millis();
-
-		Serial.printf("Encoder: ");
-		Wire.requestFrom(ENCODER_MODULE_ADDR, 3);
-
-		#define ENCODER_IDX		0
-		#define ENCODER_BTN_IDX	1
-		#define DEADMAN_SWITCH_IDX	2
-
-		while (Wire.available()) {
-			byte c = (byte)Wire.read();
-			Serial.printf("%d|", c);
-		}
-		Serial.println(" ---");
 	}
 
 	powerButton.serviceButton();
