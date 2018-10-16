@@ -61,7 +61,7 @@ void encoderService() {
 
 	if (deadmanSwitch == 1 && encoderCounter > 0) {
 		encoderCounter = 0;
-		Serial.print("encoderCounter: "); Serial.println(encoderCounter);
+		// Serial.print("encoderCounter: "); // Serial.println(encoderCounter);
 	}
 	
 	bool isBraking = encoderCounter < 0;
@@ -70,17 +70,17 @@ void encoderService() {
 		if (encoderCounter < encoderCounterMax) {
 			if (canAccelerate || isBraking) {
 				encoderCounter++;
-				Serial.print("encoderCounter: "); Serial.println(encoderCounter);
+				// Serial.print("encoderCounter: "); // Serial.println(encoderCounter);
 			}
 			else {
-				Serial.print("Braking: "); Serial.print(isBraking); Serial.print(" CanAccel: "); Serial.println(canAccelerate); 
+				// Serial.print("Braking: "); // Serial.print(isBraking); // Serial.print(" CanAccel: "); // Serial.println(canAccelerate); 
 			}
 		}
 	}
 	else if (result == DIR_CCW) {
 		if (encoderCounter > encoderCounterMin) {
 			encoderCounter--;
-			Serial.print("encoderCounter: "); Serial.println(encoderCounter);
+			// Serial.print("encoderCounter: "); // Serial.println(encoderCounter);
 		}
 	}
 }
@@ -97,7 +97,7 @@ void encoderButtonCallback(int eventCode, int eventPin, int eventParam) {
 	switch (eventCode) {
 		case encoderButton.EV_BUTTON_PRESSED:
 			encoderCounter = 0;
-			Serial.print("encoderCounter: "); Serial.println(encoderCounter);
+			// Serial.print("encoderCounter: "); // Serial.println(encoderCounter);
 			break;
 		// case button.EV_RELEASED:
 		// 	break;
@@ -120,7 +120,7 @@ void requestEvent()
 {  
 	Wire.write(encoderCounter);
 
-	//Serial.print("encoderCounter: "); Serial.println(encoderCounter);
+	//// Serial.print("encoderCounter: "); // Serial.println(encoderCounter);
 }
 //--------------------------------------------------------------
 void receiveEvent(int numBytes)
@@ -134,15 +134,15 @@ void receiveEvent(int numBytes)
     	int min = Wire.read();
     	int max = Wire.read();
     	setEncoderLimits(min, max);
-    	Serial.print("Setting limits: "); Serial.print(min); Serial.print("|"); Serial.println(max); 
+    	// Serial.print("Setting limits: "); // Serial.print(min); // Serial.print("|"); // Serial.println(max); 
     }
 }
 //--------------------------------------------------------------
 
 void setup()
 {
-	Serial.begin(9600);
-	Serial.println("Ready");
+	// Serial.begin(9600);
+	// Serial.println("Ready");
 
     pixels.begin();
 	pixels.setBrightness(50); // 1/3 brightness
