@@ -8,7 +8,6 @@
 // https://github.com/Fattoresaimon/i2cencoder/tree/master/Arduino%20Library
 
 #include <myPushButton.h>
-#include <myPowerButtonManager.h>
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
@@ -16,8 +15,6 @@
 #include <Adafruit_NeoPixel.h>
 #include <M5Stack.h>
 //--------------------------------------------------------------------------------
-
-#define DEADMAN_SWITCH_PIN	25
 
 #define	PIXEL_PIN			16	// was 5
 
@@ -100,32 +97,20 @@ int throttle = 127;
 #define ENCODER_MODULE_LED_COLOUR_BLUE	2
 #define ENCODER_MODULE_LED_COLOUR_GREEN	3
 
-#define ENCODER_IDX		0
-#define ENCODER_BTN_IDX	1
-#define DEADMAN_SWITCH_IDX	2
-
 class EncoderModule 
 {
 	typedef void ( *ButtonPressCallback )();
 	typedef void ( *EncoderChangedEventCallback )( int value );
 
 	private:
-		byte deadmanSwitchState = 0;
-		byte encoderButtonState = 0;
 		int encoderCounterState = 0;
 
-		ButtonPressCallback _deadmanPressCallback;
-		ButtonPressCallback _encoderButtonPressCallback;
 		EncoderChangedEventCallback _encoderChangedEventCallback;
 
 	public:
 
-		EncoderModule(ButtonPressCallback deadmanPressCallback, 
-			ButtonPressCallback encoderButtonPressCallback,
-			EncoderChangedEventCallback encoderChangedEventCallback) 
+		EncoderModule(EncoderChangedEventCallback encoderChangedEventCallback) 
 		{
-			_deadmanPressCallback = deadmanPressCallback;
-			_encoderButtonPressCallback = encoderButtonPressCallback;
 			_encoderChangedEventCallback = encoderChangedEventCallback;
 		}
 
@@ -137,49 +122,26 @@ class EncoderModule
 		}
 
 		void update() {
-			debug.print(HARDWARE, "Encoder: ");
 			Wire.requestFrom(ENCODER_MODULE_ADDR, 3);
 
 			if (Wire.available()) {
 				int encoderCounter = Wire.read();
-				byte encoderButtonNew = Wire.read();
-				byte deadmanSwitchNew = Wire.read();
 
-				debug.print(HARDWARE, "Rxd: %d %d %d", encoderCounter, encoderButtonNew, deadmanSwitchNew);
+				debug.print(HARDWARE, "Encoder: %d \n", encoderCounter);
 
 				if (encoderCounterState != encoderCounter) {
 					encoderCounterState = encoderCounter;
 					_encoderChangedEventCallback(encoderCounter);
 				}
-
-				if (deadmanSwitchState == 0 && deadmanSwitchNew == 1) {
-					deadmanSwitchState = deadmanSwitchNew;
-					_deadmanPressCallback();
-				}
-				if (encoderButtonState == 0 && encoderButtonNew == 1) {
-					encoderButtonState == 0 && encoderButtonNew == 1;
-					_encoderButtonPressCallback();
-				}
 			}
-			debug.print(HARDWARE, " ---");
 		}
 };
 
 void encoderChangedEvent(int value) {
-	debug.printf(HARDWARE, "encoderChangedEvent(%d); \n", value);
+	debug.print(HARDWARE, "encoderChangedEvent(%d); \n", value);
 }
 
-void deadmanSwitchPressed() {
-    if (esk8.controllerPacket.throttle > 127) {
-	 	zeroThrottleReadyToSend();
-	}
-	debug.printf(HARDWARE, "deadmanSwitchPressed(); \n");
-}
-void encoderButtonPressed() {
-	debug.printf(HARDWARE, "encoderButtonPressed(); \n");
-}
-
-EncoderModule encoderModule(&deadmanSwitchPressed, &encoderButtonPressed);
+EncoderModule encoderModule(&encoderChangedEvent);
 
 //--------------------------------------------------------------
 
@@ -313,31 +275,31 @@ OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 
 void encoderEventHandler() {
 
-	bool canAccelerate = true;// deadmanSwitch.isPressed();
+	// bool canAccelerate = true;// deadmanSwitch.isPressed();
 
-	int newCounter = encoder.readCounterByte(); //Read only the first byte of the counter register
+	// int newCounter = encoder.readCounterByte(); //Read only the first byte of the counter register
 
-	bool accelerating = newCounter > encoderCounter;
-	bool decelerating = newCounter < encoderCounter;
+	// bool accelerating = newCounter > encoderCounter;
+	// bool decelerating = newCounter < encoderCounter;
 
-	if (accelerating && (canAccelerate || encoderCounter < 0)) {
-		encoderCounter = newCounter;
-		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-		throttleChanged = true;
-	}
-	else if (decelerating) {
-		encoderCounter = newCounter;
-		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-		throttleChanged = true;
-	}
-	else if (encoder.readStatus(E_PUSH)) {
-		encoderCounter = 0;
-		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-		throttleChanged = true;
-	}
+	// if (accelerating && (canAccelerate || encoderCounter < 0)) {
+	// 	encoderCounter = newCounter;
+	// 	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+	// 	debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+	// 	throttleChanged = true;
+	// }
+	// else if (decelerating) {
+	// 	encoderCounter = newCounter;
+	// 	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+	// 	debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+	// 	throttleChanged = true;
+	// }
+	// else if (encoder.readStatus(E_PUSH)) {
+	// 	encoderCounter = 0;
+	// 	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+	// 	debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+	// 	throttleChanged = true;
+	// }
 }
 
 void m5ButtonInterruptHandler() {
@@ -380,10 +342,6 @@ void setup() {
 	debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
 	//debug.setFilter( STARTUP );
 
-  	leds.setBrightness(BRIGHTNESS);
-	leds.begin();
-	leds.show();
-
 	// initialize the M5Stack object
 	M5.begin(true, false, false); //lcd, sd, serial
 
@@ -393,8 +351,6 @@ void setup() {
 	M5.Lcd.setTextColor(WHITE);
 	M5.Lcd.setTextSize(1);
 	M5.Lcd.printf("Display Test!");
-
-	powerButton.begin();
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/Controller.ino \n");
@@ -441,10 +397,7 @@ void loop() {
 
 	boardCommsStatus.serviceState(connected);
 
-	if (powerButton.getState() != powerButton.STATE_RUNNING) {
-		// catch
-	}
-	else if (throttleChanged && connected) {
+	if (throttleChanged && connected) {
 		tSendControllerValues.restart();
 	}
 	else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
@@ -464,8 +417,6 @@ void loop() {
 	if (millis() - nowms > 500) {
 		nowms = millis();
 	}
-
-	powerButton.serviceButton();
 
 	runner.execute();
 
@@ -490,9 +441,8 @@ void codeForEncoderTask( void *parameter ) {
 		// 	encoderEventHandler();
 		// }
 
-		deadmanSwitch.serviceEvents();
-
-		delay(10);
+		encoderModule.update();
+		delay(100);
 	}
 
 	vTaskDelete(NULL);
@@ -511,15 +461,6 @@ void setupEncoder() {
 	encoder.writeMin(ENCODER_COUNTER_MIN);
 	encoder.writeLEDA(0x00);
 	encoder.writeLEDB(0x00);
-}
-//--------------------------------------------------------------------------------
-void setPixels(uint32_t c) {
-	taskENTER_CRITICAL(&mmux);
-	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		leds.setPixelColor(i, c);
-	}
-	leds.show();
-	taskEXIT_CRITICAL(&mmux);
 }
 //--------------------------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
