@@ -30,6 +30,8 @@ uint16_t this_node; // Our node address
 const unsigned long interval = 200; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
 
+unsigned long last_sent_to_board = 50;
+
 unsigned long last_id_received = -1;
 unsigned long current_id = 0;
 //--------------------------------------------------------------
@@ -52,10 +54,13 @@ void setup() {
     SPI.begin(); // Bring up the RF network
     radio.begin();
     radio.setPALevel(RF24_PA_MIN);
+    radio.printDetails();
+    
     network.begin( /*channel*/ 100, /*node address*/ this_node);
 }
 //--------------------------------------------------------------
 int sendCount = 0;
+int hubMs = 0;
 
 void loop() {
 
@@ -77,10 +82,27 @@ void loop() {
         };
     }
 
+
+    if (millis() - last_sent_to_board >= interval) {
+        last_sent_to_board = millis();
+
+        uint16_t to = NODE_BOARD;
+
+        if ( send_T(to) == true ) { // Notify us of the result
+            Serial.print("`");
+        } else {
+            Serial.print("x");
+        }
+
+        if (sendCount++ % 60 == 0) {
+            Serial.println();
+        }
+    }
+
     if (millis() - last_time_sent >= interval) {
         last_time_sent = millis();
 
-        uint16_t to = NODE_BOARD;
+        uint16_t to = NODE_HUD;
 
         if ( send_T(to) == true ) { // Notify us of the result
             Serial.print(".");

@@ -42,16 +42,20 @@ void setup() {
     btStop();   // turn bluetooth module off
 
     this_node = NODE_BOARD;
-    Serial.printf("this_node: 0%o\n\n", this_node);
+    Serial.printf("this_node: 0%o - NODE_BOARD\n\n", this_node);
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
     radio.setPALevel(RF24_PA_MIN);
+    radio.printDetails();
+    
     network.begin( /*channel*/ 100, /*node address*/ this_node);
 }
 //--------------------------------------------------------------
 
 int rxCount = 0;
+long nowMs = 0;
+#define HUD_TX_INTERVAL 2000
 
 void loop() {
 
@@ -77,19 +81,9 @@ void loop() {
         }
     }
 
-    // if (millis() - last_time_sent >= interval) {
-    //     last_time_sent = millis();
-
-    //     uint16_t to = NODE_CONTROLLER;
-
-    //     bool ok = send_T(to);
-
-    //     if (ok) { // Notify us of the result
-    //         // Serial.printf(" %lu: APP Send ok \n\r", millis());
-    //     } else {
-    //         Serial.printf("ERROR: Send to NODE_CONTROLLER (%u) failed \n\r", to);
-    //     }
-    // }
+    if (millis() - nowMs > HUD_TX_INTERVAL) {
+        nowMs = millis();
+    }
 }
 //--------------------------------------------------------------
 void handle_T(RF24NetworkHeader &header) {
@@ -97,20 +91,7 @@ void handle_T(RF24NetworkHeader &header) {
     network.read(header, &message, sizeof(unsigned long));
 
     if (header.from_node == NODE_CONTROLLER) {
-        // check "checksum"
-    	if ( !checksumMatches(message) ) {
-    		// Serial.printf("Sync Error! (missed %d packets from 02) - %u seconds\n", 
-    		// 	message - last_id_received, 
-    		// 	(millis()-last_fail_time)/1000);
-    		//last_fail_time = millis();
-            for (int i=0; i<message - last_id_received - 1; i++) {
-                Serial.print("X");
-            }
-    	}
-        else {
-            Serial.print(".");
-        }
-    	
+        Serial.print(".");
         last_id_received = message;
     }
     else {
@@ -129,6 +110,6 @@ bool send_T(uint16_t to) {
     unsigned long message = millis();
     // Serial.printf("---------------------------------\n\r");
     // Serial.printf("APP Sending %lu to 0%o...", current_id, to);
-    return network.write(header, &current_id, sizeof(unsigned long));
+    return network.write(header, &message, sizeof(unsigned long));
 }
 //--------------------------------------------------------------
