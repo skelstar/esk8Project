@@ -34,10 +34,6 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 #define ENCODER_MODULE_LED_COLOUR_BLUE	2
 #define ENCODER_MODULE_LED_COLOUR_GREEN	3
 
-// #define ENCODER_IDX		0
-// #define ENCODER_BTN_IDX	1
-// #define DEADMAN_SWITCH_IDX	2
-
 #define TWI_RX_BUFFER_SIZE	3
 
 uint8_t tx_data[TWI_RX_BUFFER_SIZE];
@@ -119,8 +115,7 @@ void setEncoderLimits(int min, int max) {
 void requestEvent()
 {  
 	Wire.write(encoderCounter);
-
-	//// Serial.print("encoderCounter: "); // Serial.println(encoderCounter);
+	// Serial.print("encoderCounter: "); // Serial.println(encoderCounter);
 }
 //--------------------------------------------------------------
 void receiveEvent(int numBytes)

@@ -48,9 +48,6 @@ esk8Lib esk8;
 int32_t encoderCounter;
 int32_t oldEncoderCounter = 0;
 uint8_t encoder_status;
-// stats
-int32_t packetsSent = 0;
-int32_t packetsFailed = 0;
 
 //--------------------------------------------------------------
 
@@ -67,8 +64,8 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 // #define SPI_MOSI        23 // Blue
 // #define SPI_MISO        19 // Orange
 // #define SPI_CLK			18 // Yellow
-#define SPI_CE        33//  5 //33    // white/purple
-#define SPI_CS        26//  13	//26  // green
+#define SPI_CE          5 //33    // white/purple
+#define SPI_CS          13	//26  // green
 
 #define ROLE_BOARD        1
 #define ROLE_CONTROLLER    0
@@ -136,10 +133,16 @@ class EncoderModule
 			Wire.requestFrom(ENCODER_MODULE_ADDR, 1);
 
 			if (Wire.available()) {
-				int _encoderCounter = Wire.read();
-				if (encoderCounterState != _encoderCounter) {
-					encoderCounterState = _encoderCounter;
-					_encoderChangedEventCallback(_encoderCounter);
+				int encCounter = Wire.read();
+				Serial.printf("Wire.read() = %d \n", encCounter);
+
+				if (encoderCounterState != encCounter) {
+					Serial.printf("encoderCounterState != encCounter \n");
+					encoderCounterState = encCounter;
+					_encoderChangedEventCallback(encCounter);
+				}
+				else {
+					Serial.printf("encCounter = %d \n", encCounter);
 				}
 				if (encoderOnline == false) {
 					encoderOnline = true;
@@ -158,11 +161,7 @@ class EncoderModule
 void encoderChangedEvent(int encoderValue) {
 	debug.print(HARDWARE, "encoderChangedEvent(%d); \n", encoderValue);
 	oldEncoderCounter = encoderCounter;
-
-	encoderCounter = encoderValue > 127
-		 ? -256 + encoderValue 	// ie -254 = -2
-		 : encoderValue;
-	setControllerPacketThrottle();
+	encoderCounter = encoderValue;
 }
 
 void encoderOnlineEvent(bool online) {
@@ -208,29 +207,25 @@ void tFlashLedsOff_callback() {
 //--------------------------------------------------------------
 void sendMessage() {
 
-	taskENTER_CRITICAL(&mmux);
-    int result = esk8.sendThenReadACK();
-    taskEXIT_CRITICAL(&mmux);
+	// taskENTER_CRITICAL(&mmux);
+ //    int result = esk8.sendThenReadACK();
+ //    taskEXIT_CRITICAL(&mmux);
 
-	packetsSent++;
-    if (result == esk8.CODE_SUCCESS) {
-		throttleChanged = false;
-		lastRxFromBoard = millis();
-		rxDataFromBoard = true;
-        debug.print(COMMUNICATION, "sendMessage(%d): batteryVoltage:%.1f \n", esk8.controllerPacket.throttle, esk8.boardPacket.batteryVoltage);
-    }
-    else if (result == esk8.ERR_NOT_SEND_OK) {
-    	packetsFailed++;
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
-    }
-    else if (result == esk8.ERR_TIMEOUT) {
-    	packetsFailed++;
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_TIMEOUT \n");
-    }
-    else {
-    	packetsFailed++;
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): UNKNOWN_CODE %d \n", result);    
-    }
+ //    if (result == esk8.CODE_SUCCESS) {
+	// 	throttleChanged = false;
+	// 	lastRxFromBoard = millis();
+	// 	rxDataFromBoard = true;
+ //        debug.print(COMMUNICATION, "sendMessage(%d): batteryVoltage:%.1f \n", esk8.controllerPacket.throttle, esk8.boardPacket.batteryVoltage);
+ //    }
+ //    else if (result == esk8.ERR_NOT_SEND_OK) {
+ //        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+ //    }
+ //    else if (result == esk8.ERR_TIMEOUT) {
+ //        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_TIMEOUT \n");
+ //    }
+ //    else {
+ //        debug.print(COMMUNICATION, "tSendControllerValues_callback(): UNKNOWN_CODE %d \n", result);    
+ //    }
 }
 
 void tSendControllerValues_callback() {
@@ -310,25 +305,23 @@ OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 
 //------------------------------------------------------------------------------
 
-void setControllerPacketThrottle() {
+void encoderEventHandler() {
+
+	bool canAccelerate = true;// deadmanSwitch.isPressed();
 
 	bool accelerating = encoderCounter > oldEncoderCounter;
 	bool decelerating = encoderCounter < oldEncoderCounter;
 
-	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-
-	throttleChanged = accelerating || decelerating;
-
-	// if (accelerating && (canAccelerate || encoderCounter < 0)) {
-	// 	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-	// 	debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-	// 	throttleChanged = true;
-	// }
-	// else if (decelerating) {
-	// 	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-	// 	debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-	// 	throttleChanged = true;
-	// }
+	if (accelerating && (canAccelerate || encoderCounter < 0)) {
+		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		throttleChanged = true;
+	}
+	else if (decelerating) {
+		esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+		debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
+		throttleChanged = true;
+	}
 	// else if (encoder.readStatus(E_PUSH)) {
 	// 	encoderCounter = 0;
 	// 	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
@@ -362,17 +355,6 @@ void setup() {
 	Wire.begin();
 
 	// initialize the M5Stack object
-	M5.begin(true, false, false); //lcd, sd, serial
-
-	//text print
-	M5.Lcd.fillScreen(BLACK);
-	M5.Lcd.setCursor(10, 10);
-	M5.Lcd.setTextColor(WHITE);
-	M5.Lcd.setTextSize(1);
-	M5.Lcd.printf("Display Test!");
-
-	M5.Speaker.setVolume(1);	// 0-11?
-
 	WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
     btStop();   // turn bluetooth module off
 
@@ -383,17 +365,15 @@ void setup() {
 
     radio.begin();
 
-	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
+//	esk8.begin(&radio, ROLE_CONTROLLER, radioNumber);
 
-	sendMessage();
+//	sendMessage();
 
 	runner.startNow();
  	// runner.addTask(tFastFlash);
 	runner.addTask(tFlashLeds);
-	runner.addTask(tSendControllerValues);
-	tSendControllerValues.enable();
-
-	boardCommsStatus.serviceState(false);
+//	runner.addTask(tSendControllerValues);
+//	tSendControllerValues.enable();
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -415,39 +395,9 @@ bool oldConnected = false;
 
 void loop() {
 
-	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
-
-	boardCommsStatus.serviceState(connected);
-
-	if (throttleChanged && connected) {
-		tSendControllerValues.restart();
-		updateDisplay();
-	}
-	else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
-		rxDataFromBoard = false;
-		char buf[100];
-		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
-	}
-	else if (esk8.controllerPacket.throttle != 127) {
-		// maybe hide display?
-	}
-
-	if (millis() - nowms > 500) {
-		nowms = millis();
-	}
-
-	M5.update();
-	if (M5.BtnA.wasReleased()) {
-		M5.Lcd.writecommand(ILI9341_DISPOFF);
-  		M5.Lcd.setBrightness(0);
-	}
-	if (M5.BtnB.wasReleased()) {
-		updateDisplay();
-	}
-
 	runner.execute();
 
-	//delay(10);
+	delay(10);
 }
 /**************************************************************
 					TASK 0
@@ -462,68 +412,47 @@ void codeForEncoderTask( void *parameter ) {
 	for (;;) {
 
 		encoderModule.update();
-		vTaskDelay( 100 );
+		vTaskDelay( 300 );
 	}
 
 	vTaskDelete(NULL);
 }
 //**************************************************************
-int mapEncoderToThrottleValue(int raw) {
-	int mappedThrottle = 0;
-	int rawMiddle = 0;
 
-	if (raw >= rawMiddle) {
-		return map(raw, rawMiddle, ENCODER_COUNTER_MAX, 127, 255);
-	}
-	return map(raw, ENCODER_COUNTER_MIN, rawMiddle, 0, 127);
-}
-//--------------------------------------------------------------------------------
-void zeroThrottleReadyToSend() {
-	encoderCounter = 0;
-	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-	throttle = 127;
-	throttleChanged = true;
-    debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
-}
 //--------------------------------------------------------------
 void updateDisplay() {
-	#define LINE_1 20
-	#define LINE_2 45
-	#define LINE_3 70
-	#define LINE_4 95
+	// #define LINE_1 20
+	// #define LINE_2 45
+	// #define LINE_3 70
+	// #define LINE_4 95
 
-	// offline count
-	M5.Lcd.fillScreen(BLACK);
-	M5.Lcd.setCursor(10, LINE_1);
-	M5.Lcd.setTextColor(WHITE);
-	M5.Lcd.setTextSize(3);
-	M5.Lcd.printf("Offline count: %d", offlineCount);
+	// // offline count
+	// M5.Lcd.fillScreen(BLACK);
+	// M5.Lcd.setCursor(10, LINE_1);
+	// M5.Lcd.setTextColor(WHITE);
+	// M5.Lcd.setTextSize(3);
+	// M5.Lcd.printf("Offline count: %d", offlineCount);
 
-	// online/offline
-	M5.Lcd.setCursor(10, LINE_2);
-	M5.Lcd.setTextSize(3);
-	if (boardCommsStatus.isOnline()) {
-		M5.Lcd.setTextColor(GREEN);
-		M5.Lcd.printf("Online");
-	}
-	else {
-		M5.Lcd.setTextColor(RED);
-		M5.Lcd.printf("Offline");	
-	}
+	// // online/offline
+	// M5.Lcd.setCursor(10, LINE_2);
+	// M5.Lcd.setTextSize(3);
+	// if (boardCommsStatus.isOnline()) {
+	// 	M5.Lcd.setTextColor(GREEN);
+	// 	M5.Lcd.printf("Online");
+	// }
+	// else {
+	// 	M5.Lcd.setTextColor(RED);
+	// 	M5.Lcd.printf("Offline");	
+	// }
 
-	// encoder Module
-	M5.Lcd.setCursor(10, LINE_3);
-	if (encoderOnline == true) {
-		M5.Lcd.setTextColor(GREEN);
-		M5.Lcd.printf("Encoder: Online");
-	}
-	else {
-		M5.Lcd.setTextColor(RED);
-		M5.Lcd.printf("Encoder: Offline");	
-	}
-
-	// packets Sent
-	M5.Lcd.setCursor(10, LINE_4);
-	M5.Lcd.setTextColor(GREEN);
-	M5.Lcd.printf("Packets %%: %d\n", packetsFailed * 100 / packetsSent);
+	// // encoder Module
+	// M5.Lcd.setCursor(10, LINE_3);
+	// if (encoderOnline == true) {
+	// 	M5.Lcd.setTextColor(GREEN);
+	// 	M5.Lcd.printf("Encoder: Online");
+	// }
+	// else {
+	// 	M5.Lcd.setTextColor(RED);
+	// 	M5.Lcd.printf("Encoder: Offline");	
+	// }
 }
