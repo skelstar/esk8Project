@@ -6,6 +6,7 @@
 #include <RF24Network.h> 
 #include <RF24.h> 
 #include <SPI.h>
+#include "WiFi.h"
 
 #define     NODE_BOARD          00
 #define     NODE_CONTROLLER     01
@@ -16,7 +17,12 @@
 
 /***********************************************************************/
 /***********************************************************************/
-RF24 radio(33, 26); // CE & CS pins to use (Using 7,8 on Uno,Nano)
+#define SPI_CE        5 //33    // white/purple
+#define SPI_CS        13    //26  // green
+// #define SPI_CE        33    // white/purple
+// #define SPI_CS        26  // green
+
+RF24 radio(SPI_CE, SPI_CS); // CE & CS pins to use (Using 7,8 on Uno,Nano)
 RF24Network network(radio);
 
 uint16_t this_node; // Our node address
@@ -34,7 +40,10 @@ void setup() {
     Serial.printf("\n\r%s\n\r", filepath);
 
     uint64_t chipid = ESP.getEfuseMac();    //The chip ID is essentially its MAC address(length: 6 bytes).
-    Serial.printf("ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
+    Serial.printf("ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));   //print High 2 bytes
+
+    WiFi.mode( WIFI_OFF );  // WIFI_MODE_NULL
+    btStop();   // turn bluetooth module off
 
     this_node = NODE_CONTROLLER;
     Serial.printf("this_node: 0%o\n", this_node);
@@ -42,13 +51,16 @@ void setup() {
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
-    radio.setPALevel(RF24_PA_HIGH);
+    radio.setPALevel(RF24_PA_MIN);
     network.begin( /*channel*/ 100, /*node address*/ this_node);
 }
 //--------------------------------------------------------------
+int sendCount = 0;
+
 void loop() {
 
     network.update(); // Pump the network regularly
+
     while (network.available()) { // Is there anything ready for us?
 
         RF24NetworkHeader header; // If so, take a look at it
@@ -71,9 +83,15 @@ void loop() {
         uint16_t to = NODE_BOARD;
 
         if ( send_T(to) == true ) { // Notify us of the result
+            Serial.print(".");
             //Serial.printf(" %lu: APP Send ok \n\r", millis());
         } else {
-            Serial.printf(" %lu: APP Send to 0%o failed \n\r", to, millis());
+            Serial.print("X");
+            // Serial.printf(" %lu: APP Send to 0%o failed \n\r", to, millis());
+        }
+
+        if (sendCount++ % 60 == 0) {
+            Serial.println();
         }
     }
 }

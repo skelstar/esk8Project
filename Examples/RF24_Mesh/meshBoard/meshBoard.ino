@@ -6,7 +6,7 @@
 #include <RF24Network.h> 
 #include <RF24.h> 
 #include <SPI.h>
-
+#include "WiFi.h"
 
 #define     NODE_BOARD          00
 #define     NODE_CONTROLLER     01
@@ -38,18 +38,25 @@ void setup() {
     uint64_t chipid = ESP.getEfuseMac();    //The chip ID is essentially its MAC address(length: 6 bytes).
     Serial.printf("ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
 
+    WiFi.mode( WIFI_OFF );  // WIFI_MODE_NULL
+    btStop();   // turn bluetooth module off
+
     this_node = NODE_BOARD;
     Serial.printf("this_node: 0%o\n\n", this_node);
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
-    radio.setPALevel(RF24_PA_HIGH);
+    radio.setPALevel(RF24_PA_MIN);
     network.begin( /*channel*/ 100, /*node address*/ this_node);
 }
 //--------------------------------------------------------------
+
+int rxCount = 0;
+
 void loop() {
 
     network.update(); // Pump the network regularly
+
     while (network.available()) { // Is there anything ready for us?
 
         RF24NetworkHeader header; // If so, take a look at it
@@ -64,6 +71,10 @@ void loop() {
 	            network.read(header, 0, 0);
 	            break;
         };
+
+        if (rxCount++ % 60 == 0) {
+            Serial.println();
+        }
     }
 
     // if (millis() - last_time_sent >= interval) {
@@ -81,6 +92,36 @@ void loop() {
     // }
 }
 //--------------------------------------------------------------
+void handle_T(RF24NetworkHeader &header) {
+    unsigned long message;
+    network.read(header, &message, sizeof(unsigned long));
+
+    if (header.from_node == NODE_CONTROLLER) {
+        // check "checksum"
+    	if ( !checksumMatches(message) ) {
+    		// Serial.printf("Sync Error! (missed %d packets from 02) - %u seconds\n", 
+    		// 	message - last_id_received, 
+    		// 	(millis()-last_fail_time)/1000);
+    		//last_fail_time = millis();
+            for (int i=0; i<message - last_id_received - 1; i++) {
+                Serial.print("X");
+            }
+    	}
+        else {
+            Serial.print(".");
+        }
+    	
+        last_id_received = message;
+    }
+    else {
+	    Serial.printf("-----> Id received %lu from 0%o\n\r", message, header.from_node);
+    }
+}
+//--------------------------------------------------------------
+bool checksumMatches(unsigned long message) {
+    return last_id_received + 1 == message;
+}
+//--------------------------------------------------------------
 bool send_T(uint16_t to) {
     RF24NetworkHeader header( /*to node*/ to, /*type*/ 'T' /*Time*/ );
 
@@ -89,31 +130,5 @@ bool send_T(uint16_t to) {
     // Serial.printf("---------------------------------\n\r");
     // Serial.printf("APP Sending %lu to 0%o...", current_id, to);
     return network.write(header, &current_id, sizeof(unsigned long));
-}
-//--------------------------------------------------------------
-void handle_T(RF24NetworkHeader & header) {
-    unsigned long message;
-    network.read(header, & message, sizeof(unsigned long));
-
-    if (header.from_node == NODE_CONTROLLER) {
-    	if (last_id_received + 1 != message) {
-    		Serial.printf("Sync Error! (missed %d packets from 02) - %u seconds\n", 
-    			message - last_id_received, 
-    			(millis()-last_fail_time)/1000);
-    		last_fail_time = millis();
-    	}
-    	last_id_received = message;
-    	if (last_id_received % 10 == 0) {
-    		// if ( send_T(NODE_HUD) == false ) {
-    		// 	Serial.printf("Failed sending to HUD \n");
-    		// }
-    		// if ( send_T(NODE_TEST) == false ) {
-    		// 	Serial.printf("Failed sending to NODE_TEST (0%o) \n", NODE_TEST);
-    		// }
-    	}
-    }
-    else {
-	    Serial.printf("-----> Id received %lu from 0%o\n\r", message, header.from_node);
-    }
 }
 //--------------------------------------------------------------

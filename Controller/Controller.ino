@@ -54,8 +54,12 @@ U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/
 // #define SPI_MOSI        23 // Blue
 // #define SPI_MISO        19 // Orange
 // #define SPI_CLK			18 // Yellow
-#define SPI_CE          33    // white/purple
-#define SPI_CS          26  // green
+// M5Stack
+#define SPI_CE        5 //33    // white/purple
+#define SPI_CS        13	//26  // green
+
+// #define SPI_CE          33    // white/purple
+// #define SPI_CS          26  // green
 
 #define ROLE_BOARD        1
 #define ROLE_CONTROLLER    0
