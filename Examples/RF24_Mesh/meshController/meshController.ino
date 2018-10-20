@@ -27,7 +27,7 @@ RF24Network network(radio);
 
 uint16_t this_node; // Our node address
 
-const unsigned long interval = 200; // ms       // Delay manager to send pings regularly.
+const unsigned long interval = 500; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
 
 unsigned long last_sent_to_board = 50;
@@ -86,37 +86,50 @@ void loop() {
     if (millis() - last_sent_to_board >= interval) {
         last_sent_to_board = millis();
 
-        uint16_t to = NODE_BOARD;
-
-        if ( send_T(to) == true ) { // Notify us of the result
-            Serial.print("`");
-        } else {
+        if ( send_Multicast() == false ) {
             Serial.print("x");
         }
 
-        if (sendCount++ % 60 == 0) {
-            Serial.println();
-        }
+        // uint16_t to = NODE_BOARD;
+
+        // if ( send_T(to) == true ) { // Notify us of the result
+        //     Serial.print("`");
+        // } else {
+        //     Serial.print("x");
+        // }
+
+        // if (sendCount++ % 60 == 0) {
+        //     Serial.println();
+        // }
     }
 
     if (millis() - last_time_sent >= interval) {
-        last_time_sent = millis();
+        // last_time_sent = millis();
 
-        uint16_t to = NODE_HUD;
+        // uint16_t to = NODE_HUD;
 
-        if ( send_T(to) == true ) { // Notify us of the result
-            Serial.print(".");
-            //Serial.printf(" %lu: APP Send ok \n\r", millis());
-        } else {
-            Serial.print("X");
-            // Serial.printf(" %lu: APP Send to 0%o failed \n\r", to, millis());
-        }
+        // if ( send_T(to) == true ) { // Notify us of the result
+        //     Serial.print(".");
+        //     //Serial.printf(" %lu: APP Send ok \n\r", millis());
+        // } else {
+        //     Serial.print("X");
+        //     // Serial.printf(" %lu: APP Send to 0%o failed \n\r", to, millis());
+        // }
 
-        if (sendCount++ % 60 == 0) {
-            Serial.println();
-        }
+        // if (sendCount++ % 60 == 0) {
+        //     Serial.println();
+        // }
     }
 }
+//--------------------------------------------------------------
+bool send_Multicast() {
+    RF24NetworkHeader header(00, /*type*/ 'T' /*Time*/ );
+
+    unsigned long message = 8888;
+    uint8_t level = 1;
+    return network.multicast(header, &message, sizeof(unsigned long), level);
+}
+
 //--------------------------------------------------------------
 bool send_T(uint16_t to) {
 

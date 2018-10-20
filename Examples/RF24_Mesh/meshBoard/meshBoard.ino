@@ -50,6 +50,7 @@ void setup() {
     radio.printDetails();
     
     network.begin( /*channel*/ 100, /*node address*/ this_node);
+    // network.multicastRelay = true;
 }
 //--------------------------------------------------------------
 
@@ -83,8 +84,20 @@ void loop() {
 
     if (millis() - nowMs > HUD_TX_INTERVAL) {
         nowMs = millis();
+
+        send_Multicast();
     }
 }
+//--------------------------------------------------------------
+int send_Multicast() {
+    RF24NetworkHeader header(00, /*type*/ 'T' /*Time*/ );
+
+    unsigned long message = 9999;
+    uint8_t level = 1;
+    return network.multicast(header, &message, sizeof(unsigned long), level);
+}
+
+
 //--------------------------------------------------------------
 void handle_T(RF24NetworkHeader &header) {
     unsigned long message;

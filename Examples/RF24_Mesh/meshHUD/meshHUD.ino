@@ -115,7 +115,10 @@ void handle_T(RF24NetworkHeader &header) {
     network.read(header, &message, sizeof(unsigned long));
 
     if (header.from_node == NODE_CONTROLLER) {
-        Serial.printf("-----> Id received %lu from 0%o\n\r", message, header.from_node);
+        Serial.printf("%00o -----> Id received %lu \n", header.from_node, message);
+    }
+    else if (header.from_node == NODE_BOARD) {
+        Serial.printf("%00o -----> Id received %lu \n", header.from_node, message);
     }
     else {
     }
