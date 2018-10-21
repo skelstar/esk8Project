@@ -7,11 +7,14 @@
 #include <RF24.h> 
 #include <SPI.h>
 #include "WiFi.h"
+#include <esk8Lib.h>
 
 #define     NODE_BOARD          00
 #define     NODE_CONTROLLER     01
 #define     NODE_HUD            02
 #define     NODE_TEST           03
+
+esk8Lib esk8;
 
 // https://github.com/nRF24/RF24Network/blob/master/examples/Network_Ping/Network_Ping.ino
 
@@ -22,12 +25,12 @@ RF24Network network(radio);
 
 uint16_t this_node; // Our node address
 
-const unsigned long interval = 3000; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
 unsigned long last_fail_time = 0;
 
 unsigned long last_id_received = -1;
 unsigned long current_id = 0;
+
 //--------------------------------------------------------------
 void setup() {
 
@@ -50,43 +53,85 @@ void setup() {
     radio.printDetails();
     
     network.begin( /*channel*/ 100, /*node address*/ this_node);
-    // network.multicastRelay = true;
+
+	esk8.begin(esk8.RF24_BOARD);
+
+	xTaskCreatePinnedToCore (
+		codeForEncoderTask,	// function
+		"Task_Encoder",		// name
+		10000,			// stack
+		NULL,			// parameter
+		1,				// priority
+		NULL,	// handle
+		0
+	);				// port	
 }
 //--------------------------------------------------------------
 
 int rxCount = 0;
 long nowMs = 0;
 #define TX_INTERVAL 500
-
+/**************************************************************
+					LOOP
+**************************************************************/
 void loop() {
+	
+	vTaskDelay( 10 );
+}
+/**************************************************************
+					TASK 0
+**************************************************************/
+void codeForEncoderTask( void *parameter ) {
+
+	// setupEncoder();
+
+	long now = millis();
+
+	// then loop forever	
+	for (;;) {
+	checkForPacket();
+
+	    if (millis() - nowMs > TX_INTERVAL) {
+	        nowMs = millis();
+
+	        if ( sendToController() == false ) {
+	        	Serial.print("f");
+	        	rxCount++;
+	        }
+	    }
+		vTaskDelay( 10 );
+	}
+
+	vTaskDelete(NULL);
+}
+//**************************************************************
+//--------------------------------------------------------------
+bool checkForPacket() {
+
+	bool packetFound = false;
 
     network.update(); // Pump the network regularly
 
     while (network.available()) { // Is there anything ready for us?
 
+    	packetFound = true;
         RF24NetworkHeader header; // If so, take a look at it
         network.peek(header);
 
-        switch (header.type) { // Dispatch the message to the correct handler.
-	        case 'T':
-	            handle_T(header);
-	            break;
-	        default:
-	            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-	            network.read(header, 0, 0);
-	            break;
-        };
+        if (header.type == 'T') {
+    	    network.read(header, &esk8.controllerPacket, sizeof(esk8.controllerPacket));
+        	Serial.print(".");
+        }
+        else {
+            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
+            network.read(header, 0, 0);
+        }
 
         if (rxCount++ % 60 == 0) {
             Serial.println();
         }
     }
-
-    if (millis() - nowMs > TX_INTERVAL) {
-        nowMs = millis();
-
-        send_Multicast();
-    }
+    return packetFound;
 }
 //--------------------------------------------------------------
 int send_Multicast() {
@@ -96,33 +141,15 @@ int send_Multicast() {
     uint8_t level = 1;
     return network.multicast(header, &message, sizeof(unsigned long), level);
 }
-
-
-//--------------------------------------------------------------
-void handle_T(RF24NetworkHeader &header) {
-    unsigned long message;
-    network.read(header, &message, sizeof(unsigned long));
-
-    if (header.from_node == NODE_CONTROLLER) {
-        Serial.print(".");
-        last_id_received = message;
-    }
-    else {
-	    Serial.printf("-----> Id received %lu from 0%o\n\r", message, header.from_node);
-    }
-}
 //--------------------------------------------------------------
 bool checksumMatches(unsigned long message) {
     return last_id_received + 1 == message;
 }
 //--------------------------------------------------------------
-bool send_T(uint16_t to) {
-    RF24NetworkHeader header( /*to node*/ to, /*type*/ 'T' /*Time*/ );
+bool sendToController() {
 
-    // The 'T' message that we send is just a ulong, containing the time
-    unsigned long message = millis();
-    // Serial.printf("---------------------------------\n\r");
-    // Serial.printf("APP Sending %lu to 0%o...", current_id, to);
-    return network.write(header, &message, sizeof(unsigned long));
+    RF24NetworkHeader header( /*to node*/ esk8.RF24_CONTROLLER, /*type*/ 'T' /*Time*/ );
+    esk8.boardPacket.id++;
+    return network.write(header, &esk8.boardPacket, sizeof(esk8.boardPacket));
 }
 //--------------------------------------------------------------

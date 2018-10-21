@@ -1,29 +1,25 @@
 #include <SPI.h>
-#include "RF24.h"
-#include <RF24Network.h > 
-
-#include <Rotary.h>
+#include <RF24Network.h> 
+#include <RF24.h> 
+#include "WiFi.h"
 
 #include <TaskScheduler.h>
 
-#include <myPushButton.h>
-#include <myPowerButtonManager.h>
+#include <Wire.h>
+
+// #include <myPushButton.h>
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
-#include <U8g2lib.h>
-#include <Adafruit_NeoPixel.h>
-
-// #include "VescUart.h"
+// #include <Adafruit_NeoPixel.h>
+#include <M5Stack.h>
 //--------------------------------------------------------------------------------
 
-#define ENCODER_BUTTON_PIN	34	// 36 didn't work
-#define ENCODER_PIN_A		16
-#define ENCODER_PIN_B		4
+#define	PIXEL_PIN			16	// was 5
 
-#define DEADMAN_SWITCH_PIN	25
-
-#define	PIXEL_PIN			5
+#define M5_BUTTON_A			39
+#define M5_BUTTON_B			38
+#define M5_BUTTON_C			37
 
 //--------------------------------------------------------------
 
@@ -39,6 +35,21 @@ debugHelper debug;
 
 esk8Lib esk8;
 
+//--------------------------------------------------------------------------------
+
+#define 	ENCODER_MODULE_ADDR		0x4
+
+// lower number = more coarse
+#define ENCODER_COUNTER_MIN	-20 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_COUNTER_MAX	 15 	// acceleration (ie 15 divides 127-255 into 15)
+
+int32_t encoderCounter;
+int32_t oldEncoderCounter = 0;
+uint8_t encoder_status;
+// stats
+int32_t packetsSent = 0;
+int32_t packetsFailed = 0;
+
 //--------------------------------------------------------------
 
 volatile long lastRxFromBoard = 0;
@@ -47,21 +58,13 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
-U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
+//U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
 
 //--------------------------------------------------------------
 
-// #define SPI_MOSI        23 // Blue
-// #define SPI_MISO        19 // Orange
-// #define SPI_CLK			18 // Yellow
-// M5Stack
-#define SPI_CE        5 //33    // white/purple
+#define SPI_CE        5 	//33    // white/purple
 #define SPI_CS        13	//26  // green
 
-// #define SPI_CE          33    // white/purple
-// #define SPI_CS          26  // green
-
-#define ROLE_BOARD        1
 #define ROLE_CONTROLLER    0
 
 int role = ROLE_CONTROLLER;
@@ -70,146 +73,101 @@ bool radioNumber = 1;
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio);
 
+int offlineCount = 0;
+int encoderOfflineCount = 0;
+bool encoderOnline = true;
+
 //--------------------------------------------------------------------------------
-#define BRIGHTNESS	20
-
-#define 	NUM_PIXELS 		8
-
-Adafruit_NeoPixel leds = Adafruit_NeoPixel(NUM_PIXELS, PIXEL_PIN, NEO_GRB + NEO_KHZ800);
-
-uint32_t COLOUR_OFF = leds.Color(0, 0, 0);
-uint32_t COLOUR_RED = leds.Color(255, 0, 0);
-uint32_t COLOUR_GREEN = leds.Color(0, 255, 0);
-uint32_t COLOUR_BLUE = leds.Color(0, 0, 255);
-uint32_t COLOUR_PINK = leds.Color(128, 0, 100);
-
-uint32_t COLOUR_ACCELERATING = COLOUR_BLUE;
-uint32_t COLOUR_BRAKING = COLOUR_PINK;
-uint32_t COLOUR_THROTTLE_IDLE = COLOUR_GREEN;
-
-//--------------------------------------------------------------
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
 int mapEncoderToThrottleValue(int raw);
-void setupEncoder();
-void setPixels(uint32_t c) ;
 void zeroThrottleReadyToSend();
-
-//--------------------------------------------------------------
-
-int powerButtonIsPressed();
-void powerupEvent(int state);
-
-myPowerButtonManager powerButton(DEADMAN_SWITCH_PIN, HIGH, 3000, 3000, powerupEvent, powerButtonIsPressed);
-
-int powerButtonIsPressed() {
-	return digitalRead(DEADMAN_SWITCH_PIN) == 0 
-		&& digitalRead(ENCODER_BUTTON_PIN) == 0;
-}
-
-void powerupEvent(int state) {
-
-	switch (state) {
-		case powerButton.TN_TO_POWERING_UP:
-			setPixels(COLOUR_OFF);
-			debug.print(STARTUP, "TN_TO_POWERING_UP \n");
-			break;
-		case powerButton.TN_TO_POWERED_UP_WAIT_RELEASE:
-			setPixels(COLOUR_OFF);
-			oledMessage("Ready...");
-			debug.print(STARTUP, "TN_TO_POWERED_UP_WAIT_RELEASE \n");
-			break;
-		case powerButton.TN_TO_RUNNING:
-			debug.print(STARTUP, "TN_TO_RUNNING \n");
-			setPixels(COLOUR_OFF);
-			u8g2.clearBuffer();
-			u8g2.sendBuffer();
-			break;
-		case powerButton.TN_TO_POWERING_DOWN:
-			setPixels(COLOUR_RED);
-			oled2LineMessage("Powering", "Down", "");
-			debug.print(STARTUP, "TN_TO_POWERING_DOWN \n");
-			break;
-		case powerButton.TN_TO_POWERING_DOWN_WAIT_RELEASE:
-			debug.print(STARTUP, "TN_TO_POWERING_DOWN_WAIT_RELEASE \n");
-			u8g2.clearBuffer();
-			u8g2.sendBuffer();
-			break;
-		case powerButton.TN_TO_POWER_OFF:
-			radio.powerDown();
-			setPixels(COLOUR_OFF);
-			u8g2.clearBuffer();
-			u8g2.sendBuffer();
-			debug.print(STARTUP, "TN_TO_POWER_OFF \n");
-			delay(100);
-			esp_deep_sleep_start();
-			Serial.println("This will never be printed");
-			break;
-	}
-}
 
 //--------------------------------------------------------------
 
 bool throttleChanged = false;
 int throttle = 127;
 
-#define SEND_TO_BOARD_INTERVAL_MS 			400
+#define SEND_TO_BOARD_INTERVAL_MS 			200
 
 //--------------------------------------------------------------
 
-Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
+#define ENCODER_MODULE_LED_CMD	1
+#define ENCODER_MODULE_LED_COLOUR_BLACK	0
+#define ENCODER_MODULE_LED_COLOUR_RED	1
+#define ENCODER_MODULE_LED_COLOUR_BLUE	2
+#define ENCODER_MODULE_LED_COLOUR_GREEN	3
 
-//--------------------------------------------------------------------------------
+class EncoderModule 
+{
+	typedef void ( *EncoderChangedEventCallback )( int value );
+	typedef void ( *EncoderOnlineEventCallback )( bool online );
 
-#define 	OFF_STATE_HIGH		HIGH
-#define 	OFF_STATE_LOW       0
-#define 	PUSH_BUTTON_PULLUP  true
+	private:
+		int encoderCounterState = 0;
+		bool encoderOnline = true;
 
-void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam );
-myPushButton deadmanSwitch(DEADMAN_SWITCH_PIN, PUSH_BUTTON_PULLUP, OFF_STATE_HIGH, listener_deadmanSwitch);
-void listener_deadmanSwitch( int eventCode, int eventPin, int eventParam ) {
+		EncoderChangedEventCallback _encoderChangedEventCallback;
+		EncoderOnlineEventCallback _encoderOnlineEventCallback;
 
-	switch (eventCode) {
+	public:
 
-		// case deadmanSwitch.EV_BUTTON_PRESSED:
-		// case deadmanSwitch.EV_HELD_SECONDS:
-		case deadmanSwitch.EV_RELEASED:
-            if (esk8.controllerPacket.throttle > 127) {
-			 	zeroThrottleReadyToSend();
+		EncoderModule(EncoderChangedEventCallback encoderChangedEventCallback,
+			EncoderOnlineEventCallback encoderOnlineEventCallback) 
+		{
+			_encoderChangedEventCallback = encoderChangedEventCallback;
+			_encoderOnlineEventCallback = encoderOnlineEventCallback;
+		}
+
+		void setPixel(byte encoderLedColour) {
+			Wire.beginTransmission(ENCODER_MODULE_ADDR);
+			Wire.write(ENCODER_MODULE_LED_CMD);
+			Wire.write(encoderLedColour);
+			Wire.endTransmission();
+		}
+
+		void update() {
+			Wire.requestFrom(ENCODER_MODULE_ADDR, 1);
+
+			if (Wire.available()) {
+				int _encoderCounter = Wire.read();
+				if (encoderCounterState != _encoderCounter) {
+					encoderCounterState = _encoderCounter;
+					_encoderChangedEventCallback(_encoderCounter);
+				}
+				if (encoderOnline == false) {
+					encoderOnline = true;
+					_encoderOnlineEventCallback(true);
+				}
 			}
-			debug.print(HARDWARE, "EV_BUTTON_RELEASED (DEADMAN) \n");
-			break;
-	}
+			else {
+				if (encoderOnline == true) {
+					encoderOnline = false;
+					_encoderOnlineEventCallback(false);	
+				}
+			}
+		}
+};
+
+void encoderChangedEvent(int encoderValue) {
+	debug.print(HARDWARE, "encoderChangedEvent(%d); \n", encoderValue);
+	oldEncoderCounter = encoderCounter;
+
+	encoderCounter = encoderValue > 127
+		 ? -256 + encoderValue 	// ie -254 = -2
+		 : encoderValue;
+	setControllerPacketThrottle();
 }
 
-void listener_encoderButton( int eventCode, int eventPin, int eventParam );
-myPushButton encoderButton(ENCODER_BUTTON_PIN, PULLUP, OFF_STATE_HIGH, listener_encoderButton);
-void listener_encoderButton( int eventCode, int eventPin, int eventParam ) {
-
-	switch (eventCode) {
-
-		case encoderButton.EV_BUTTON_PRESSED:
-            esk8.controllerPacket.encoderButton = 1;
-			break;
-
-		case encoderButton.EV_RELEASED:
-            esk8.controllerPacket.encoderButton = 0;
-            zeroThrottleReadyToSend();
-			break;
-
-		case encoderButton.EV_HELD_SECONDS:
-			break;
-	}
+void encoderOnlineEvent(bool online) {
+	encoderOnline = online;
+	updateDisplay();
 }
+
+EncoderModule encoderModule(&encoderChangedEvent, &encoderOnlineEvent);
+
 //--------------------------------------------------------------
-// lower number = more coarse
-#define ENCODER_COUNTER_MIN		-20 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX		15 		// acceleration (ie 15 divides 127-255 into 15)
-
-int encoderCounter = 0;
-
-//--------------------------------------------------------------------------------
 
 Scheduler runner;
 
@@ -221,40 +179,43 @@ void tFlashLedsOff_callback();
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	setPixels(COLOUR_RED);
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLeds_onDisable() {
-	setPixels(COLOUR_OFF);
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
 	tFlashLeds.disable();
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	// debug.print(HARDWARE, "tFlashLedsOn_callback\n");
-	setPixels(COLOUR_RED);
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
+	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	// debug.print(HARDWARE, "tFlashLedsOff_callback\n");
-	setPixels(COLOUR_OFF);
+	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
+	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
 	return;
 }
+
 //--------------------------------------------------------------
 void sendMessage() {
 
 	taskENTER_CRITICAL(&mmux);
-    bool success = esk8.send('A');
+    int success = esk8.send();
     taskEXIT_CRITICAL(&mmux);
 
-    if (success) {
+	packetsSent++;
+    if ( success ) {
 		throttleChanged = false;
 		lastRxFromBoard = millis();
-		rxDataFromBoard = true;
-        debug.print(COMMUNICATION, "sendMessage():  \n");
+		// rxDataFromBoard = true;
+        //debug.print(COMMUNICATION, "sendMessage(%d) \n", esk8.controllerPacket.throttle);
     }
     else {
+    	packetsFailed++;
         debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
 }
@@ -266,16 +227,17 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 //--------------------------------------------------------------
 void boardOfflineCallback() {
-	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
+	debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	tFlashLeds.enable();
-	oledMessage("OFFLINE");
+	offlineCount++;
+	updateDisplay();
+	M5.Speaker.tone(330, 100);	// tone 330, 200ms
 }
 
 void boardOnlineCallback() {
-	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
+	debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	tFlashLeds.disable();
-	u8g2.clearBuffer();
-	u8g2.sendBuffer();
+	updateDisplay();
 }
 //--------------------------------------------------------------
 #define	TN_ONLINE 	1
@@ -334,33 +296,22 @@ class OnlineStatus
 OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 
 //------------------------------------------------------------------------------
+void setControllerPacketThrottle() {
 
-void encoderInterruptHandler() {
-	unsigned char result = rotary.process();
+	bool accelerating = encoderCounter > oldEncoderCounter;
+	bool decelerating = encoderCounter < oldEncoderCounter;
 
-	bool canAccelerate = deadmanSwitch.isPressed();
+	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
 
-	if (result == DIR_CCW && (canAccelerate || encoderCounter < 0)) {
-		if (encoderCounter < ENCODER_COUNTER_MAX) {
-			encoderCounter++;
-			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-			throttleChanged = true;
-		}
-	}
-	else if (result == DIR_CW) {
-		if (encoderCounter > ENCODER_COUNTER_MIN) {
-			encoderCounter--;
-			esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-			debug.print(HARDWARE, "encoder: %d throttle: %d \n", encoderCounter, esk8.controllerPacket.throttle);
-			throttleChanged = true;
-		}
-	}
+	throttleChanged = accelerating || decelerating;
+}
+
+void packetAvailable_Callback(int test) {
+	debug.print(COMMUNICATION, "packetAvailable_Callback() \n");
 }
 
 //--------------------------------------------------------------
 
-volatile uint32_t otherNode;
 #define COMMS_TIMEOUT_PERIOD 	1000
 
 /**************************************************************
@@ -377,29 +328,34 @@ void setup() {
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
- //    debug.setFilter( STARTUP | HARDWARE | DEBUG | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | HARDWARE | COMMUNICATION );
+	debug.setFilter( STARTUP | HARDWARE | DEBUG | COMMUNICATION | ONLINE_STATUS | TIMING );
+	//debug.setFilter( STARTUP );
 
-  	leds.setBrightness(BRIGHTNESS);
-	leds.begin();
-	leds.show();
+	// initialize the M5Stack object
+	M5.begin(true, false, false); //lcd, sd, serial
 
-	powerButton.begin();
+	//text print
+	M5.Lcd.fillScreen(BLACK);
+	M5.Lcd.setCursor(50, 50);
+	M5.Lcd.setTextColor(WHITE);
+	M5.Lcd.setTextSize(2);
+	M5.Lcd.printf("Ready!");
+
+	M5.Speaker.setVolume(1);	// 0-11?
+
+	WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
+    btStop();   // turn bluetooth module off
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
 	throttleChanged = true;	// initialise
 
-	SPI.begin();
-
     radio.begin();
+    radio.setPALevel(RF24_PA_MIN);
 
-    btStop();   // turn bluetooth module off
-
-	esk8.begin(&radio, &network, esk8.CONTROLLER);
-
-	u8g2.begin();
+	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailable_Callback);
+	//esk8.enableDebug();
 
 	sendMessage();
 
@@ -431,78 +387,58 @@ bool oldConnected = false;
 
 void loop() {
 
-	bool connected = esk8.boardOnline();	// millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
+	esk8.service();
+
+	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
 	boardCommsStatus.serviceState(connected);
 
-	if (powerButton.getState() != powerButton.STATE_RUNNING) {
-		// catch
-	}
-	else if (throttleChanged && connected) {
+	if (throttleChanged && connected) {
 		tSendControllerValues.restart();
+		updateDisplay();
 	}
 	else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
 		rxDataFromBoard = false;
 		char buf[100];
 		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
-		oled2LineMessage("BATT. VOLTS", buf, "V");
-		// setPixels(COLOUR_OFF);
 	}
 	else if (esk8.controllerPacket.throttle != 127) {
-		u8g2.clearBuffer();
-		u8g2.sendBuffer();
+		// maybe hide display?
 	}
 
-	if ( esk8.available() ) {
-		debug.print(COMMUNICATION, "Message received from Board \n");
+	M5.update();
+	if (M5.BtnA.wasReleased()) {
+		M5.Lcd.writecommand(ILI9341_DISPOFF);
+  		M5.Lcd.setBrightness(0);
 	}
-
-	powerButton.serviceButton();
+	if (M5.BtnB.wasReleased()) {
+		updateDisplay();
+	}
 
 	runner.execute();
 
-	esp_task_wdt_feed();
-
-	delay(10);
+	vTaskDelay( 10 );
 }
 /**************************************************************
 					TASK 0
 **************************************************************/
 void codeForEncoderTask( void *parameter ) {
 
-	setupEncoder();
+	// setupEncoder();
+
+	long now = millis();
 
 	// then loop forever	
 	for (;;) {
 
-		encoderButton.serviceEvents();
-
-		deadmanSwitch.serviceEvents();
-
-		delay(10);
+		encoderModule.update();
+		vTaskDelay( 100 );
 	}
+
 
 	vTaskDelete(NULL);
 }
 //**************************************************************
-void setupEncoder() {
-
-	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
-	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
-
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderInterruptHandler, CHANGE);
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), encoderInterruptHandler, CHANGE);
-}
-//--------------------------------------------------------------------------------
-void setPixels(uint32_t c) {
-	taskENTER_CRITICAL(&mmux);
-	for (uint16_t i=0; i<NUM_PIXELS; i++) {
-		leds.setPixelColor(i, c);
-	}
-	leds.show();
-	taskEXIT_CRITICAL(&mmux);
-}
-//--------------------------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
 	int mappedThrottle = 0;
 	int rawMiddle = 0;
@@ -521,35 +457,44 @@ void zeroThrottleReadyToSend() {
     debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
 }
 //--------------------------------------------------------------
-void oled2LineMessage(char* line1, char* line2, char* unit) {
-	
-	u8g2.clearBuffer();
-	// line1
-	u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf
-	u8g2.drawStr(0, 10, line1);
-	// unit
-	u8g2_uint_t unitWidth = u8g2.getStrWidth((const char*) unit);
-	u8g2.setFont(u8g2_font_helvR08_tf);	// u8g2_font_courR08_tf u8g2_font_helvR08_tf
-	u8g2.drawStr(128-unitWidth, 32, unit);
-	//line2
-	u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
-	u8g2_uint_t width = u8g2.getStrWidth((const char*) line2);
-	int unitOffset = unitWidth + 2;
-	if (strcmp(unit, "") == 0) {
-		unitOffset = 0;
-	}
-	u8g2.drawStr(128-width-unitOffset, 32, line2);
+void updateDisplay() {
+	#define LINE_1 20
+	#define LINE_2 45
+	#define LINE_3 70
+	#define LINE_4 95
 
-	u8g2.sendBuffer();
+	// offline count
+	M5.Lcd.fillScreen(BLACK);
+	M5.Lcd.setCursor(10, LINE_1);
+	M5.Lcd.setTextColor(WHITE);
+	M5.Lcd.setTextSize(3);
+	M5.Lcd.printf("Offline count: %d", offlineCount);
+
+	// online/offline
+	M5.Lcd.setCursor(10, LINE_2);
+	M5.Lcd.setTextSize(3);
+	if (boardCommsStatus.isOnline()) {
+		M5.Lcd.setTextColor(GREEN);
+		M5.Lcd.printf("Online");
+	}
+	else {
+		M5.Lcd.setTextColor(RED);
+		M5.Lcd.printf("Offline");	
+	}
+
+	// encoder Module
+	M5.Lcd.setCursor(10, LINE_3);
+	if (encoderOnline == true) {
+		M5.Lcd.setTextColor(GREEN);
+		M5.Lcd.printf("Encoder: Online");
+	}
+	else {
+		M5.Lcd.setTextColor(RED);
+		M5.Lcd.printf("Encoder: Offline");	
+	}
+
+	// packets Sent
+	M5.Lcd.setCursor(10, LINE_4);
+	M5.Lcd.setTextColor(GREEN);
+	M5.Lcd.printf("Packets %%: %d\n", packetsFailed * 100 / packetsSent);
 }
-//--------------------------------------------------------------
-void oledMessage(char* line1) {
-	
-	u8g2.clearBuffer();
-	// line1
-	u8g2.setFont(u8g2_font_courB18_tf);	// u8g2_font_courB18_tf u8g2_font_courB24_tf
-	u8g2_uint_t width = u8g2.getStrWidth((const char*) line1);
-	u8g2.drawStr(64-(width/2), (32/2)+(18/2), line1);
-	u8g2.sendBuffer();
-}
-//--------------------------------------------------------------

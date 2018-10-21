@@ -16,15 +16,17 @@
 struct BoardStruct{
 	// int32_t rpm;
 	float batteryVoltage;
-	long id;
+	int id;
 };
 
 
 struct ControllerStruct {
 	int throttle;
 	int encoderButton;
-	long id;
+	int id;
 };
+
+typedef void ( *PacketAvailableCallback )( int test );
 
 // #define	STARTUP 		1 << 0
 // #define WARNING 		1 << 1
@@ -42,27 +44,26 @@ class esk8Lib
 			ERR_TIMEOUT
 		};
 
+		enum Role {
+			RF24_BOARD		=	0,
+			RF24_CONTROLLER	=	1,
+			RF24_HUD		=	2
+		};
+
 		enum RoleType {
 			CONTROLLER,
 			BOARD,
-			LISTENER
+			HUD
 		};
 
 		esk8Lib();
 		
-		void begin(RF24 *radio, RF24Network *network, RoleType role);
-		int available();
-
-		int send(char messageType);
-
-		void handle_Controller_Message(RF24NetworkHeader& header);
-		void handle_ACK_Message(RF24NetworkHeader& header);
-		void handle_Board_Message(RF24NetworkHeader& header);
-
+		void begin(Role role);
+		void service();
+		int send();
 		int controllerOnline();
 		int boardOnline();
-
-		long getSendInterval();
+		void enableDebug();
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
@@ -70,7 +71,6 @@ class esk8Lib
 	private:
 		RF24 *_radio;
 		RF24Network *_network;
-		RoleType _role;
 		uint16_t _this_node;
 		uint16_t _other_node;
 
@@ -80,6 +80,12 @@ class esk8Lib
 		long _lastPacketReadTime;
 		long _lastControllerCommsTime;
 		long _lastBoardCommsTime;
+		bool _debugMessages = false;
+
+		void handle_Controller_Message(RF24NetworkHeader& header);
+		void handle_Board_Message(RF24NetworkHeader& header);
+
+		PacketAvailableCallback _packetAvailableCallback;
 };
 
 #endif

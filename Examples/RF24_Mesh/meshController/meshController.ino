@@ -27,7 +27,7 @@ RF24Network network(radio);
 
 uint16_t this_node; // Our node address
 
-const unsigned long interval = 500; // ms       // Delay manager to send pings regularly.
+const unsigned long interval = 200; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
 
 unsigned long last_sent_to_board = 50;
@@ -86,7 +86,7 @@ void loop() {
     if (millis() - last_sent_to_board >= interval) {
         last_sent_to_board = millis();
 
-        if ( send_Multicast() == false ) {
+        if ( send_T(NODE_BOARD) == false ) {
             Serial.print("x");
         }
 
