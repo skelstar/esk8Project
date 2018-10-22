@@ -37,6 +37,8 @@ unsigned long last_sent_to_board = 50;
 unsigned long last_id_received = -1;
 unsigned long current_id = 0;
 
+byte addresses[][6] = {"1Node","2Node"};
+
 //--------------------------------------------------------------
 void setup() {
 
@@ -56,9 +58,13 @@ void setup() {
     SPI.begin(); // Bring up the RF network
     radio.begin();
     radio.setPALevel(RF24_PA_MIN);
+    radio.setAutoAck(1);                    // Ensure autoACK is enabled
+  	radio.enableAckPayload();               // Allow optional ack payloadsradio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
+  	radio.openWritingPipe(addresses[1]);
+    radio.openReadingPipe(1,addresses[0]);
     radio.printDetails();
     
-    network.begin( /*channel*/ 100, /*node address*/ this_node);
+    //network.begin( /*channel*/ 100, /*node address*/ this_node);
 
 	esk8.begin(esk8.RF24_CONTROLLER);
 
@@ -82,7 +88,7 @@ int rxCount = 0;
 **************************************************************/
 void loop() {
 
-	checkForPacket();
+	//checkForPacket();
 
     if (millis() - last_sent_to_board >= TX_INTERVAL) {
         last_sent_to_board = millis();
@@ -90,7 +96,7 @@ void loop() {
         if ( sendToBoard() == false ) {
             Serial.print("f");
          	rxCount++;
-       }
+       	}
     }
 	
 	vTaskDelay( 10 );
@@ -114,43 +120,48 @@ void codeForEncoderTask( void *parameter ) {
 bool checkForPacket() {
 
 	bool packetFound = false;
-
-    network.update(); 
-
-    while (network.available()) { 
-
-    	packetFound = true;
-        RF24NetworkHeader header; // If so, take a look at it
-        network.peek(header);
-
-        if (header.type == 'T') {
-    	    network.read(header, &esk8.boardPacket, sizeof(esk8.boardPacket));
-        	Serial.print(".");
-        }
-        else {
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-            network.read(header, 0, 0);
-        }
-
-        if (rxCount++ % 60 == 0) {
-            Serial.println();
-        }
-    }
     return packetFound;
 }
 //--------------------------------------------------------------
-bool send_Multicast() {
-    RF24NetworkHeader header(00, /*type*/ 'T' /*Time*/ );
+// bool send_Multicast() {
+//     RF24NetworkHeader header(00, /*type*/ 'T' /*Time*/ );
 
-    unsigned long message = 8888;
-    uint8_t level = 1;
-    return network.multicast(header, &message, sizeof(unsigned long), level);
-}
+//     unsigned long message = 8888;
+//     uint8_t level = 1;
+//     return network.multicast(header, &message, sizeof(unsigned long), level);
+// }
 //--------------------------------------------------------------
 bool sendToBoard() {
 
-    RF24NetworkHeader header( /*to node*/ esk8.RF24_BOARD, /*type*/ 'T' /*Time*/ );
-    esk8.controllerPacket.id++;
-    return network.write(header, &esk8.controllerPacket, sizeof(esk8.controllerPacket));
+	radio.stopListening();
+
+	bool sentOK = radio.write( &esk8.controllerPacket, sizeof(esk8.controllerPacket) );
+	if ( sentOK == false ) {
+		Serial.print("f");
+	}
+
+	radio.startListening();
+
+	unsigned long started_waiting_at = millis();
+    bool timeout = false;                    
+    // wait until response has arrived
+    if ( !radio.available() ){                             // While nothing is received
+		Serial.printf("X");
+		rxCount++;
+	}
+    else {
+    	while ( radio.available() ) {
+    		Serial.print("r");
+    		rxCount++;
+			radio.read( &esk8.boardPacket, sizeof(esk8.boardPacket) );
+		}
+    }
+	
+	if (rxCount > 30) {
+		rxCount = 0;
+		Serial.println();
+	}
+
+    return sentOK;
 }
 //--------------------------------------------------------------

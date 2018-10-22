@@ -3,7 +3,7 @@
 #else
     #include <pgmspace.h> 
 #endif
-#include <RF24Network.h> 
+//#include <RF24Network.h> 
 #include <RF24.h> 
 #include <SPI.h>
 #include "WiFi.h"
@@ -31,6 +31,7 @@ unsigned long last_fail_time = 0;
 unsigned long last_id_received = -1;
 unsigned long current_id = 0;
 
+byte addresses[][6] = {"1Node","2Node"};
 //--------------------------------------------------------------
 void setup() {
 
@@ -50,9 +51,14 @@ void setup() {
     SPI.begin(); // Bring up the RF network
     radio.begin();
     radio.setPALevel(RF24_PA_MIN);
+    radio.setAutoAck(1);                    // Ensure autoACK is enabled
+  	radio.enableAckPayload();               // Allow optional ack payloadsradio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
     radio.printDetails();
-    
-    network.begin( /*channel*/ 100, /*node address*/ this_node);
+    radio.openWritingPipe(addresses[0]);
+	radio.openReadingPipe(1,addresses[1]);
+	radio.startListening();
+
+    // network.begin( /*channel*/ 100, /*node address*/ this_node);
 
 	esk8.begin(esk8.RF24_BOARD);
 
@@ -89,16 +95,16 @@ void codeForEncoderTask( void *parameter ) {
 
 	// then loop forever	
 	for (;;) {
-	checkForPacket();
+		checkForPacketThenAnswer();
 
-	    if (millis() - nowMs > TX_INTERVAL) {
-	        nowMs = millis();
+	    // if (millis() - nowMs > TX_INTERVAL) {
+	    //     nowMs = millis();
 
-	        if ( sendToController() == false ) {
-	        	Serial.print("f");
-	        	rxCount++;
-	        }
-	    }
+	    //     if ( sendToController() == false ) {
+	    //     	Serial.print("f");
+	    //     	rxCount++;
+	    //     }
+	    // }
 		vTaskDelay( 10 );
 	}
 
@@ -106,31 +112,25 @@ void codeForEncoderTask( void *parameter ) {
 }
 //**************************************************************
 //--------------------------------------------------------------
-bool checkForPacket() {
+bool checkForPacketThenAnswer() {
 
 	bool packetFound = false;
+	byte pipeNo;
 
-    network.update(); // Pump the network regularly
-
-    while (network.available()) { // Is there anything ready for us?
-
-    	packetFound = true;
-        RF24NetworkHeader header; // If so, take a look at it
-        network.peek(header);
-
-        if (header.type == 'T') {
-    	    network.read(header, &esk8.controllerPacket, sizeof(esk8.controllerPacket));
-        	Serial.print(".");
-        }
-        else {
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-            network.read(header, 0, 0);
-        }
-
-        if (rxCount++ % 60 == 0) {
-            Serial.println();
-        }
-    }
+	// pong back
+	if( radio.available(&pipeNo) ){
+		while ( radio.available() ) {
+			Serial.print(".");
+			rxCount++;
+			if (rxCount > 30) {
+				Serial.println();
+				rxCount = 0;
+			}
+			radio.read( &esk8.controllerPacket, sizeof(esk8.controllerPacket) );
+			radio.writeAckPayload(pipeNo, &esk8.boardPacket, sizeof(esk8.boardPacket));
+		}
+		packetFound = true;
+   	}
     return packetFound;
 }
 //--------------------------------------------------------------
@@ -148,8 +148,8 @@ bool checksumMatches(unsigned long message) {
 //--------------------------------------------------------------
 bool sendToController() {
 
-    RF24NetworkHeader header( /*to node*/ esk8.RF24_CONTROLLER, /*type*/ 'T' /*Time*/ );
-    esk8.boardPacket.id++;
-    return network.write(header, &esk8.boardPacket, sizeof(esk8.boardPacket));
+    // RF24NetworkHeader header( /*to node*/ esk8.RF24_CONTROLLER, /*type*/ 'T' /*Time*/ );
+    // esk8.boardPacket.id++;
+    // return network.write(header, &esk8.boardPacket, sizeof(esk8.boardPacket));
 }
 //--------------------------------------------------------------

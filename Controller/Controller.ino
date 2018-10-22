@@ -352,20 +352,20 @@ void setup() {
 	throttleChanged = true;	// initialise
 
     radio.begin();
-    radio.setPALevel(RF24_PA_MIN);
+    radio.setPALevel(RF24_PA_MIN);	// RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH
+    radio.printDetails();
+    network.begin( /*channel*/ 100, /*node address*/ esk8.RF24_CONTROLLER);
 
-	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailable_Callback);
-	//esk8.enableDebug();
+	esk8.begin(esk8.RF24_CONTROLLER);
 
 	sendMessage();
 
-	runner.startNow();
- 	// runner.addTask(tFastFlash);
-	runner.addTask(tFlashLeds);
-	runner.addTask(tSendControllerValues);
-	tSendControllerValues.enable();
+	//runner.startNow();
+	//runner.addTask(tFlashLeds);
+	// runner.addTask(tSendControllerValues);
+	// tSendControllerValues.enable();
 
-	boardCommsStatus.serviceState(false);
+	//boardCommsStatus.serviceState(false);
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -384,27 +384,26 @@ long nowms = 0;
 long connectedNow = 0;
 bool oldConnected = false;
 #define BOARD_OFFLINE_PERIOD	1000
+long rxCount = 0;
 
 void loop() {
 
-	esk8.service();
+	// bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
-	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
+	// boardCommsStatus.serviceState(connected);
 
-	boardCommsStatus.serviceState(connected);
-
-	if (throttleChanged && connected) {
-		tSendControllerValues.restart();
-		updateDisplay();
-	}
-	else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
-		rxDataFromBoard = false;
-		char buf[100];
-		sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
-	}
-	else if (esk8.controllerPacket.throttle != 127) {
-		// maybe hide display?
-	}
+	// if (throttleChanged && connected) {
+	// 	tSendControllerValues.restart();
+	// 	updateDisplay();
+	// }
+	// else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
+	// 	rxDataFromBoard = false;
+	// 	char buf[100];
+	// 	sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
+	// }
+	// else if (esk8.controllerPacket.throttle != 127) {
+	// 	// maybe hide display?
+	// }
 
 	M5.update();
 	if (M5.BtnA.wasReleased()) {
@@ -424,21 +423,77 @@ void loop() {
 **************************************************************/
 void codeForEncoderTask( void *parameter ) {
 
-	// setupEncoder();
-
-	long now = millis();
-
+	#define TX_INTERVAL 200
+	long nowMs = 0;
 	// then loop forever	
 	for (;;) {
 
-		encoderModule.update();
-		vTaskDelay( 100 );
-	}
+		checkForPacket();
 
+	    if (millis() - nowMs > TX_INTERVAL) {
+	        nowMs = millis();
+
+        	taskENTER_CRITICAL(&mmux);
+    		int sentOk = sendToBoard();
+    		taskEXIT_CRITICAL(&mmux);
+
+	        if ( sentOk == false ) {
+	        	Serial.print("f");
+	        	rxCount++;
+	        }
+	    }
+		vTaskDelay( 10 );
+	}
 
 	vTaskDelete(NULL);
 }
 //**************************************************************
+//--------------------------------------------------------------
+bool sendToBoard() {
+
+    RF24NetworkHeader header( /*to node*/ esk8.RF24_BOARD, /*type*/ 'T' /*Time*/ );
+    esk8.controllerPacket.id++;
+    return network.write(header, &esk8.controllerPacket, sizeof(esk8.controllerPacket));
+}
+//--------------------------------------------------------------
+bool checkForPacket() {
+
+	bool packetFound = false;
+
+    network.update(); 
+
+    while (network.available()) { 
+
+    	packetFound = true;
+        RF24NetworkHeader header; // If so, take a look at it
+        network.peek(header);
+
+        if (header.type == 'T') {
+        	taskENTER_CRITICAL(&mmux);
+    	    network.read(header, &esk8.boardPacket, sizeof(esk8.boardPacket));
+    		taskEXIT_CRITICAL(&mmux);
+    		
+        	bool goodSignal = radio.testRPD();
+	    	if (goodSignal == false) {
+	        	Serial.print("S");
+	    	}
+	    	else {
+	        	Serial.print(".");
+	    	}
+        }
+        else {
+            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
+            network.read(header, 0, 0);
+        }
+
+        if (rxCount++ > 60) {
+        	rxCount = 0;
+            Serial.println();
+        }
+    }
+    return packetFound;
+}
+//--------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
 	int mappedThrottle = 0;
 	int rawMiddle = 0;
