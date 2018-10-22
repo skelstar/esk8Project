@@ -1,5 +1,4 @@
 #include <SPI.h>
-#include <RF24Network.h> 
 #include <RF24.h> 
 #include "WiFi.h"
 
@@ -58,10 +57,6 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
-//U8G2_SSD1306_128X32_UNIVISION_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // Adafruit Feather ESP8266/32u4 Boards + FeatherWing OLED
-
-//--------------------------------------------------------------
-
 #define SPI_CE        5 	//33    // white/purple
 #define SPI_CS        13	//26  // green
 
@@ -71,7 +66,6 @@ int role = ROLE_CONTROLLER;
 bool radioNumber = 1;
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
-RF24Network network(radio);
 
 int offlineCount = 0;
 int encoderOfflineCount = 0;
@@ -231,7 +225,7 @@ void boardOfflineCallback() {
 	tFlashLeds.enable();
 	offlineCount++;
 	updateDisplay();
-	M5.Speaker.tone(330, 100);	// tone 330, 200ms
+	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
 }
 
 void boardOnlineCallback() {
@@ -332,16 +326,16 @@ void setup() {
 	//debug.setFilter( STARTUP );
 
 	// initialize the M5Stack object
-	M5.begin(true, false, false); //lcd, sd, serial
+	// M5.begin(true, false, false); //lcd, sd, serial
 
-	//text print
-	M5.Lcd.fillScreen(BLACK);
-	M5.Lcd.setCursor(50, 50);
-	M5.Lcd.setTextColor(WHITE);
-	M5.Lcd.setTextSize(2);
-	M5.Lcd.printf("Ready!");
+	// //text print
+	// M5.Lcd.fillScreen(BLACK);
+	// M5.Lcd.setCursor(50, 50);
+	// M5.Lcd.setTextColor(WHITE);
+	// M5.Lcd.setTextSize(2);
+	// M5.Lcd.printf("Ready!");
 
-	M5.Speaker.setVolume(1);	// 0-11?
+	// M5.Speaker.setVolume(1);	// 0-11?
 
 	WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
     btStop();   // turn bluetooth module off
@@ -352,9 +346,14 @@ void setup() {
 	throttleChanged = true;	// initialise
 
     radio.begin();
-    radio.setPALevel(RF24_PA_MIN);	// RF24_PA_MIN, RF24_PA_LOW, RF24_PA_HIGH
+    radio.setPALevel(RF24_PA_MIN);
+    radio.setAutoAck(1);                    // Ensure autoACK is enabled
+  	radio.enableAckPayload();               // Allow optional ack payloads
+
+  	radio.openWritingPipe( esk8.listening_pipes[esk8.RF24_BOARD] );
+  	radio.openReadingPipe( 1, esk8.talking_pipes[esk8.RF24_BOARD] );
+
     radio.printDetails();
-    network.begin( /*channel*/ 100, /*node address*/ esk8.RF24_CONTROLLER);
 
 	esk8.begin(esk8.RF24_CONTROLLER);
 
@@ -385,6 +384,10 @@ long connectedNow = 0;
 bool oldConnected = false;
 #define BOARD_OFFLINE_PERIOD	1000
 long rxCount = 0;
+unsigned long last_sent_to_board = 50;
+unsigned long last_updated_M5 =100;
+int tx_interval = 200;
+int update_M5_interval = 1000;
 
 void loop() {
 
@@ -405,14 +408,38 @@ void loop() {
 	// 	// maybe hide display?
 	// }
 
-	M5.update();
-	if (M5.BtnA.wasReleased()) {
-		M5.Lcd.writecommand(ILI9341_DISPOFF);
-  		M5.Lcd.setBrightness(0);
-	}
-	if (M5.BtnB.wasReleased()) {
-		updateDisplay();
-	}
+    if (millis() - last_sent_to_board >= tx_interval) {
+        last_sent_to_board = millis();
+
+        if ( sendToBoard() == false ) {
+            Serial.print("f");
+         	rxCount++;
+       	}
+    }
+
+    // if (millis() - last_updated_M5 > update_M5_interval) {
+		
+		last_updated_M5 = millis();
+
+		M5.update();
+
+		if (M5.BtnA.wasReleased()) {
+			tx_interval = 100;
+		 	M5.Lcd.writecommand(ILI9341_DISPOFF);
+	   		M5.Lcd.setBrightness(0);
+	   		M5.Lcd.sleep();
+		}
+		if (M5.BtnB.wasReleased()) {
+			tx_interval = 500;
+		 	M5.Lcd.begin();
+			M5.Lcd.fillScreen(BLACK);
+			M5.Lcd.setCursor(50, 50);
+			M5.Lcd.setTextColor(WHITE);
+			M5.Lcd.setTextSize(3);
+			M5.Lcd.printf("Ready!");
+	   		M5.Lcd.sleep();
+		}
+	// }
 
 	runner.execute();
 
@@ -428,20 +455,20 @@ void codeForEncoderTask( void *parameter ) {
 	// then loop forever	
 	for (;;) {
 
-		checkForPacket();
+		// checkForPacket();
 
-	    if (millis() - nowMs > TX_INTERVAL) {
-	        nowMs = millis();
+	    // if (millis() - nowMs > TX_INTERVAL) {
+	    //     nowMs = millis();
 
-        	taskENTER_CRITICAL(&mmux);
-    		int sentOk = sendToBoard();
-    		taskEXIT_CRITICAL(&mmux);
+     //    	taskENTER_CRITICAL(&mmux);
+    	// 	int sentOk = sendToBoard();
+    	// 	taskEXIT_CRITICAL(&mmux);
 
-	        if ( sentOk == false ) {
-	        	Serial.print("f");
-	        	rxCount++;
-	        }
-	    }
+	    //     if ( sentOk == false ) {
+	    //     	Serial.print("f");
+	    //     	rxCount++;
+	    //     }
+	    // }
 		vTaskDelay( 10 );
 	}
 
@@ -451,48 +478,32 @@ void codeForEncoderTask( void *parameter ) {
 //--------------------------------------------------------------
 bool sendToBoard() {
 
-    RF24NetworkHeader header( /*to node*/ esk8.RF24_BOARD, /*type*/ 'T' /*Time*/ );
-    esk8.controllerPacket.id++;
-    return network.write(header, &esk8.controllerPacket, sizeof(esk8.controllerPacket));
-}
-//--------------------------------------------------------------
-bool checkForPacket() {
+	radio.stopListening();
 
-	bool packetFound = false;
+	bool sentOK = radio.write( &esk8.controllerPacket, sizeof(esk8.controllerPacket) );
 
-    network.update(); 
+	radio.startListening();
 
-    while (network.available()) { 
-
-    	packetFound = true;
-        RF24NetworkHeader header; // If so, take a look at it
-        network.peek(header);
-
-        if (header.type == 'T') {
-        	taskENTER_CRITICAL(&mmux);
-    	    network.read(header, &esk8.boardPacket, sizeof(esk8.boardPacket));
-    		taskEXIT_CRITICAL(&mmux);
-    		
-        	bool goodSignal = radio.testRPD();
-	    	if (goodSignal == false) {
-	        	Serial.print("S");
-	    	}
-	    	else {
-	        	Serial.print(".");
-	    	}
-        }
-        else {
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-            network.read(header, 0, 0);
-        }
-
-        if (rxCount++ > 60) {
-        	rxCount = 0;
-            Serial.println();
-        }
+    bool timeout = false;                    
+    // wait until response has arrived
+    if ( !radio.available() ){                             // While nothing is received
+		Serial.printf("X");
+		rxCount++;
+	}
+    else {
+    	while ( radio.available() ) {
+    		Serial.print("r");
+    		rxCount++;
+			radio.read( &esk8.boardPacket, sizeof(esk8.boardPacket) );
+		}
     }
-    return packetFound;
-}
+	
+	if (rxCount > 30) {
+		rxCount = 0;
+		Serial.println();
+	}
+
+    return sentOK;}
 //--------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
 	int mappedThrottle = 0;
@@ -519,37 +530,37 @@ void updateDisplay() {
 	#define LINE_4 95
 
 	// offline count
-	M5.Lcd.fillScreen(BLACK);
-	M5.Lcd.setCursor(10, LINE_1);
-	M5.Lcd.setTextColor(WHITE);
-	M5.Lcd.setTextSize(3);
-	M5.Lcd.printf("Offline count: %d", offlineCount);
+	// M5.Lcd.fillScreen(BLACK);
+	// M5.Lcd.setCursor(10, LINE_1);
+	// M5.Lcd.setTextColor(WHITE);
+	// M5.Lcd.setTextSize(3);
+	// M5.Lcd.printf("Offline count: %d", offlineCount);
 
 	// online/offline
-	M5.Lcd.setCursor(10, LINE_2);
-	M5.Lcd.setTextSize(3);
-	if (boardCommsStatus.isOnline()) {
-		M5.Lcd.setTextColor(GREEN);
-		M5.Lcd.printf("Online");
-	}
-	else {
-		M5.Lcd.setTextColor(RED);
-		M5.Lcd.printf("Offline");	
-	}
+	// M5.Lcd.setCursor(10, LINE_2);
+	// M5.Lcd.setTextSize(3);
+	// if (boardCommsStatus.isOnline()) {
+	// 	M5.Lcd.setTextColor(GREEN);
+	// 	M5.Lcd.printf("Online");
+	// }
+	// else {
+	// 	M5.Lcd.setTextColor(RED);
+	// 	M5.Lcd.printf("Offline");	
+	// }
 
-	// encoder Module
-	M5.Lcd.setCursor(10, LINE_3);
-	if (encoderOnline == true) {
-		M5.Lcd.setTextColor(GREEN);
-		M5.Lcd.printf("Encoder: Online");
-	}
-	else {
-		M5.Lcd.setTextColor(RED);
-		M5.Lcd.printf("Encoder: Offline");	
-	}
+	// // encoder Module
+	// M5.Lcd.setCursor(10, LINE_3);
+	// if (encoderOnline == true) {
+	// 	M5.Lcd.setTextColor(GREEN);
+	// 	M5.Lcd.printf("Encoder: Online");
+	// }
+	// else {
+	// 	M5.Lcd.setTextColor(RED);
+	// 	M5.Lcd.printf("Encoder: Offline");	
+	// }
 
-	// packets Sent
-	M5.Lcd.setCursor(10, LINE_4);
-	M5.Lcd.setTextColor(GREEN);
-	M5.Lcd.printf("Packets %%: %d\n", packetsFailed * 100 / packetsSent);
+	// // packets Sent
+	// M5.Lcd.setCursor(10, LINE_4);
+	// M5.Lcd.setTextColor(GREEN);
+	// M5.Lcd.printf("Packets %%: %d\n", packetsFailed * 100 / packetsSent);
 }

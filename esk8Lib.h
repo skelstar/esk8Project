@@ -26,6 +26,10 @@ struct ControllerStruct {
 	int id;
 };
 
+struct HudReqStruct {
+	int id;
+};
+
 typedef void ( *PacketAvailableCallback )( int test );
 
 // #define	STARTUP 		1 << 0
@@ -67,6 +71,10 @@ class esk8Lib
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
+		HudReqStruct hudReqPacket;
+
+		const uint64_t talking_pipes[5] = { 0xF0F0F0F0D2LL, 0xF0F0F0F0C3LL, 0xF0F0F0F0B4LL, 0xF0F0F0F0A5LL, 0xF0F0F0F096LL };
+		const uint64_t listening_pipes[5] = { 0x3A3A3A3AD2LL, 0x3A3A3A3AC3LL, 0x3A3A3A3AB4LL, 0x3A3A3A3AA5LL, 0x3A3A3A3A96LL };
 
 	private:
 		RF24 *_radio;
@@ -86,6 +94,7 @@ class esk8Lib
 		void handle_Board_Message(RF24NetworkHeader& header);
 
 		PacketAvailableCallback _packetAvailableCallback;
+
 };
 
 #endif

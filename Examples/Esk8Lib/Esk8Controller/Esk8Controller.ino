@@ -37,7 +37,7 @@ unsigned long last_sent_to_board = 50;
 unsigned long last_id_received = -1;
 unsigned long current_id = 0;
 
-byte addresses[][6] = {"1Node","2Node"};
+// byte addresses[][6] = {"1Node","2Node"};
 
 //--------------------------------------------------------------
 void setup() {
@@ -60,8 +60,12 @@ void setup() {
     radio.setPALevel(RF24_PA_MIN);
     radio.setAutoAck(1);                    // Ensure autoACK is enabled
   	radio.enableAckPayload();               // Allow optional ack payloadsradio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
-  	radio.openWritingPipe(addresses[1]);
-    radio.openReadingPipe(1,addresses[0]);
+
+  	radio.openWritingPipe( esk8.listening_pipes[esk8.RF24_BOARD] );
+  	radio.openReadingPipe( 1, esk8.talking_pipes[esk8.RF24_BOARD] );
+
+  	// radio.openWritingPipe(addresses[1]);
+   //  radio.openReadingPipe(1,addresses[0]);
     radio.printDetails();
     
     //network.begin( /*channel*/ 100, /*node address*/ this_node);

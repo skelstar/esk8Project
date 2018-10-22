@@ -3,6 +3,7 @@
 #else
     #include <pgmspace.h> 
 #endif
+//#include <RF24Network.h> 
 #include <RF24.h> 
 #include <SPI.h>
 #include "WiFi.h"
@@ -14,6 +15,8 @@
 #define     NODE_TEST           03
 
 esk8Lib esk8;
+
+// https://github.com/nRF24/RF24Network/blob/master/examples/Network_Ping/Network_Ping.ino
 
 /***********************************************************************/
 /***********************************************************************/
@@ -27,7 +30,7 @@ unsigned long last_fail_time = 0;
 unsigned long last_id_received = -1;
 unsigned long current_id = 0;
 
-// byte addresses[][6] = {"1Node","2Node"};
+byte addresses[][6] = {"1Node","2Node"};
 //--------------------------------------------------------------
 void setup() {
 
@@ -45,11 +48,14 @@ void setup() {
     radio.begin();
     radio.setPALevel(RF24_PA_MIN);
     radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  	radio.enableAckPayload();               // Allow optional ack payloadsradio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
     radio.printDetails();
 
-  	radio.openWritingPipe( esk8.talking_pipes[esk8.RF24_BOARD] );
-  	radio.openReadingPipe( 1, esk8.listening_pipes[esk8.RF24_BOARD] );
+  	radio.openWritingPipe( esk8.talking_pipes[esk8.RF24_HUD] );
+  	radio.openReadingPipe( 1, esk8.listening_pipes[esk8.RF24_HUD] );
+
+  	Serial.printf("listening on %x, talking on %x \n", 
+  		esk8.listening_pipes[esk8.RF24_HUD], 
+  		esk8.talking_pipes[esk8.RF24_HUD]);
 
 	radio.startListening();
 
@@ -69,7 +75,7 @@ void setup() {
 
 int rxCount = 0;
 long nowMs = 0;
-#define TX_HUD_INTERVAL 2000
+#define TX_INTERVAL 500
 /**************************************************************
 					LOOP
 **************************************************************/
@@ -88,49 +94,37 @@ void codeForEncoderTask( void *parameter ) {
 
 	// then loop forever	
 	for (;;) {
-		checkForControllerPacketThenAnswer();
 
-	    // if (millis() - nowMs > TX_HUD_INTERVAL) {
-	    //     nowMs = millis();
+		checkForPacketReadOnly();
 
-     //     	Serial.print( sendToHUD() ? "-" : "f" );
-	    //     rxCount++;
-	    // }
 		vTaskDelay( 10 );
 	}
 
 	vTaskDelete(NULL);
 }
 /**************************************************************
-		
+
 **************************************************************/
-bool checkForControllerPacketThenAnswer() {
+bool checkForPacketReadOnly() {
 
 	bool packetFound = false;
 	byte pipeNo;
 
-  	radio.openWritingPipe( esk8.talking_pipes[esk8.RF24_BOARD] );
-  	radio.openReadingPipe( 1, esk8.listening_pipes[esk8.RF24_BOARD] );
+	radio.startListening();
 
-	// pong back
 	if( radio.available(&pipeNo) ){
 		while ( radio.available() ) {
-			Serial.print(".");
-			rxCount++;
-			if (rxCount > 30) {
-				Serial.println();
-				rxCount = 0;
-			}
-			radio.read( &esk8.controllerPacket, sizeof(esk8.controllerPacket) );
-			radio.writeAckPayload(pipeNo, &esk8.boardPacket, sizeof(esk8.boardPacket));
+			// rxCount++;
+			// if (rxCount > 30) {
+			// 	Serial.println();
+			// 	rxCount = 0;
+			// }
+			radio.read( &esk8.hudReqPacket, sizeof(esk8.hudReqPacket) );
+			Serial.printf("hudReqPacket.id: %u \n", esk8.hudReqPacket.id);
 			vTaskDelay( 1 );
 		}
 		packetFound = true;
    	}
     return packetFound;
-}
-//--------------------------------------------------------------
-bool checksumMatches(unsigned long message) {
-    return last_id_received + 1 == message;
 }
 //--------------------------------------------------------------

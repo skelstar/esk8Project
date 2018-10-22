@@ -36,6 +36,7 @@ void esk8Lib::begin(Role role) {
 	controllerPacket.throttle = 127;
 	controllerPacket.id = 0;
 	boardPacket.id = 0;
+	hudReqPacket.id = 0;
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::service() {
