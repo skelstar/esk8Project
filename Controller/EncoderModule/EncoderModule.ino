@@ -28,7 +28,9 @@ Rotary rotary = Rotary(ENCODER_PIN_A, ENCODER_PIN_B);
 
 #define CMD_ENCODER_MODULE_LED	1
 #define CMD_ENCODER_LIMITS_SET	2
+#define CMD_LED_BRIGHTNESS		3
 
+int ledBrightness = 30;
 #define ENCODER_MODULE_LED_COLOUR_BLACK	0
 #define ENCODER_MODULE_LED_COLOUR_RED	1
 #define ENCODER_MODULE_LED_COLOUR_BLUE	2
@@ -121,15 +123,26 @@ void requestEvent()
 void receiveEvent(int numBytes)
 {
     int command = Wire.read();
-    if (command == CMD_ENCODER_MODULE_LED) {
-    	int colour = Wire.read();
-    	setPixelColour(colour);
-    }
-    else if (command == CMD_ENCODER_LIMITS_SET) {
-    	int min = Wire.read();
-    	int max = Wire.read();
-    	setEncoderLimits(min, max);
-    	// Serial.print("Setting limits: "); // Serial.print(min); // Serial.print("|"); // Serial.println(max); 
+
+    if (command ==  CMD_ENCODER_MODULE_LED) {
+		int colour = Wire.read();
+		setPixelColour(colour);
+	}
+	else if (command == CMD_ENCODER_LIMITS_SET) {
+		int min = Wire.read();
+		int max = Wire.read();
+		setEncoderLimits(min, max);
+		// Serial.print("Setting limits: "); // Serial.print(min); // Serial.print("|"); // Serial.println(max); 
+	}
+	else if (command == CMD_LED_BRIGHTNESS) {
+		int brightness = Wire.read();
+		if (brightness > 0 && brightness < 255) {
+			ledBrightness = brightness;
+		}
+		else {
+			setPixelColour(ENCODER_MODULE_LED_COLOUR_RED);
+			pixels.show();
+		}
     }
 }
 //--------------------------------------------------------------
@@ -139,8 +152,13 @@ void setup()
 	// Serial.begin(9600);
 	// Serial.println("Ready");
 
+	ledBrightness = 50;
+
     pixels.begin();
-	pixels.setBrightness(50); // 1/3 brightness
+	pixels.setBrightness(ledBrightness); // 1/3 brightness
+	setPixelColour(ENCODER_MODULE_LED_COLOUR_GREEN);
+	pixels.show();
+	delay(200);
 	setPixelColour(ENCODER_MODULE_LED_COLOUR_BLACK);
 	pixels.show();
 
@@ -169,13 +187,13 @@ void setPixelColour(int option) {
 			pixels.setPixelColor(0, pixels.Color(0, 0, 0));
 			break;
 		case ENCODER_MODULE_LED_COLOUR_RED:
-		pixels.setPixelColor(0, pixels.Color(255, 0, 0));
+			pixels.setPixelColor(0, pixels.Color(255, 0, 0));
 			break;
 		case ENCODER_MODULE_LED_COLOUR_BLUE:
-			pixels.setPixelColor(0, pixels.Color(0, 0, 255));
+			pixels.setPixelColor(0, pixels.Color(0, 0, ledBrightness));
 			break;
 		case ENCODER_MODULE_LED_COLOUR_GREEN:
-			pixels.setPixelColor(0, pixels.Color(0, 255, 0));
+			pixels.setPixelColor(0, pixels.Color(0, ledBrightness, 0));
 			break;
 	}
 	pixels.show();

@@ -92,7 +92,10 @@ int throttle = 127;
 
 //--------------------------------------------------------------
 
-#define ENCODER_MODULE_LED_CMD	1
+#define ENCODER_MODULE_CMD_SET_PIXEL		1
+#define ENCODER_MODULE_CMD_SET_LIMITS		2
+#define ENCODER_MODULE_CMD_SET_BRIGHTNESS	3
+
 #define ENCODER_MODULE_LED_COLOUR_BLACK	0
 #define ENCODER_MODULE_LED_COLOUR_RED	1
 #define ENCODER_MODULE_LED_COLOUR_BLUE	2
@@ -121,9 +124,16 @@ class EncoderModule
 
 		int setPixel(byte encoderLedColour) {
 			Wire.beginTransmission(ENCODER_MODULE_ADDR);
-			Wire.write(ENCODER_MODULE_LED_CMD);
+			Wire.write(ENCODER_MODULE_CMD_SET_PIXEL);
 			Wire.write(encoderLedColour);
 			return Wire.endTransmission();
+		}
+
+		int setPixelBrightness(byte brightness) {
+			Wire.beginTransmission(ENCODER_MODULE_ADDR);
+			Wire.write(ENCODER_MODULE_CMD_SET_BRIGHTNESS);
+			Wire.write(brightness);
+			return Wire.endTransmission();		
 		}
 
 		void update() {
@@ -376,12 +386,14 @@ void setup() {
 
 	encoderModule.update();
 
-	bool encoderModuleOnline = encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_GREEN) == 0;
+	bool encoderModuleOnline = 
+		encoderModule.setPixelBrightness(10) == 0 &&
+		encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_GREEN) == 0;
 	tft.fillScreen(TFT_BLACK);
 	tft.drawString( encoderModuleOnline 
 		? "ENCODER_MODULE: connected" 
 		: "ENCODER_MODULE: --------", 
-		10, 20, 2);
+		10, 20, 1);
 
 	sendMessage();
 
