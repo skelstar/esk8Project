@@ -11,7 +11,10 @@
 #include <esk8Lib.h>
 
 // #include <Adafruit_NeoPixel.h>
-#include <M5Stack.h>
+// #include <M5Stack.h>
+#include "TFT_eSPI.h"
+#include "Free_Fonts.h" 
+
 //--------------------------------------------------------------------------------
 
 #define	PIXEL_PIN			16	// was 5
@@ -26,13 +29,14 @@
 #define DEBUG 			1 << 1
 #define COMMUNICATION 	1 << 2
 #define HARDWARE		1 << 3
-#define BLE 			1 << 4
 #define ONLINE_STATUS	1 << 5
 #define TIMING			1 << 6
 
 debugHelper debug;
 
 esk8Lib esk8;
+
+TFT_eSPI tft = TFT_eSPI();
 
 //--------------------------------------------------------------------------------
 
@@ -70,6 +74,7 @@ RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 int offlineCount = 0;
 int encoderOfflineCount = 0;
 bool encoderOnline = true;
+
 
 //--------------------------------------------------------------------------------
 
@@ -114,11 +119,11 @@ class EncoderModule
 			_encoderOnlineEventCallback = encoderOnlineEventCallback;
 		}
 
-		void setPixel(byte encoderLedColour) {
+		int setPixel(byte encoderLedColour) {
 			Wire.beginTransmission(ENCODER_MODULE_ADDR);
 			Wire.write(ENCODER_MODULE_LED_CMD);
 			Wire.write(encoderLedColour);
-			Wire.endTransmission();
+			return Wire.endTransmission();
 		}
 
 		void update() {
@@ -326,7 +331,7 @@ void setup() {
 	//debug.setFilter( STARTUP );
 
 	// initialize the M5Stack object
-	// M5.begin(true, false, false); //lcd, sd, serial
+	// M5.begin(false, false, false); //lcd, sd, serial
 
 	// //text print
 	// M5.Lcd.fillScreen(BLACK);
@@ -336,6 +341,18 @@ void setup() {
 	// M5.Lcd.printf("Ready!");
 
 	// M5.Speaker.setVolume(1);	// 0-11?
+
+	Wire.begin();
+
+	tft.begin();
+
+  	tft.setRotation(1);
+  	tft.setTextDatum(MC_DATUM);
+	tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+	tft.fillScreen(TFT_BLACK);            // Clear screen
+	tft.setFreeFont(FF18);                 // Select the font
+	tft.drawString("Ready!", 160, 120, 2);
+
 
 	WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
     btStop();   // turn bluetooth module off
@@ -356,6 +373,15 @@ void setup() {
     radio.printDetails();
 
 	esk8.begin(esk8.RF24_CONTROLLER);
+
+	encoderModule.update();
+
+	bool encoderModuleOnline = encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_GREEN) == 0;
+	tft.fillScreen(TFT_BLACK);
+	tft.drawString( encoderModuleOnline 
+		? "ENCODER_MODULE: connected" 
+		: "ENCODER_MODULE: --------", 
+		10, 20, 2);
 
 	sendMessage();
 
@@ -391,6 +417,8 @@ int update_M5_interval = 1000;
 
 void loop() {
 
+	encoderModule.update();
+
 	// bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
 	// boardCommsStatus.serviceState(connected);
@@ -419,26 +447,26 @@ void loop() {
 
     // if (millis() - last_updated_M5 > update_M5_interval) {
 		
-		last_updated_M5 = millis();
+		//last_updated_M5 = millis();
 
-		M5.update();
+		//M5.update();
 
-		if (M5.BtnA.wasReleased()) {
-			tx_interval = 100;
-		 	M5.Lcd.writecommand(ILI9341_DISPOFF);
-	   		M5.Lcd.setBrightness(0);
-	   		M5.Lcd.sleep();
-		}
-		if (M5.BtnB.wasReleased()) {
-			tx_interval = 500;
-		 	M5.Lcd.begin();
-			M5.Lcd.fillScreen(BLACK);
-			M5.Lcd.setCursor(50, 50);
-			M5.Lcd.setTextColor(WHITE);
-			M5.Lcd.setTextSize(3);
-			M5.Lcd.printf("Ready!");
-	   		M5.Lcd.sleep();
-		}
+		// if (M5.BtnA.wasReleased()) {
+		// 	tx_interval = 100;
+		//  	M5.Lcd.writecommand(ILI9341_DISPOFF);
+	 //   		M5.Lcd.setBrightness(0);
+	 //   		M5.Lcd.sleep();
+		// }
+		// if (M5.BtnB.wasReleased()) {
+		// 	tx_interval = 500;
+		//  	M5.Lcd.begin();
+		// 	M5.Lcd.fillScreen(BLACK);
+		// 	M5.Lcd.setCursor(50, 50);
+		// 	M5.Lcd.setTextColor(WHITE);
+		// 	M5.Lcd.setTextSize(3);
+		// 	M5.Lcd.printf("Ready!");
+	 //   		M5.Lcd.sleep();
+		// }
 	// }
 
 	runner.execute();
