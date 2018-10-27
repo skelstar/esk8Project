@@ -250,18 +250,16 @@ void tFlashLedsOff_callback() {
 void sendMessage() {
 
 	taskENTER_CRITICAL(&mmux);
-    int success = esk8.send();
+	bool sentOK = sendToBoard();
     taskEXIT_CRITICAL(&mmux);
 
-	packetsSent++;
-    if ( success ) {
+	// packetsSent++;
+    if ( sentOK ) {
 		throttleChanged = false;
 		lastRxFromBoard = millis();
-		// rxDataFromBoard = true;
-        //debug.print(COMMUNICATION, "sendMessage(%d) \n", esk8.controllerPacket.throttle);
     }
     else {
-    	packetsFailed++;
+    	// packetsFailed++;
         debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
 }
@@ -389,6 +387,8 @@ void setup() {
 
 	// M5.Speaker.setVolume(1);	// 0-11?
 
+	setupRadio();
+
 	Wire.begin();
 
 	tft.begin();
@@ -400,7 +400,6 @@ void setup() {
 	tft.setFreeFont(FF18);                 // Select the font
 	tft.drawString("Ready!", 160, 120, 2);
 
-
 	WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
     btStop();   // turn bluetooth module off
 
@@ -409,24 +408,9 @@ void setup() {
 
 	throttleChanged = true;	// initialise
 
-    radio.begin();
-    radio.setPALevel(RF24_PA_MIN);
-    radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  	radio.enableAckPayload();               // Allow optional ack payloads
-
-  	radio.openWritingPipe( esk8.listening_pipes[esk8.RF24_BOARD] );
-  	radio.openReadingPipe( 1, esk8.talking_pipes[esk8.RF24_BOARD] );
-
-    radio.printDetails();
-
 	esk8.begin(esk8.RF24_CONTROLLER);
 
-	encoderModule.update();
-
-	bool encoderModuleOnline = 
-		encoderModule.setPixelBrightness(10) == 0 &&
-		encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_GREEN) == 0 &&
-		encoderModule.setEncoderLimits(-20, 15) == 0;
+	bool encoderModuleOnline = setupEncoderModule(/* min */ -20, /* max */ 15);
 
 	tft.fillScreen(TFT_BLACK);
 	tft.drawString( encoderModuleOnline 
@@ -436,12 +420,12 @@ void setup() {
 
 	sendMessage();
 
-	//runner.startNow();
-	//runner.addTask(tFlashLeds);
-	// runner.addTask(tSendControllerValues);
-	// tSendControllerValues.enable();
+	runner.startNow();
+	runner.addTask(tFlashLeds);
+	runner.addTask(tSendControllerValues);
+	tSendControllerValues.enable();
 
-	//boardCommsStatus.serviceState(false);
+	boardCommsStatus.serviceState(false);
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -472,9 +456,11 @@ void loop() {
 
 	m5ButtonA.serviceEvents();
 
-	// bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
+	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
-	// boardCommsStatus.serviceState(connected);
+	boardCommsStatus.serviceState(connected);
+
+	runner.execute();
 
 	// if (throttleChanged && connected) {
 	// 	tSendControllerValues.restart();
@@ -489,14 +475,14 @@ void loop() {
 	// 	// maybe hide display?
 	// }
 
-    if (millis() - last_sent_to_board >= tx_interval) {
-        last_sent_to_board = millis();
+    // if (millis() - last_sent_to_board >= tx_interval) {
+    //     last_sent_to_board = millis();
 
-        if ( sendToBoard() == false ) {
-            Serial.print("f");
-         	rxCount++;
-       	}
-    }
+    //     if ( sendToBoard() == false ) {
+    //         Serial.print("f");
+    //      	rxCount++;
+    //    	}
+    // }
 
     // if (millis() - last_updated_M5 > update_M5_interval) {
 		
@@ -522,7 +508,6 @@ void loop() {
 		// }
 	// }
 
-	runner.execute();
 
 	vTaskDelay( 10 );
 }
@@ -590,6 +575,27 @@ int mapEncoderToThrottleValue(int raw) {
 		return map(raw, rawMiddle, encoderModule.encoderCounterMaxLimit, 127, 255);
 	}
 	return map(raw, encoderModule.encoderCounterMinLimit, rawMiddle, 0, 127);
+}
+//--------------------------------------------------------------
+void setupRadio() {
+    radio.begin();
+    radio.setPALevel(RF24_PA_MIN);
+    radio.setAutoAck(1);                    // Ensure autoACK is enabled
+  	radio.enableAckPayload();               // Allow optional ack payloads
+
+  	radio.openWritingPipe( esk8.listening_pipes[esk8.RF24_BOARD] );
+  	radio.openReadingPipe( 1, esk8.talking_pipes[esk8.RF24_BOARD] );
+
+    radio.printDetails();
+}
+//--------------------------------------------------------------
+int setupEncoderModule(int minLimit, int maxLimit) {
+		
+	encoderModule.update();
+
+	return  
+		encoderModule.setPixelBrightness(10) == 0 &&
+		encoderModule.setEncoderLimits(minLimit, maxLimit) == 0;
 }
 //--------------------------------------------------------------
 void updateDisplay() {
