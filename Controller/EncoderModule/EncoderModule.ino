@@ -41,11 +41,12 @@ int ledBrightness = 30;
 uint8_t tx_data[TWI_RX_BUFFER_SIZE];
 
 // lower number = more coarse
-#define ENCODER_COUNTER_MIN	-20 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX	 15 	// acceleration (ie 15 divides 127-255 into 15)
+// 0 for safety
+#define ENCODER_COUNTER_MIN		0 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_COUNTER_MAX	 	0 	// acceleration (ie 15 divides 127-255 into 15)
 
-int encoderCounterMin = ENCODER_COUNTER_MIN;
-int encoderCounterMax = ENCODER_COUNTER_MAX;
+volatile int encoderCounterMin = ENCODER_COUNTER_MIN;
+volatile int encoderCounterMax = ENCODER_COUNTER_MAX;
 
 volatile int encoderCounter = 0;
 volatile byte deadmanSwitch = 0;
@@ -106,9 +107,20 @@ void encoderButtonCallback(int eventCode, int eventPin, int eventParam) {
     }
 }
 //--------------------------------------------------------------
-void setEncoderLimits(int min, int max) {
-	encoderCounterMin = min;
-	encoderCounterMax = max;
+void setEncoderLimits(byte min, byte max) {
+	// a byte can't be negative
+	if (min > max && min > 200 && max < 100) {
+		// 200 = -55 (the minimum min)
+		encoderCounterMin = 0 - (255 - min);
+		encoderCounterMax = max;
+	}
+	else {
+		setPixelColour(ENCODER_MODULE_LED_COLOUR_RED);
+		pixels.show();
+		delay(200);
+		setPixelColour(ENCODER_MODULE_LED_COLOUR_BLACK);
+		pixels.show();
+	}
 }
 //--------------------------------------------------------------
 /**
@@ -129,8 +141,8 @@ void receiveEvent(int numBytes)
 		setPixelColour(colour);
 	}
 	else if (command == CMD_ENCODER_LIMITS_SET) {
-		int min = Wire.read();
-		int max = Wire.read();
+		byte min = Wire.read();
+		byte max = Wire.read();
 		setEncoderLimits(min, max);
 		// Serial.print("Setting limits: "); // Serial.print(min); // Serial.print("|"); // Serial.println(max); 
 	}

@@ -6,7 +6,7 @@
 
 #include <Wire.h>
 
-// #include <myPushButton.h>
+#include <myPushButton.h>
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
@@ -41,10 +41,6 @@ TFT_eSPI tft = TFT_eSPI();
 //--------------------------------------------------------------------------------
 
 #define 	ENCODER_MODULE_ADDR		0x4
-
-// lower number = more coarse
-#define ENCODER_COUNTER_MIN	-20 	// decceleration (ie -20 divides 0-127 into 20)
-#define ENCODER_COUNTER_MAX	 15 	// acceleration (ie 15 divides 127-255 into 15)
 
 int32_t encoderCounter;
 int32_t oldEncoderCounter = 0;
@@ -81,7 +77,6 @@ bool encoderOnline = true;
 const char compile_date[] = __DATE__ " " __TIME__;
 
 int mapEncoderToThrottleValue(int raw);
-void zeroThrottleReadyToSend();
 
 //--------------------------------------------------------------
 
@@ -115,11 +110,18 @@ class EncoderModule
 
 	public:
 
+		// lower number = more coarse
+		int encoderCounterMinLimit = -20; 	// decceleration (ie -20 divides 0-127 into 20)
+		int encoderCounterMaxLimit = 15; 	// acceleration (ie 15 divides 127-255 into 15)
+
 		EncoderModule(EncoderChangedEventCallback encoderChangedEventCallback,
-			EncoderOnlineEventCallback encoderOnlineEventCallback) 
+			EncoderOnlineEventCallback encoderOnlineEventCallback,
+			int minLimit, int maxLimit) 
 		{
 			_encoderChangedEventCallback = encoderChangedEventCallback;
 			_encoderOnlineEventCallback = encoderOnlineEventCallback;
+			encoderCounterMinLimit = minLimit;
+			encoderCounterMaxLimit = maxLimit;
 		}
 
 		int setPixel(byte encoderLedColour) {
@@ -133,6 +135,17 @@ class EncoderModule
 			Wire.beginTransmission(ENCODER_MODULE_ADDR);
 			Wire.write(ENCODER_MODULE_CMD_SET_BRIGHTNESS);
 			Wire.write(brightness);
+			return Wire.endTransmission();		
+		}
+
+		int setEncoderLimits(int min, int max) {
+			encoderCounterMinLimit = min;
+			encoderCounterMaxLimit = max;
+			Serial.printf("min: %d (%d) max: %d \n", (byte)min, 0 - (255-(byte)min), (byte)max);
+			Wire.beginTransmission(ENCODER_MODULE_ADDR);
+			Wire.write(ENCODER_MODULE_CMD_SET_LIMITS);
+			Wire.write((byte)min);
+			Wire.write((byte)max);
 			return Wire.endTransmission();		
 		}
 
@@ -174,7 +187,31 @@ void encoderOnlineEvent(bool online) {
 	updateDisplay();
 }
 
-EncoderModule encoderModule(&encoderChangedEvent, &encoderOnlineEvent);
+EncoderModule encoderModule(&encoderChangedEvent, &encoderOnlineEvent, -20, 15);
+
+//--------------------------------------------------------------
+void m5ButtonACallback(int eventCode, int eventPin, int eventParam);
+
+#define PULLUP		true
+#define OFFSTATE	LOW
+
+myPushButton m5ButtonA(M5_BUTTON_A, PULLUP, /* offstate*/ HIGH, m5ButtonACallback);
+
+void m5ButtonACallback(int eventCode, int eventPin, int eventParam) {
+    
+	switch (eventCode) {
+		case m5ButtonA.EV_BUTTON_PRESSED:
+			// Serial.printf("m5ButtonACallback(): pressed \n");
+			encoderModule.setEncoderLimits(-50, 30);
+			break;
+		// case button.EV_RELEASED:
+		// 	break;
+		// case button.EV_DOUBLETAP:
+		// 	break;
+		// case button.EV_HELD_SECONDS:
+		// 	break;
+    }
+}
 
 //--------------------------------------------------------------
 
@@ -337,7 +374,7 @@ void setup() {
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
-	debug.setFilter( STARTUP | HARDWARE | DEBUG | COMMUNICATION | ONLINE_STATUS | TIMING );
+	debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
 	//debug.setFilter( STARTUP );
 
 	// initialize the M5Stack object
@@ -388,7 +425,9 @@ void setup() {
 
 	bool encoderModuleOnline = 
 		encoderModule.setPixelBrightness(10) == 0 &&
-		encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_GREEN) == 0;
+		encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_GREEN) == 0 &&
+		encoderModule.setEncoderLimits(-20, 15) == 0;
+
 	tft.fillScreen(TFT_BLACK);
 	tft.drawString( encoderModuleOnline 
 		? "ENCODER_MODULE: connected" 
@@ -430,6 +469,8 @@ int update_M5_interval = 1000;
 void loop() {
 
 	encoderModule.update();
+
+	m5ButtonA.serviceEvents();
 
 	// bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
@@ -524,43 +565,31 @@ bool sendToBoard() {
 
 	radio.startListening();
 
+	debug.print(COMMUNICATION, "Sending: %d ", esk8.controllerPacket.throttle);
+
     bool timeout = false;                    
     // wait until response has arrived
     if ( !radio.available() ){                             // While nothing is received
-		Serial.printf("X");
-		rxCount++;
+		debug.print(COMMUNICATION, "NO_ACK \n");
 	}
     else {
     	while ( radio.available() ) {
-    		Serial.print("r");
-    		rxCount++;
 			radio.read( &esk8.boardPacket, sizeof(esk8.boardPacket) );
 		}
+		debug.print(COMMUNICATION, "Rx: %d \n", esk8.boardPacket.id);
     }
 	
-	if (rxCount > 30) {
-		rxCount = 0;
-		Serial.println();
-	}
-
-    return sentOK;}
+    return sentOK;
+}
 //--------------------------------------------------------------
 int mapEncoderToThrottleValue(int raw) {
 	int mappedThrottle = 0;
 	int rawMiddle = 0;
 
 	if (raw >= rawMiddle) {
-		return map(raw, rawMiddle, ENCODER_COUNTER_MAX, 127, 255);
+		return map(raw, rawMiddle, encoderModule.encoderCounterMaxLimit, 127, 255);
 	}
-	return map(raw, ENCODER_COUNTER_MIN, rawMiddle, 0, 127);
-}
-//--------------------------------------------------------------------------------
-void zeroThrottleReadyToSend() {
-	encoderCounter = 0;
-	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
-	throttle = 127;
-	throttleChanged = true;
-    debug.print(HARDWARE, "encoderCounter: %d, throttle: %d [ZERO] \n", encoderCounter, throttle);
+	return map(raw, encoderModule.encoderCounterMinLimit, rawMiddle, 0, 127);
 }
 //--------------------------------------------------------------
 void updateDisplay() {
