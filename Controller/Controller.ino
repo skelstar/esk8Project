@@ -9,6 +9,7 @@
 #include <myPushButton.h>
 #include <debugHelper.h>
 #include <esk8Lib.h>
+#include <EncoderModuleLib.h>
 
 #include "i2cEncoderLib.h"
 
@@ -80,7 +81,7 @@ int offlineCount = 0;
 int encoderOfflineCount = 0;
 bool encoderOnline = true;
 
-i2cEncoderLib encoder(0x30); 
+i2cEncoderLib encoder(3); 
 
 //--------------------------------------------------------------------------------
 
@@ -99,7 +100,8 @@ int throttle = 127;
 
 class EncoderModule 
 {
-	//#include "i2cEncoderLib.h"
+
+	#include "i2cEncoderLib.h"
 
 	#define TRINKET_MODULE_ADDR		0x4
 	// #define ENCODER_MODULE_ADDR		0x30
@@ -116,8 +118,6 @@ class EncoderModule
 	typedef void ( *EncoderChangedEventCallback )( int value );
 	typedef void ( *EncoderOnlineEventCallback )( bool online );
 
-	//i2cEncoderLib encoder(0x30); 
-
 	private:
 		int encoderCounterState = 0;
 		bool encoderOnline = true;
@@ -128,6 +128,8 @@ class EncoderModule
 		EncoderOnlineEventCallback _encoderOnlineEventCallback;
 
 	public:
+
+		i2cEncoderLib encoder2(5); 
 
 		// lower number = more coarse
 		int encoderCounterMinLimit = -20; 	// decceleration (ie -20 divides 0-127 into 20)
