@@ -10,6 +10,8 @@
 #include <debugHelper.h>
 #include <esk8Lib.h>
 
+#include "i2cEncoderLib.h"
+
 // #include <Adafruit_NeoPixel.h>
 // #include <M5Stack.h>
 #include "TFT_eSPI.h"
@@ -43,9 +45,11 @@ esk8Lib esk8;
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite img = TFT_eSprite(&tft);
 
-//--------------------------------------------------------------------------------
+//--------------------------------------------------------------
 
-#define 	ENCODER_MODULE_ADDR		0x4
+void setupRadio();
+
+//--------------------------------------------------------------------------------
 
 int32_t encoderCounter;
 int32_t oldEncoderCounter = 0;
@@ -76,6 +80,7 @@ int offlineCount = 0;
 int encoderOfflineCount = 0;
 bool encoderOnline = true;
 
+i2cEncoderLib encoder(0x30); 
 
 //--------------------------------------------------------------------------------
 
@@ -92,23 +97,32 @@ int throttle = 127;
 
 //--------------------------------------------------------------
 
-#define ENCODER_MODULE_CMD_SET_PIXEL		1
-#define ENCODER_MODULE_CMD_SET_LIMITS		2
-#define ENCODER_MODULE_CMD_SET_BRIGHTNESS	3
-
-#define ENCODER_MODULE_LED_COLOUR_BLACK	0
-#define ENCODER_MODULE_LED_COLOUR_RED	1
-#define ENCODER_MODULE_LED_COLOUR_BLUE	2
-#define ENCODER_MODULE_LED_COLOUR_GREEN	3
-
 class EncoderModule 
 {
+	//#include "i2cEncoderLib.h"
+
+	#define TRINKET_MODULE_ADDR		0x4
+	// #define ENCODER_MODULE_ADDR		0x30
+
+	#define ENCODER_MODULE_CMD_SET_PIXEL		1
+	#define ENCODER_MODULE_CMD_SET_LIMITS		2
+	#define ENCODER_MODULE_CMD_SET_BRIGHTNESS	3
+
+	#define ENCODER_MODULE_LED_COLOUR_BLACK	0
+	#define ENCODER_MODULE_LED_COLOUR_RED	1
+	#define ENCODER_MODULE_LED_COLOUR_BLUE	2
+	#define ENCODER_MODULE_LED_COLOUR_GREEN	3
+
 	typedef void ( *EncoderChangedEventCallback )( int value );
 	typedef void ( *EncoderOnlineEventCallback )( bool online );
+
+	//i2cEncoderLib encoder(0x30); 
 
 	private:
 		int encoderCounterState = 0;
 		bool encoderOnline = true;
+		int deadmanSwitch = 0;
+		i2cEncoderLib *_encoder;
 
 		EncoderChangedEventCallback _encoderChangedEventCallback;
 		EncoderOnlineEventCallback _encoderOnlineEventCallback;
@@ -121,23 +135,27 @@ class EncoderModule
 
 		EncoderModule(EncoderChangedEventCallback encoderChangedEventCallback,
 			EncoderOnlineEventCallback encoderOnlineEventCallback,
-			int minLimit, int maxLimit) 
+			int minLimit, int maxLimit, i2cEncoderLib *encoder) 
 		{
 			_encoderChangedEventCallback = encoderChangedEventCallback;
 			_encoderOnlineEventCallback = encoderOnlineEventCallback;
 			encoderCounterMinLimit = minLimit;
 			encoderCounterMaxLimit = maxLimit;
+
+			_encoder = encoder;
+
+			setupEncoder(encoderCounterMaxLimit, encoderCounterMinLimit);
 		}
 
 		int setPixel(byte encoderLedColour) {
-			Wire.beginTransmission(ENCODER_MODULE_ADDR);
+			Wire.beginTransmission(TRINKET_MODULE_ADDR);
 			Wire.write(ENCODER_MODULE_CMD_SET_PIXEL);
 			Wire.write(encoderLedColour);
 			return Wire.endTransmission();
 		}
 
 		int setPixelBrightness(byte brightness) {
-			Wire.beginTransmission(ENCODER_MODULE_ADDR);
+			Wire.beginTransmission(TRINKET_MODULE_ADDR);
 			Wire.write(ENCODER_MODULE_CMD_SET_BRIGHTNESS);
 			Wire.write(brightness);
 			return Wire.endTransmission();		
@@ -147,26 +165,49 @@ class EncoderModule
 			encoderCounterMinLimit = min;
 			encoderCounterMaxLimit = max;
 			Serial.printf("min: %d (%d) max: %d \n", (byte)min, 0 - (255-(byte)min), (byte)max);
-			Wire.beginTransmission(ENCODER_MODULE_ADDR);
-			Wire.write(ENCODER_MODULE_CMD_SET_LIMITS);
-			Wire.write((byte)min);
-			Wire.write((byte)max);
-			return Wire.endTransmission();		
+			// Wire.beginTransmission(TRINKET_MODULE_ADDR);
+			// Wire.write(ENCODER_MODULE_CMD_SET_LIMITS);
+			// Wire.write((byte)min);
+			// Wire.write((byte)max);
+			// return Wire.endTransmission();		
 		}
 
 		void update() {
-			Wire.requestFrom(ENCODER_MODULE_ADDR, 1);
+
+			if (_encoder->updateStatus()) {
+				if (_encoder->readStatus(E_PUSH)) {
+					Serial.println("Encoder Pushed!");
+				}
+				if (_encoder->readStatus(E_MAXVALUE)) {
+					Serial.println("Encoder Max!");
+					_encoder->writeLEDA(0xFF);
+					delay(50);
+					// _encoder->writeLEDA(0x00);
+				}
+				if (_encoder->readStatus(E_MINVALUE)) {
+					Serial.println("Encoder Min!");
+					_encoder->writeLEDB(0xFF);
+					delay(50);
+					// _encoder->writeLEDB(0x00);
+				}
+				Serial.printf("Encoder: %d \n", _encoder->readCounterByte());			
+			}
+
+			Wire.requestFrom(TRINKET_MODULE_ADDR, 1);
 
 			if (Wire.available()) {
-				int _encoderCounter = Wire.read();
-				if (encoderCounterState != _encoderCounter) {
-					encoderCounterState = _encoderCounter;
-					_encoderChangedEventCallback(_encoderCounter);
-				}
-				if (encoderOnline == false) {
-					encoderOnline = true;
-					_encoderOnlineEventCallback(true);
-				}
+				deadmanSwitch = Wire.read();
+
+
+				// int _encoderCounter = Wire.read();
+				// if (encoderCounterState != _encoderCounter) {
+				// 	encoderCounterState = _encoderCounter;
+				// 	_encoderChangedEventCallback(_encoderCounter);
+				// }
+				// if (encoderOnline == false) {
+				// 	encoderOnline = true;
+				// 	_encoderOnlineEventCallback(true);
+				// }
 			}
 			else {
 				if (encoderOnline == true) {
@@ -174,6 +215,21 @@ class EncoderModule
 					_encoderOnlineEventCallback(false);	
 				}
 			}
+		}
+
+		bool deadmanIsPressed() {
+			return deadmanSwitch == 1;
+		}
+
+		//----------------------------------------------------------------
+		void setupEncoder(int maxCounts, int minCounts) {
+
+			_encoder->begin(( INTE_DISABLE | LEDE_DISABLE | WRAP_DISABLE | DIRE_RIGHT | IPUP_DISABLE | RMOD_X1 )); //INTE_ENABLE | LEDE_ENABLE | 
+			_encoder->writeCounter(0);
+			_encoder->writeMax(maxCounts); //Set maximum threshold
+			_encoder->writeMin(minCounts); //Set minimum threshold
+			_encoder->writeLEDA(0x00);
+			_encoder->writeLEDB(0x00);
 		}
 };
 
@@ -193,7 +249,7 @@ void encoderOnlineEvent(bool online) {
 	updateDisplay(/* mode */ 1, /* backlight */ 1);
 }
 
-EncoderModule encoderModule(&encoderChangedEvent, &encoderOnlineEvent, -20, 15);
+EncoderModule encoderModule(&encoderChangedEvent, &encoderOnlineEvent, -20, 15, &encoder);
 
 //--------------------------------------------------------------
 void m5ButtonACallback(int eventCode, int eventPin, int eventParam);
