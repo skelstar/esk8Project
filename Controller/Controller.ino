@@ -36,7 +36,12 @@ debugHelper debug;
 
 esk8Lib esk8;
 
+
+#define IWIDTH	100
+#define IHEIGHT	100
+
 TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite img = TFT_eSprite(&tft);
 
 //--------------------------------------------------------------------------------
 
@@ -180,11 +185,12 @@ void encoderChangedEvent(int encoderValue) {
 		 ? -256 + encoderValue 	// ie -254 = -2
 		 : encoderValue;
 	setControllerPacketThrottle();
+	updateDisplay(/* mode */ 1, /* backlight */ esk8.controllerPacket.throttle <= 127 );
 }
 
 void encoderOnlineEvent(bool online) {
 	encoderOnline = online;
-	updateDisplay();
+	updateDisplay(/* mode */ 1, /* backlight */ 1);
 }
 
 EncoderModule encoderModule(&encoderChangedEvent, &encoderOnlineEvent, -20, 15);
@@ -201,14 +207,12 @@ void m5ButtonACallback(int eventCode, int eventPin, int eventParam) {
     
 	switch (eventCode) {
 		case m5ButtonA.EV_BUTTON_PRESSED:
-			// Serial.printf("m5ButtonACallback(): pressed \n");
-			encoderModule.setEncoderLimits(-50, 30);
 			break;
-		// case button.EV_RELEASED:
+		// case m5ButtonA.EV_RELEASED:
 		// 	break;
-		// case button.EV_DOUBLETAP:
+		// case m5ButtonA.EV_DOUBLETAP:
 		// 	break;
-		// case button.EV_HELD_SECONDS:
+		// case m5ButtonA.EV_HELD_SECONDS:
 		// 	break;
     }
 }
@@ -274,14 +278,14 @@ void boardOfflineCallback() {
 	debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	tFlashLeds.enable();
 	offlineCount++;
-	updateDisplay();
+	updateDisplay(/* mode */ 1, /* backlight */ 1);
 	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
 }
 
 void boardOnlineCallback() {
 	debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	tFlashLeds.disable();
-	updateDisplay();
+	updateDisplay(/* mode */ 1, /* backlight */ 1);
 }
 //--------------------------------------------------------------
 #define	TN_ONLINE 	1
@@ -372,20 +376,8 @@ void setup() {
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
-	debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	//debug.setFilter( STARTUP );
-
-	// initialize the M5Stack object
-	// M5.begin(false, false, false); //lcd, sd, serial
-
-	// //text print
-	// M5.Lcd.fillScreen(BLACK);
-	// M5.Lcd.setCursor(50, 50);
-	// M5.Lcd.setTextColor(WHITE);
-	// M5.Lcd.setTextSize(2);
-	// M5.Lcd.printf("Ready!");
-
-	// M5.Speaker.setVolume(1);	// 0-11?
+	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
+	debug.setFilter( STARTUP | COMMUNICATION );
 
 	setupRadio();
 
@@ -394,12 +386,16 @@ void setup() {
 	tft.begin();
 
   	tft.setRotation(1);
-  	tft.setTextDatum(MC_DATUM);
-	tft.setTextColor(TFT_YELLOW, TFT_BLACK);
 	tft.fillScreen(TFT_BLACK);            // Clear screen
-	tft.setFreeFont(FF18);                 // Select the font
-	tft.drawString("Ready!", 160, 120, 2);
 
+	//img.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img.createSprite(IWIDTH, IHEIGHT);
+	img.fillSprite(TFT_BLUE);
+	img.setFreeFont(FF18);                 // Select the font
+  	img.setTextDatum(MC_DATUM);
+	img.setTextColor(TFT_YELLOW, TFT_BLACK);
+	img.drawString("Ready!", 10, 20, 2);
+	
 	WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
     btStop();   // turn bluetooth module off
 
@@ -412,11 +408,11 @@ void setup() {
 
 	bool encoderModuleOnline = setupEncoderModule(/* min */ -20, /* max */ 15);
 
-	tft.fillScreen(TFT_BLACK);
-	tft.drawString( encoderModuleOnline 
+	img.drawString( encoderModuleOnline 
 		? "ENCODER_MODULE: connected" 
 		: "ENCODER_MODULE: --------", 
 		10, 20, 1);
+	img.pushSprite(200, 100); delay(500);	
 
 	sendMessage();
 
@@ -452,62 +448,24 @@ int update_M5_interval = 1000;
 
 void loop() {
 
-	encoderModule.update();
-
-	m5ButtonA.serviceEvents();
-
 	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
 
 	boardCommsStatus.serviceState(connected);
 
 	runner.execute();
 
-	// if (throttleChanged && connected) {
-	// 	tSendControllerValues.restart();
-	// 	updateDisplay();
-	// }
-	// else if (esk8.controllerPacket.throttle == 127 && rxDataFromBoard) {
-	// 	rxDataFromBoard = false;
-	// 	char buf[100];
-	// 	sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
-	// }
-	// else if (esk8.controllerPacket.throttle != 127) {
-	// 	// maybe hide display?
-	// }
+	if ( throttleChanged ) {
+		throttleChanged = false;
 
-    // if (millis() - last_sent_to_board >= tx_interval) {
-    //     last_sent_to_board = millis();
-
-    //     if ( sendToBoard() == false ) {
-    //         Serial.print("f");
-    //      	rxCount++;
-    //    	}
-    // }
-
-    // if (millis() - last_updated_M5 > update_M5_interval) {
-		
-		//last_updated_M5 = millis();
-
-		//M5.update();
-
-		// if (M5.BtnA.wasReleased()) {
-		// 	tx_interval = 100;
-		//  	M5.Lcd.writecommand(ILI9341_DISPOFF);
-	 //   		M5.Lcd.setBrightness(0);
-	 //   		M5.Lcd.sleep();
+		// if ( esk8.controllerPacket.throttle == 127 ) {
+		// // 	char buf[100];
+		// // 	sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
 		// }
-		// if (M5.BtnB.wasReleased()) {
-		// 	tx_interval = 500;
-		//  	M5.Lcd.begin();
-		// 	M5.Lcd.fillScreen(BLACK);
-		// 	M5.Lcd.setCursor(50, 50);
-		// 	M5.Lcd.setTextColor(WHITE);
-		// 	M5.Lcd.setTextSize(3);
-		// 	M5.Lcd.printf("Ready!");
-	 //   		M5.Lcd.sleep();
+		// else if (esk8.controllerPacket.throttle != 127) {
+		// 	// maybe hide display?
+		// 	updateDisplay(/*mode*/1, /*backlight*/0);
 		// }
-	// }
-
+	}
 
 	vTaskDelay( 10 );
 }
@@ -518,30 +476,24 @@ void codeForEncoderTask( void *parameter ) {
 
 	#define TX_INTERVAL 200
 	long nowMs = 0;
-	// then loop forever	
+	
 	for (;;) {
 
-		// checkForPacket();
+		encoderModule.update();
 
-	    // if (millis() - nowMs > TX_INTERVAL) {
-	    //     nowMs = millis();
+		m5ButtonA.serviceEvents();
 
-     //    	taskENTER_CRITICAL(&mmux);
-    	// 	int sentOk = sendToBoard();
-    	// 	taskEXIT_CRITICAL(&mmux);
+		if (m5ButtonA.pressedForNumMs(2000)) {
+			Serial.printf("Held down!\n");
+		}
 
-	    //     if ( sentOk == false ) {
-	    //     	Serial.print("f");
-	    //     	rxCount++;
-	    //     }
-	    // }
 		vTaskDelay( 10 );
 	}
 
 	vTaskDelete(NULL);
 }
 //**************************************************************
-//--------------------------------------------------------------
+
 bool sendToBoard() {
 
 	radio.stopListening();
@@ -598,44 +550,31 @@ int setupEncoderModule(int minLimit, int maxLimit) {
 		encoderModule.setEncoderLimits(minLimit, maxLimit) == 0;
 }
 //--------------------------------------------------------------
-void updateDisplay() {
+
+void updateDisplay(int mode, int backlight) {
 	#define LINE_1 20
 	#define LINE_2 45
 	#define LINE_3 70
 	#define LINE_4 95
 
-	// offline count
-	// M5.Lcd.fillScreen(BLACK);
-	// M5.Lcd.setCursor(10, LINE_1);
-	// M5.Lcd.setTextColor(WHITE);
-	// M5.Lcd.setTextSize(3);
-	// M5.Lcd.printf("Offline count: %d", offlineCount);
+	if ( backlight == false ) {
+		digitalWrite(TFT_BL, LOW);
+		return;
+	}
 
-	// online/offline
-	// M5.Lcd.setCursor(10, LINE_2);
-	// M5.Lcd.setTextSize(3);
-	// if (boardCommsStatus.isOnline()) {
-	// 	M5.Lcd.setTextColor(GREEN);
-	// 	M5.Lcd.printf("Online");
-	// }
-	// else {
-	// 	M5.Lcd.setTextColor(RED);
-	// 	M5.Lcd.printf("Offline");	
-	// }
+	switch (mode) {
+		case 0:
+			break;
+		case 1:
+		  	img.setTextDatum(MC_DATUM);
+			img.setTextSize(1);
+			img.fillScreen(TFT_DARKGREEN);
+			img.setTextColor(TFT_YELLOW, TFT_BLACK);
+			img.drawNumber( esk8.controllerPacket.throttle,  10, 10);		
+			img.pushSprite(20, 20); delay(0);	
 
-	// // encoder Module
-	// M5.Lcd.setCursor(10, LINE_3);
-	// if (encoderOnline == true) {
-	// 	M5.Lcd.setTextColor(GREEN);
-	// 	M5.Lcd.printf("Encoder: Online");
-	// }
-	// else {
-	// 	M5.Lcd.setTextColor(RED);
-	// 	M5.Lcd.printf("Encoder: Offline");	
-	// }
+			digitalWrite(TFT_BL, HIGH);	// turn backlight off?
 
-	// // packets Sent
-	// M5.Lcd.setCursor(10, LINE_4);
-	// M5.Lcd.setTextColor(GREEN);
-	// M5.Lcd.printf("Packets %%: %d\n", packetsFailed * 100 / packetsSent);
+			break;
+	}
 }
