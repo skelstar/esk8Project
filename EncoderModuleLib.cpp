@@ -30,7 +30,6 @@ void EncoderModuleLib::update() {
 
 		int newCounter = encoder.readCounterByte();
 		delay(1);
-		//Serial.printf("Encoder: %d \n", newCounter);
 
 		handleCounterChanged(newCounter);
 	
@@ -39,18 +38,35 @@ void EncoderModuleLib::update() {
 		}
 	
 		if (encoder.readStatus(E_MAXVALUE)) {
-			// Serial.println("Encoder Max!");
 		}
 	
 		if (encoder.readStatus(E_MINVALUE)) {
-			// Serial.println("Encoder Min!");
 		}
-		// Serial.printf("Encoder: %d \n", encoder.readCounterByte());			
 	}
 }
 
+void EncoderModuleLib::setEncoderCount(int count) {
+	encoder.writeCounter(count);
+}
+
+void EncoderModuleLib::setEncoderMinMax(int minLimit, int maxLimit) {
+	_encoderCounterMinLimit = minLimit;
+	_encoderCounterMaxLimit = maxLimit;
+
+	encoder.writeMax(_encoderCounterMinLimit); //Set maximum threshold
+	encoder.writeMin(_encoderCounterMaxLimit); //Set minimum threshold
+}
+
+int EncoderModuleLib::getEncoderMaxLimit() {
+	return _encoderCounterMaxLimit;
+}
+
+int EncoderModuleLib::getEncoderMinLimit() {
+	return _encoderCounterMinLimit;
+}
+
 void EncoderModuleLib::handleCounterChanged(int newCounter) {
-	
+
 	if (_oldCounter != newCounter) {
 		// counter has changed
 		if (newCounter > 0) {

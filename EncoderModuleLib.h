@@ -46,6 +46,10 @@ class EncoderModuleLib
 
         void update();
         bool encoderPressed();
+        void setEncoderCount(int count);
+        void setEncoderMinMax(int minLimit, int maxLimit);
+        int getEncoderMaxLimit();
+        int getEncoderMinLimit();
 };
 
 #endif

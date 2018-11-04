@@ -22,6 +22,8 @@
 
 #define	PIXEL_PIN			16	// was 5
 
+#define DEADMAN_SWITCH		26
+
 #define M5_BUTTON_A			39
 #define M5_BUTTON_B			38
 #define M5_BUTTON_C			37
@@ -81,8 +83,6 @@ int offlineCount = 0;
 int encoderOfflineCount = 0;
 bool encoderOnline = true;
 
-i2cEncoderLib encoder(3); 
-
 //--------------------------------------------------------------------------------
 
 const char compile_date[] = __DATE__ " " __TIME__;
@@ -97,12 +97,6 @@ int throttle = 127;
 #define SEND_TO_BOARD_INTERVAL_MS 			200
 
 //--------------------------------------------------------------
-
-class EncoderModule 
-{
-
-	#include "i2cEncoderLib.h"
-
 	#define TRINKET_MODULE_ADDR		0x4
 	// #define ENCODER_MODULE_ADDR		0x30
 
@@ -115,129 +109,41 @@ class EncoderModule
 	#define ENCODER_MODULE_LED_COLOUR_BLUE	2
 	#define ENCODER_MODULE_LED_COLOUR_GREEN	3
 
-	typedef void ( *EncoderChangedEventCallback )( int value );
-	typedef void ( *EncoderOnlineEventCallback )( bool online );
-
-	private:
-		int encoderCounterState = 0;
-		bool encoderOnline = true;
-		int deadmanSwitch = 0;
-		i2cEncoderLib *_encoder;
-
-		EncoderChangedEventCallback _encoderChangedEventCallback;
-		EncoderOnlineEventCallback _encoderOnlineEventCallback;
-
-	public:
-
-		i2cEncoderLib encoder2(5); 
-
-		// lower number = more coarse
-		int encoderCounterMinLimit = -20; 	// decceleration (ie -20 divides 0-127 into 20)
-		int encoderCounterMaxLimit = 15; 	// acceleration (ie 15 divides 127-255 into 15)
-
-		EncoderModule(EncoderChangedEventCallback encoderChangedEventCallback,
-			EncoderOnlineEventCallback encoderOnlineEventCallback,
-			int minLimit, int maxLimit, i2cEncoderLib *encoder) 
-		{
-			_encoderChangedEventCallback = encoderChangedEventCallback;
-			_encoderOnlineEventCallback = encoderOnlineEventCallback;
-			encoderCounterMinLimit = minLimit;
-			encoderCounterMaxLimit = maxLimit;
-
-			_encoder = encoder;
-
-			setupEncoder(encoderCounterMaxLimit, encoderCounterMinLimit);
-		}
-
-		int setPixel(byte encoderLedColour) {
-			Wire.beginTransmission(TRINKET_MODULE_ADDR);
-			Wire.write(ENCODER_MODULE_CMD_SET_PIXEL);
-			Wire.write(encoderLedColour);
-			return Wire.endTransmission();
-		}
-
-		int setPixelBrightness(byte brightness) {
-			Wire.beginTransmission(TRINKET_MODULE_ADDR);
-			Wire.write(ENCODER_MODULE_CMD_SET_BRIGHTNESS);
-			Wire.write(brightness);
-			return Wire.endTransmission();		
-		}
-
-		int setEncoderLimits(int min, int max) {
-			encoderCounterMinLimit = min;
-			encoderCounterMaxLimit = max;
-			Serial.printf("min: %d (%d) max: %d \n", (byte)min, 0 - (255-(byte)min), (byte)max);
-			// Wire.beginTransmission(TRINKET_MODULE_ADDR);
-			// Wire.write(ENCODER_MODULE_CMD_SET_LIMITS);
-			// Wire.write((byte)min);
-			// Wire.write((byte)max);
-			// return Wire.endTransmission();		
-		}
-
-		void update() {
-
-			if (_encoder->updateStatus()) {
-				if (_encoder->readStatus(E_PUSH)) {
-					Serial.println("Encoder Pushed!");
-				}
-				if (_encoder->readStatus(E_MAXVALUE)) {
-					Serial.println("Encoder Max!");
-					_encoder->writeLEDA(0xFF);
-					delay(50);
-					// _encoder->writeLEDA(0x00);
-				}
-				if (_encoder->readStatus(E_MINVALUE)) {
-					Serial.println("Encoder Min!");
-					_encoder->writeLEDB(0xFF);
-					delay(50);
-					// _encoder->writeLEDB(0x00);
-				}
-				Serial.printf("Encoder: %d \n", _encoder->readCounterByte());			
-			}
-
-			Wire.requestFrom(TRINKET_MODULE_ADDR, 1);
-
-			if (Wire.available()) {
-				deadmanSwitch = Wire.read();
 
 
-				// int _encoderCounter = Wire.read();
-				// if (encoderCounterState != _encoderCounter) {
-				// 	encoderCounterState = _encoderCounter;
-				// 	_encoderChangedEventCallback(_encoderCounter);
-				// }
-				// if (encoderOnline == false) {
-				// 	encoderOnline = true;
-				// 	_encoderOnlineEventCallback(true);
-				// }
-			}
-			else {
-				if (encoderOnline == true) {
-					encoderOnline = false;
-					_encoderOnlineEventCallback(false);	
-				}
-			}
-		}
+		// int setPixel(byte encoderLedColour) {
+		// 	Wire.beginTransmission(TRINKET_MODULE_ADDR);
+		// 	Wire.write(ENCODER_MODULE_CMD_SET_PIXEL);
+		// 	Wire.write(encoderLedColour);
+		// 	return Wire.endTransmission();
+		// }
 
-		bool deadmanIsPressed() {
-			return deadmanSwitch == 1;
-		}
+		// int setPixelBrightness(byte brightness) {
+		// 	Wire.beginTransmission(TRINKET_MODULE_ADDR);
+		// 	Wire.write(ENCODER_MODULE_CMD_SET_BRIGHTNESS);
+		// 	Wire.write(brightness);
+		// 	return Wire.endTransmission();		
+		// }
 
-		//----------------------------------------------------------------
-		void setupEncoder(int maxCounts, int minCounts) {
 
-			_encoder->begin(( INTE_DISABLE | LEDE_DISABLE | WRAP_DISABLE | DIRE_RIGHT | IPUP_DISABLE | RMOD_X1 )); //INTE_ENABLE | LEDE_ENABLE | 
-			_encoder->writeCounter(0);
-			_encoder->writeMax(maxCounts); //Set maximum threshold
-			_encoder->writeMin(minCounts); //Set minimum threshold
-			_encoder->writeLEDA(0x00);
-			_encoder->writeLEDB(0x00);
-		}
-};
+
+//--------------------------------------------------------------
+
+void encoderChangedEvent(int encoderValue);
+void encoderPressedEventCallback();
+bool canAccelerateCallback();
+void encoderOnlineEvent(bool online);
+
+EncoderModuleLib encoderModule(
+	&encoderChangedEvent, 
+	&encoderPressedEventCallback,
+	&encoderOnlineEvent,
+	&canAccelerateCallback,
+	 -20, 15);
 
 void encoderChangedEvent(int encoderValue) {
-	debug.print(HARDWARE, "encoderChangedEvent(%d); \n", encoderValue);
-	oldEncoderCounter = encoderCounter;
+	debug.print(DEBUG, "encoderChangedEvent(%d); \n", encoderValue);
+	throttleChanged = true;
 
 	encoderCounter = encoderValue > 127
 		 ? -256 + encoderValue 	// ie -254 = -2
@@ -246,12 +152,24 @@ void encoderChangedEvent(int encoderValue) {
 	updateDisplay(/* mode */ 1, /* backlight */ esk8.controllerPacket.throttle <= 127 );
 }
 
-void encoderOnlineEvent(bool online) {
-	encoderOnline = online;
-	updateDisplay(/* mode */ 1, /* backlight */ 1);
+void encoderPressedEventCallback() {
+	encoderCounter = 0;
+	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+	encoderModule.setEncoderCount(0);
+
+	throttleChanged = true;	
+	debug.print(HARDWARE, "encoderPressedEventCallback(); \n");
 }
 
-EncoderModule encoderModule(&encoderChangedEvent, &encoderOnlineEvent, -20, 15, &encoder);
+bool canAccelerateCallback() {
+	digitalWrite(DEADMAN_SWITCH, 1);
+	return digitalRead(DEADMAN_SWITCH) == 0;
+}
+
+void encoderOnlineEvent(bool online) {
+	// encoderOnline = online;
+	// updateDisplay(/* mode */ 1, /* backlight */ 1);
+}
 
 //--------------------------------------------------------------
 void m5ButtonACallback(int eventCode, int eventPin, int eventParam);
@@ -287,47 +205,41 @@ void tFlashLedsOff_callback();
 Task tFlashLeds(500, TASK_FOREVER, &tFlashLedsOff_callback);
 
 bool tFlashLeds_onEnable() {
-	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
+	//encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
 	tFlashLeds.enable();
     return true;
 }
 void tFlashLeds_onDisable() {
-	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
+	//encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
 	tFlashLeds.disable();
 }
 void tFlashLedsOn_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOff_callback);
-	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
+	//encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_RED);
 	debug.print(HARDWARE, "tFlashLedsOn_callback\n");
 	return;
 }
 void tFlashLedsOff_callback() {
 	tFlashLeds.setCallback(&tFlashLedsOn_callback);
-	encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
+	//encoderModule.setPixel(ENCODER_MODULE_LED_COLOUR_BLACK);
 	debug.print(HARDWARE, "tFlashLedsOff_callback\n");
 	return;
 }
 
 //--------------------------------------------------------------
-void sendMessage() {
+void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
 	bool sentOK = sendToBoard();
     taskEXIT_CRITICAL(&mmux);
 
-	// packetsSent++;
     if ( sentOK ) {
 		throttleChanged = false;
 		lastRxFromBoard = millis();
     }
     else {
-    	// packetsFailed++;
         debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
-}
-
-void tSendControllerValues_callback() {
-    sendMessage();
 }
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
@@ -412,9 +324,9 @@ void setControllerPacketThrottle() {
 	throttleChanged = accelerating || decelerating;
 }
 
-void packetAvailable_Callback(int test) {
-	debug.print(COMMUNICATION, "packetAvailable_Callback() \n");
-}
+// void packetAvailable_Callback(int test) {
+// 	debug.print(COMMUNICATION, "packetAvailable_Callback() \n");
+// }
 
 //--------------------------------------------------------------
 
@@ -435,7 +347,8 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | COMMUNICATION );
+	debug.setFilter( STARTUP | DEBUG | ONLINE_STATUS );
+	//debug.setFilter( STARTUP );
 
 	setupRadio();
 
@@ -464,15 +377,13 @@ void setup() {
 
 	esk8.begin(esk8.RF24_CONTROLLER);
 
-	bool encoderModuleOnline = setupEncoderModule(/* min */ -20, /* max */ 15);
+	// bool encoderModuleOnline = setupEncoderModule(/* min */ -20, /* max */ 15);
 
-	img.drawString( encoderModuleOnline 
-		? "ENCODER_MODULE: connected" 
-		: "ENCODER_MODULE: --------", 
-		10, 20, 1);
+	// img.drawString( encoderModuleOnline 
+	// 	? "ENCODER_MODULE: connected" 
+	// 	: "ENCODER_MODULE: --------", 
+	// 	10, 20, 1);
 	img.pushSprite(200, 100); delay(500);	
-
-	sendMessage();
 
 	runner.startNow();
 	runner.addTask(tFlashLeds);
@@ -480,6 +391,8 @@ void setup() {
 	tSendControllerValues.enable();
 
 	boardCommsStatus.serviceState(false);
+
+	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -494,15 +407,7 @@ void setup() {
 /**************************************************************
 					LOOP
 **************************************************************/
-long nowms = 0;
-long connectedNow = 0;
-bool oldConnected = false;
 #define BOARD_OFFLINE_PERIOD	1000
-long rxCount = 0;
-unsigned long last_sent_to_board = 50;
-unsigned long last_updated_M5 =100;
-int tx_interval = 200;
-int update_M5_interval = 1000;
 
 void loop() {
 
@@ -512,8 +417,12 @@ void loop() {
 
 	runner.execute();
 
+	encoderModule.update();
+
 	if ( throttleChanged ) {
+		tSendControllerValues.restart();
 		throttleChanged = false;
+
 
 		// if ( esk8.controllerPacket.throttle == 127 ) {
 		// // 	char buf[100];
@@ -537,13 +446,6 @@ void codeForEncoderTask( void *parameter ) {
 	
 	for (;;) {
 
-		encoderModule.update();
-
-		m5ButtonA.serviceEvents();
-
-		if (m5ButtonA.pressedForNumMs(2000)) {
-			Serial.printf("Held down!\n");
-		}
 
 		vTaskDelay( 10 );
 	}
@@ -560,7 +462,7 @@ bool sendToBoard() {
 
 	radio.startListening();
 
-	debug.print(COMMUNICATION, "Sending: %d ", esk8.controllerPacket.throttle);
+	// debug.print(DEBUG, "Sending: %d \n", esk8.controllerPacket.throttle);
 
     bool timeout = false;                    
     // wait until response has arrived
@@ -582,9 +484,9 @@ int mapEncoderToThrottleValue(int raw) {
 	int rawMiddle = 0;
 
 	if (raw >= rawMiddle) {
-		return map(raw, rawMiddle, encoderModule.encoderCounterMaxLimit, 127, 255);
+		return map(raw, rawMiddle, encoderModule.getEncoderMaxLimit(), 127, 255);
 	}
-	return map(raw, encoderModule.encoderCounterMinLimit, rawMiddle, 0, 127);
+	return map(raw, encoderModule.getEncoderMinLimit(), rawMiddle, 0, 127);
 }
 //--------------------------------------------------------------
 void setupRadio() {
@@ -599,13 +501,18 @@ void setupRadio() {
     radio.printDetails();
 }
 //--------------------------------------------------------------
-int setupEncoderModule(int minLimit, int maxLimit) {
+// int setupEncoderModule(int minLimit, int maxLimit) {
 		
-	encoderModule.update();
+// 	encoderModule.update();
 
-	return  
-		encoderModule.setPixelBrightness(10) == 0 &&
-		encoderModule.setEncoderLimits(minLimit, maxLimit) == 0;
+// 	return  
+// 		encoderModule.setPixelBrightness(10) == 0 &&
+// 		encoderModule.setEncoderLimits(minLimit, maxLimit) == 0;
+// }
+
+void setEncoderLimits(int min, int max) {
+	encoderModule.setEncoderMinMax(min, max);
+	Serial.printf("min: %d (%d) max: %d \n", (byte)min, 0 - (255-(byte)min), (byte)max);
 }
 //--------------------------------------------------------------
 
