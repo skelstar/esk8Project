@@ -2,11 +2,11 @@
 #include <SPI.h>
 // #include <RF24Network.h> 
 #include <RF24.h> 
-#include "WiFi.h"
+#include <myWifiHelper.h>
 #include <esk8Lib.h>
 
 #include <ESP8266VESC.h>
-#include <VescUart.h>
+#include <VescUart.h>	// https://github.com/SolidGeek/VescUart
 
 #include "datatypes.h"
 #include <debugHelper.h>
@@ -19,7 +19,13 @@
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
+#define 	WIFI_HOSTNAME   "/mobile/Esk8Board"
+
+MyWifiHelper wifiHelper(WIFI_HOSTNAME);
+
 //--------------------------------------------------------------
+
+
 
 bool controllerStatusChanged = true;
 bool vescStatusChanged = true;
@@ -50,7 +56,7 @@ VescUart UART;
 #define DEBUG 				1 << 3	// 8
 #define COMMUNICATION 		1 << 4	// 16
 #define HARDWARE			1 << 5	// 32
-#define VESC_COMMS			1 << 6	// 64
+// #define VESC_COMMS			1 << 6	// 64
 
 debugHelper debug;
 
@@ -64,9 +70,6 @@ volatile float packetData = 0.1;
 #define 	VESC_UART_BAUDRATE	19200	// old: 9600
 
 HardwareSerial Serial1(2);
-
-//--------------------------------------------------------------
-long intervalStarts = 0;
 
 //--------------------------------------------------------------
 
@@ -146,7 +149,7 @@ void tSendToVESC_callback() {
 
 	if ( controllerStatus.online() == false ) {
 		esk8.controllerPacket.throttle = 127;
-		debug.print(VESC_COMMS, "tSendToVESC_callback: Controller OFFLINE (127) \n");
+		debug.print(COMMUNICATION, "tSendToVESC_callback: Controller OFFLINE (127) \n");
 	}
 
 	taskENTER_CRITICAL(&mmux);
@@ -164,13 +167,14 @@ void tGetFromVESC_callback() {
 
 	bool vescOnline = getVescValues();
 	bool vescStatusChanged = vescStatus.serviceState(vescOnline);
+	esk8.boardPacket.vescOnline = vescOnline;
 
-	if (vescOnline == true) {
-		debug.print(VESC_COMMS, "tGetFromVESC_callback(): batteryVoltage = %.1f \n", esk8.boardPacket.batteryVoltage);
-	}
-	else {
-		debug.print(VESC_COMMS, "tGetFromVESC_callback(): OFFLINE : batteryVoltage = %.1f \n", esk8.boardPacket.batteryVoltage);
-	}
+	// if (vescOnline == true) {
+		// debug.print(COMMUNICATION, "tGetFromVESC_callback(): batteryVoltage = %.1f vescOnline=%d \n", esk8.boardPacket.batteryVoltage, vescOnline);
+	// }
+	// else {
+		// debug.print(COMMUNICATION, "tGetFromVESC_callback(): OFFLINE : batteryVoltage = %.1f \n", esk8.boardPacket.batteryVoltage);
+	// }
 }
 //--------------------------------------------------------------------------------
 TaskHandle_t RF24CommsRxTask;
@@ -197,8 +201,8 @@ void setup()
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(ERROR, "ERROR");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
-	debug.addOption(VESC_COMMS, "VESC_COMMS");
-	debug.setFilter( STARTUP | COMMUNICATION | VESC_COMMS | DEBUG );
+	// debug.addOption(VESC_COMMS, "VESC_COMMS");
+	debug.setFilter( STARTUP );
 
 	debug.print(STARTUP, "%s\n", compile_date);
 	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
@@ -216,6 +220,9 @@ void setup()
 
 	setupRadio();
 
+    wifiHelper.setupWifi();
+    wifiHelper.setupOTA(WIFI_HOSTNAME);
+
 	esk8.begin(esk8.RF24_BOARD);
 	// esk8.begin(&radio, &network, esk8.RF24_BOARD, controllerPacketAvailable_Callback);
 	//esk8.enableDebug();
@@ -224,9 +231,11 @@ void setup()
 	runner.addTask(tSendToVESC);
 	runner.addTask(tGetFromVESC);
 	tSendToVESC.enable();
-	tGetFromVESC.enable();
+	// tGetFromVESC.enable();
 
 	debug.print(STARTUP, "Starting Core 0 \n");
+
+	debug.print(STARTUP, "loop() core: %d \n", xPortGetCoreID());
 
 	xTaskCreatePinnedToCore (
 		codeForRF24CommsRxTask,	// function
@@ -236,32 +245,36 @@ void setup()
 		1,				// priority
 		&RF24CommsRxTask,	// handle
 		0);				// port	
-
-	debug.print(STARTUP, "loop() core: %d \n", xPortGetCoreID());
+	vTaskDelay(100);
 }
 
-#define SEND_TO_CONTROLLER_INTERVAL	500
+#define SEND_TO_CONTROLLER_INTERVAL	300
 
 //*************************************************************
+long intervalStarts = 0;
+
+
 void loop() {
 
-	// bool timeToUpdateController = millis() - intervalStarts > SEND_TO_CONTROLLER_INTERVAL;
+	bool timeToUpdateController = millis() - intervalStarts > SEND_TO_CONTROLLER_INTERVAL;
 
-	// if (timeToUpdateController) {
-	// 	intervalStarts = millis();
-	// 	// update controller
-	// 	bool vescOnline = getVescValues();
+	if (timeToUpdateController) {
+		intervalStarts = millis();
+		// update controller
+		bool vescOnline = getVescValues();
 
-	// 	bool vescStatusChanged = vescStatus.serviceState(vescOnline);
+		bool vescStatusChanged = vescStatus.serviceState(vescOnline);
 
-	// 	if (vescOnline) {
+		if (vescOnline) {
 
-	// 	}
-	// }
+		}
+	}
 
 	esp_task_wdt_feed();
 
 	runner.execute();
+
+	ArduinoOTA.handle();
 
 	vTaskDelay( 10 );
 }
@@ -304,15 +317,9 @@ bool checkForControllerPacketThenRespond() {
 //--------------------------------------------------------------
 bool respond(byte pipeNo) {
 
-	int oldThrottle = esk8.controllerPacket.throttle;
 	while ( radio.available() ) {
 		radio.read( &esk8.controllerPacket, sizeof(esk8.controllerPacket) );
 		radio.writeAckPayload(pipeNo, &esk8.boardPacket, sizeof(esk8.boardPacket));
-
-		bool throttleChanged = esk8.controllerPacket.throttle != oldThrottle;
-		if ( throttleChanged ) {
-			debug.print(COMMUNICATION, "throttle: %d / %d \n", esk8.controllerPacket.throttle, oldThrottle);
-		}
 
 		vTaskDelay( 1 );
 	}
@@ -323,16 +330,20 @@ bool getVescValues() {
 
     VESCValues vescValues;
 
-    if ( UART.getVescValues() == false ) {
-    	return false;
-    }
+    // if ( UART.getVescValues() == false ) {
+    // 	return false;
+    // }
+
+    bool success = UART.getVescValues();
+	esk8.boardPacket.vescOnline = success;
+
 	// Serial.println(UART.data.ampHours);
 	// Serial.println(UART.data.tachometerAbs);
 	// Serial.println(UART.data.rpm);
 
 	esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-	debug.print(VESC_COMMS, "esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.batteryVoltage);
-    return true;
+	debug.print(DEBUG, "esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.batteryVoltage);
+    return success;
 }
 //--------------------------------------------------------------
 void setupRadio() {

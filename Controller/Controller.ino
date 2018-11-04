@@ -347,7 +347,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | DEBUG | ONLINE_STATUS );
+	debug.setFilter( STARTUP | COMMUNICATION | DEBUG | ONLINE_STATUS );
 	//debug.setFilter( STARTUP );
 
 	setupRadio();
@@ -473,7 +473,7 @@ bool sendToBoard() {
     	while ( radio.available() ) {
 			radio.read( &esk8.boardPacket, sizeof(esk8.boardPacket) );
 		}
-		debug.print(COMMUNICATION, "Rx: %d \n", esk8.boardPacket.id);
+		debug.print(COMMUNICATION, "battery: %.1fV vesc: %d \n", esk8.boardPacket.batteryVoltage, esk8.boardPacket.vescOnline);
     }
 	
     return sentOK;

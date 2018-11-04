@@ -17,6 +17,7 @@ struct BoardStruct{
 	// int32_t rpm;
 	float batteryVoltage;
 	int id;
+	int vescOnline;
 };
 
 
