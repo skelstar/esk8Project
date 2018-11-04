@@ -467,13 +467,14 @@ bool sendToBoard() {
     bool timeout = false;                    
     // wait until response has arrived
     if ( !radio.available() ){                             // While nothing is received
-		debug.print(COMMUNICATION, "NO_ACK \n");
+		debug.print(COMMUNICATION, "\n NO_ACK");
 	}
     else {
     	while ( radio.available() ) {
 			radio.read( &esk8.boardPacket, sizeof(esk8.boardPacket) );
 		}
-		debug.print(COMMUNICATION, "battery: %.1fV vesc: %d \n", esk8.boardPacket.batteryVoltage, esk8.boardPacket.vescOnline);
+		Serial.print(".");
+		//debug.print(COMMUNICATION, "battery: %.1fV vesc: %d \n", esk8.boardPacket.batteryVoltage, esk8.boardPacket.vescOnline);
     }
 	
     return sentOK;

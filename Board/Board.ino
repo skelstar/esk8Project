@@ -2,7 +2,7 @@
 #include <SPI.h>
 // #include <RF24Network.h> 
 #include <RF24.h> 
-#include <myWifiHelper.h>
+// #include <myWifiHelper.h>
 #include <esk8Lib.h>
 
 #include <ESP8266VESC.h>
@@ -19,9 +19,9 @@
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
-#define 	WIFI_HOSTNAME   "/mobile/Esk8Board"
+// #define 	WIFI_HOSTNAME   "/mobile/Esk8Board"
 
-MyWifiHelper wifiHelper(WIFI_HOSTNAME);
+// MyWifiHelper wifiHelper(WIFI_HOSTNAME);
 
 //--------------------------------------------------------------
 
@@ -220,8 +220,8 @@ void setup()
 
 	setupRadio();
 
-    wifiHelper.setupWifi();
-    wifiHelper.setupOTA(WIFI_HOSTNAME);
+    // wifiHelper.setupWifi();
+    // wifiHelper.setupOTA(WIFI_HOSTNAME);
 
 	esk8.begin(esk8.RF24_BOARD);
 	// esk8.begin(&radio, &network, esk8.RF24_BOARD, controllerPacketAvailable_Callback);
@@ -252,7 +252,7 @@ void setup()
 
 //*************************************************************
 long intervalStarts = 0;
-
+int otaHandleTimeoutMillis = 30*1000;
 
 void loop() {
 
@@ -274,7 +274,9 @@ void loop() {
 
 	runner.execute();
 
-	ArduinoOTA.handle();
+	// if (millis() > otaHandleTimeoutMillis)	 {
+	// 	ArduinoOTA.handle();
+	// }
 
 	vTaskDelay( 10 );
 }
