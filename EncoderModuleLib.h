@@ -16,13 +16,14 @@ class EncoderModuleLib
 		int _encoderCounterMinLimit = -20; 	// decceleration (ie -20 divides 0-127 into 20)
 		int _encoderCounterMaxLimit = 15; 	// acceleration (ie 15 divides 127-255 into 15)
 		int _oldCounter = 0;
+		int _oldCanAccelerate = false;
 
 		EncoderChangedEventCallback _encoderChangedEventCallback;
 		EncoderPressedEventCallback _encoderPressedEventCallback;
 		EncoderOnlineEventCallback _encoderOnlineEventCallback;
 		EncoderCanAccelerateCallback _canAccelerateCallback;
 
-		void handleCounterChanged(int newCounter);
+		void handleCounterChanged(int newCounter, bool canAccelerate);
 		void setupEncoder(int maxCounts, int minCounts);
 
     public:

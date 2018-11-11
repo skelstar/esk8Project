@@ -26,12 +26,19 @@ EncoderModuleLib::EncoderModuleLib(
 
 void EncoderModuleLib::update() {
 
-	if (encoder.updateStatus()) {
+	bool newCanAccelerate = _canAccelerateCallback();
+
+	bool canAccelerateStateChanged = _oldCanAccelerate != newCanAccelerate;
+	_oldCanAccelerate = newCanAccelerate;
+
+	bool encoderChanged = encoder.updateStatus();
+
+	if (encoderChanged || canAccelerateStateChanged) {
 
 		int newCounter = encoder.readCounterByte();
 		delay(1);
 
-		handleCounterChanged(newCounter);
+		handleCounterChanged(newCounter, newCanAccelerate);
 	
 		if (encoder.readStatus(E_PUSH)) {
 			_encoderPressedEventCallback();
@@ -46,7 +53,8 @@ void EncoderModuleLib::update() {
 }
 
 void EncoderModuleLib::setEncoderCount(int count) {
-	encoder.writeCounter(count);
+	_oldCounter = 0;
+	encoder.writeCounter(_oldCounter);
 }
 
 void EncoderModuleLib::setEncoderMinMax(int minLimit, int maxLimit) {
@@ -65,12 +73,17 @@ int EncoderModuleLib::getEncoderMinLimit() {
 	return _encoderCounterMinLimit;
 }
 
-void EncoderModuleLib::handleCounterChanged(int newCounter) {
+void EncoderModuleLib::handleCounterChanged(int newCounter, bool canAccelerate) {
+
+	if (newCounter > 0 && canAccelerate == false) {
+		newCounter = 0;
+		encoder.writeCounter(0);
+	}
 
 	if (_oldCounter != newCounter) {
 		// counter has changed
 		if (newCounter > 0) {
-			if (_canAccelerateCallback()) {
+			if (canAccelerate) {
 				_oldCounter = newCounter;
 				_encoderChangedEventCallback(newCounter);
 			}

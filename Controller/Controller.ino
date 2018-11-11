@@ -97,37 +97,6 @@ int throttle = 127;
 #define SEND_TO_BOARD_INTERVAL_MS 			200
 
 //--------------------------------------------------------------
-	#define TRINKET_MODULE_ADDR		0x4
-	// #define ENCODER_MODULE_ADDR		0x30
-
-	#define ENCODER_MODULE_CMD_SET_PIXEL		1
-	#define ENCODER_MODULE_CMD_SET_LIMITS		2
-	#define ENCODER_MODULE_CMD_SET_BRIGHTNESS	3
-
-	#define ENCODER_MODULE_LED_COLOUR_BLACK	0
-	#define ENCODER_MODULE_LED_COLOUR_RED	1
-	#define ENCODER_MODULE_LED_COLOUR_BLUE	2
-	#define ENCODER_MODULE_LED_COLOUR_GREEN	3
-
-
-
-		// int setPixel(byte encoderLedColour) {
-		// 	Wire.beginTransmission(TRINKET_MODULE_ADDR);
-		// 	Wire.write(ENCODER_MODULE_CMD_SET_PIXEL);
-		// 	Wire.write(encoderLedColour);
-		// 	return Wire.endTransmission();
-		// }
-
-		// int setPixelBrightness(byte brightness) {
-		// 	Wire.beginTransmission(TRINKET_MODULE_ADDR);
-		// 	Wire.write(ENCODER_MODULE_CMD_SET_BRIGHTNESS);
-		// 	Wire.write(brightness);
-		// 	return Wire.endTransmission();		
-		// }
-
-
-
-//--------------------------------------------------------------
 
 void encoderChangedEvent(int encoderValue);
 void encoderPressedEventCallback();
@@ -163,6 +132,10 @@ void encoderPressedEventCallback() {
 
 bool canAccelerateCallback() {
 	digitalWrite(DEADMAN_SWITCH, 1);
+	return digitalRead(DEADMAN_SWITCH) == 0;
+}
+
+bool canAccelerate() {
 	return digitalRead(DEADMAN_SWITCH) == 0;
 }
 
@@ -462,8 +435,6 @@ bool sendToBoard() {
 
 	radio.startListening();
 
-	// debug.print(DEBUG, "Sending: %d \n", esk8.controllerPacket.throttle);
-
     bool timeout = false;                    
     // wait until response has arrived
     if ( !radio.available() ){                             // While nothing is received
@@ -473,8 +444,10 @@ bool sendToBoard() {
     	while ( radio.available() ) {
 			radio.read( &esk8.boardPacket, sizeof(esk8.boardPacket) );
 		}
-		Serial.print(".");
-		//debug.print(COMMUNICATION, "battery: %.1fV vesc: %d \n", esk8.boardPacket.batteryVoltage, esk8.boardPacket.vescOnline);
+
+		debug.print(COMMUNICATION, "%d %s \n",
+			esk8.controllerPacket.throttle,
+			canAccelerateCallback() == true ? "d" : ".");
     }
 	
     return sentOK;
