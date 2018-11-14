@@ -46,6 +46,9 @@ esk8Lib esk8;
 
 VescUart UART;
 
+#define 	ROLE_BOARD 		1
+#define 	ROLE_CONTROLLER 0
+
 #define 	GET_VESC_DATA_INTERVAL	1000
 #define 	CONTROLLER_ONLINE_MS	500
 
@@ -64,7 +67,6 @@ volatile long lastControllerPacketTime = 0;
 volatile float packetData = 0.1;
 
 //--------------------------------------------------------------------------------
-
 #define 	VESC_UART_RX		16		// orange - VESC 5
 #define 	VESC_UART_TX		17		// green - VESC 6
 #define 	VESC_UART_BAUDRATE	19200	// old: 9600
@@ -156,7 +158,8 @@ void tSendToVESC_callback() {
 
 	UART.nunchuck.valueY = esk8.controllerPacket.throttle;
 	UART.nunchuck.lowerButton = false;
-	UART.setNunchuckValues();
+
+  UART.setNunchuckValues();
 
     taskEXIT_CRITICAL(&mmux);
 }
@@ -213,7 +216,7 @@ void setup()
     // Setup serial connection to VESC
     Serial1.begin(VESC_UART_BAUDRATE);
 
-	while (!Serial) {;}
+  while (!Serial) {;}
 
 	/** Define which ports to use as UART */
 	UART.setSerialPort(&Serial1);
@@ -274,10 +277,6 @@ void loop() {
 
 	runner.execute();
 
-	// if (millis() > otaHandleTimeoutMillis)	 {
-	// 	ArduinoOTA.handle();
-	// }
-
 	vTaskDelay( 10 );
 }
 //*************************************************************
@@ -300,6 +299,7 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	}
 	vTaskDelete(NULL);
 }
+
 /***************************************************************/
 bool checkForControllerPacketThenRespond() {
 
@@ -330,9 +330,12 @@ bool respond(byte pipeNo) {
 //--------------------------------------------------------------
 bool getVescValues() {
 
-    VESCValues vescValues;
-
-    // if ( UART.getVescValues() == false ) {
+  esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
+    }
+    else {
+    	vescConnected = false;
+    }
+  // if ( UART.getVescValues() == false ) {
     // 	return false;
     // }
 
@@ -361,6 +364,7 @@ void setupRadio() {
   	radio.openReadingPipe( 1, esk8.listening_pipes[esk8.RF24_BOARD] );
 
 	radio.startListening();
+
 }
 
 //--------------------------------------------------------------------------------
