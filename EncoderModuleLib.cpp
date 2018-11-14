@@ -52,6 +52,14 @@ void EncoderModuleLib::update() {
 	}
 }
 
+bool EncoderModuleLib::isConnected() {
+	Wire.beginTransmission(0x30);
+	Wire.write(0x00);
+	Wire.endTransmission();
+	Wire.requestFrom(0x30, 1);
+	return Wire.available();
+}
+
 void EncoderModuleLib::setEncoderCount(int count) {
 	_oldCounter = 0;
 	encoder.writeCounter(_oldCounter);
@@ -85,20 +93,32 @@ void EncoderModuleLib::handleCounterChanged(int newCounter, bool canAccelerate) 
 		if (newCounter > 0) {
 			if (canAccelerate) {
 				_oldCounter = newCounter;
-				_encoderChangedEventCallback(newCounter);
+
+				int mappedReading = mapCounterTo127to255(_oldCounter);
+				_encoderChangedEventCallback(mappedReading);
 			}
 			else {
 				// can't go above 0
 				encoder.writeCounter(0);
 			}
-
 		}
 		else {
 			_oldCounter = newCounter;
-			_encoderChangedEventCallback(newCounter);
+			int mappedReading = mapCounterTo127to255(_oldCounter);
+			_encoderChangedEventCallback(mappedReading);
 		}
 		_oldCounter = newCounter;
 	}
+}
+
+// map minLimit-0-maxlimit to 0-127-255
+int EncoderModuleLib::mapCounterTo127to255(int counter) {
+	int rawMiddle = 0;
+
+	if (counter >= rawMiddle) {
+		return map(counter, rawMiddle, _encoderCounterMaxLimit, 127, 255);
+	}
+	return map(counter, _encoderCounterMinLimit, rawMiddle, 0, 127);
 }
 
 bool EncoderModuleLib::encoderPressed() {

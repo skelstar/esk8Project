@@ -10,6 +10,7 @@
 #include <debugHelper.h>
 #include <esk8Lib.h>
 #include <EncoderModuleLib.h>
+#include <JoystickModuleLib.h>
 
 #include "i2cEncoderLib.h"
 
@@ -50,12 +51,15 @@ TFT_eSprite img = TFT_eSprite(&tft);
 
 //--------------------------------------------------------------
 
-void setupRadio();
+enum PeripheralConnected {
+	ENCODER_MODULE,
+	JOYSTICK_MODULE
+} _peripheralType;
 
 //--------------------------------------------------------------------------------
 
-int32_t encoderCounter;
-int32_t oldEncoderCounter = 0;
+int32_t throttleValue;
+int32_t oldThrottleValue = 0;
 uint8_t encoder_status;
 // stats
 int32_t packetsSent = 0;
@@ -87,8 +91,6 @@ bool encoderOnline = true;
 
 const char compile_date[] = __DATE__ " " __TIME__;
 
-int mapEncoderToThrottleValue(int raw);
-
 //--------------------------------------------------------------
 
 bool throttleChanged = false;
@@ -99,10 +101,11 @@ int throttle = 127;
 //--------------------------------------------------------------
 
 void encoderChangedEvent(int encoderValue);
+void joystickChangedEvent(int joystickValue);
 void encoderPressedEventCallback();
 bool canAccelerateCallback();
 void encoderOnlineEvent(bool online);
-
+//--------------------------------------------------------------
 EncoderModuleLib encoderModule(
 	&encoderChangedEvent, 
 	&encoderPressedEventCallback,
@@ -110,25 +113,37 @@ EncoderModuleLib encoderModule(
 	&canAccelerateCallback,
 	 -20, 15);
 
-void encoderChangedEvent(int encoderValue) {
-	debug.print(DEBUG, "encoderChangedEvent(%d); \n", encoderValue);
+void encoderChangedEvent(int newThrottleValue) {
+	debug.print(DEBUG, "encoderChangedEvent(%d); \n", throttleValue);
 	throttleChanged = true;
 
-	encoderCounter = encoderValue > 127
-		 ? -256 + encoderValue 	// ie -254 = -2
-		 : encoderValue;
+	throttleValue = newThrottleValue;
 	setControllerPacketThrottle();
 	updateDisplay(/* mode */ 1, /* backlight */ esk8.controllerPacket.throttle <= 127 );
 }
 
 void encoderPressedEventCallback() {
-	encoderCounter = 0;
-	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+	throttleValue = 127;
+	esk8.controllerPacket.throttle = throttleValue;
 	encoderModule.setEncoderCount(0);
 
 	throttleChanged = true;	
 	debug.print(HARDWARE, "encoderPressedEventCallback(); \n");
 }
+//--------------------------------------------------------------
+JoystickModuleLib joystickModule(
+	&joystickChangedEvent, 
+	&canAccelerateCallback);
+
+void joystickChangedEvent(int joystickValue) {
+	debug.print(DEBUG, "joystickChangedEvent(%d); \n", joystickValue);
+	throttleChanged = true;
+
+	throttleValue = joystickValue;
+	setControllerPacketThrottle();
+	updateDisplay(/* mode */ 1, /* backlight */ esk8.controllerPacket.throttle <= 127 );
+}
+
 
 bool canAccelerateCallback() {
 	digitalWrite(DEADMAN_SWITCH, 1);
@@ -289,18 +304,13 @@ OnlineStatus boardCommsStatus(&boardOfflineCallback, &boardOnlineCallback);
 //------------------------------------------------------------------------------
 void setControllerPacketThrottle() {
 
-	bool accelerating = encoderCounter > oldEncoderCounter;
-	bool decelerating = encoderCounter < oldEncoderCounter;
+	bool accelerating = throttleValue > oldThrottleValue;
+	bool decelerating = throttleValue < oldThrottleValue;
 
-	esk8.controllerPacket.throttle = mapEncoderToThrottleValue(encoderCounter);
+	esk8.controllerPacket.throttle = throttleValue;
 
 	throttleChanged = accelerating || decelerating;
 }
-
-// void packetAvailable_Callback(int test) {
-// 	debug.print(COMMUNICATION, "packetAvailable_Callback() \n");
-// }
-
 //--------------------------------------------------------------
 
 #define COMMS_TIMEOUT_PERIOD 	1000
@@ -320,7 +330,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | COMMUNICATION | DEBUG | ONLINE_STATUS );
+	debug.setFilter( STARTUP | DEBUG | ONLINE_STATUS );
 	//debug.setFilter( STARTUP );
 
 	setupRadio();
@@ -350,12 +360,6 @@ void setup() {
 
 	esk8.begin(esk8.RF24_CONTROLLER);
 
-	// bool encoderModuleOnline = setupEncoderModule(/* min */ -20, /* max */ 15);
-
-	// img.drawString( encoderModuleOnline 
-	// 	? "ENCODER_MODULE: connected" 
-	// 	: "ENCODER_MODULE: --------", 
-	// 	10, 20, 1);
 	img.pushSprite(200, 100); delay(500);	
 
 	runner.startNow();
@@ -366,6 +370,9 @@ void setup() {
 	boardCommsStatus.serviceState(false);
 
 	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
+
+	_peripheralType = getPeripheral();
+	// peripheral
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -390,21 +397,16 @@ void loop() {
 
 	runner.execute();
 
-	encoderModule.update();
+	if (_peripheralType == ENCODER_MODULE) {	
+		encoderModule.update();
+ 	}
+ 	else if (_peripheralType == JOYSTICK_MODULE) {
+ 		joystickModule.update();
+ 	}
 
 	if ( throttleChanged ) {
 		tSendControllerValues.restart();
 		throttleChanged = false;
-
-
-		// if ( esk8.controllerPacket.throttle == 127 ) {
-		// // 	char buf[100];
-		// // 	sprintf(buf, "%0.1f", esk8.boardPacket.batteryVoltage);
-		// }
-		// else if (esk8.controllerPacket.throttle != 127) {
-		// 	// maybe hide display?
-		// 	updateDisplay(/*mode*/1, /*backlight*/0);
-		// }
 	}
 
 	vTaskDelay( 10 );
@@ -426,6 +428,18 @@ void codeForEncoderTask( void *parameter ) {
 	vTaskDelete(NULL);
 }
 //**************************************************************
+
+PeripheralConnected getPeripheral() {
+
+	if (encoderModule.isConnected())	 {
+		debug.print(STARTUP, " Encoder: Connected \n");
+		return ENCODER_MODULE;
+	} else if (joystickModule.isConnected()) {
+		debug.print(STARTUP, " Joystick: Connected \n");
+		joystickModule.begin(joystickModule.Y_AXIS);
+		return JOYSTICK_MODULE;
+	}
+}
 
 bool sendToBoard() {
 
@@ -453,16 +467,6 @@ bool sendToBoard() {
     return sentOK;
 }
 //--------------------------------------------------------------
-int mapEncoderToThrottleValue(int raw) {
-	int mappedThrottle = 0;
-	int rawMiddle = 0;
-
-	if (raw >= rawMiddle) {
-		return map(raw, rawMiddle, encoderModule.getEncoderMaxLimit(), 127, 255);
-	}
-	return map(raw, encoderModule.getEncoderMinLimit(), rawMiddle, 0, 127);
-}
-//--------------------------------------------------------------
 void setupRadio() {
     radio.begin();
     radio.setPALevel(RF24_PA_MIN);
@@ -473,20 +477,6 @@ void setupRadio() {
   	radio.openReadingPipe( 1, esk8.talking_pipes[esk8.RF24_BOARD] );
 
     radio.printDetails();
-}
-//--------------------------------------------------------------
-// int setupEncoderModule(int minLimit, int maxLimit) {
-		
-// 	encoderModule.update();
-
-// 	return  
-// 		encoderModule.setPixelBrightness(10) == 0 &&
-// 		encoderModule.setEncoderLimits(minLimit, maxLimit) == 0;
-// }
-
-void setEncoderLimits(int min, int max) {
-	encoderModule.setEncoderMinMax(min, max);
-	Serial.printf("min: %d (%d) max: %d \n", (byte)min, 0 - (255-(byte)min), (byte)max);
 }
 //--------------------------------------------------------------
 

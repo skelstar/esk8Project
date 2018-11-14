@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "i2cEncoderLib.h"
+#include <Wire.h>
 
 class EncoderModuleLib 
 {
@@ -25,6 +26,7 @@ class EncoderModuleLib
 
 		void handleCounterChanged(int newCounter, bool canAccelerate);
 		void setupEncoder(int maxCounts, int minCounts);
+		int mapCounterTo127to255(int counter);
 
     public:
 		// enum StateCode {
@@ -46,6 +48,7 @@ class EncoderModuleLib
 			int maxLimit);
 
         void update();
+        bool isConnected();
         bool encoderPressed();
         void setEncoderCount(int count);
         void setEncoderMinMax(int minLimit, int maxLimit);
