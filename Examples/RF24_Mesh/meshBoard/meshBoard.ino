@@ -1,69 +1,62 @@
 #if (defined(__AVR__))
-	#include <avr\ pgmspace.h > 
+    #include <avr\ pgmspace.h> 
 #else
-	#include <pgmspace.h > 
+    #include <pgmspace.h> 
 #endif
-#include <RF24.h > 
-#include <RF24Network.h > 
-#include <SPI.h >
-// #include "//printf.h"
+#include <RF24Network.h> 
+#include <RF24.h> 
+#include <SPI.h>
+#include "WiFi.h"
 
-/***********************************************************************
-************* Set the Node Address *************************************
-/***********************************************************************/
+#define     NODE_BOARD          00
+#define     NODE_CONTROLLER     01
+#define     NODE_HUD            02
+#define     NODE_TEST           03
 
-// These are the Octal addresses that will be assigned
-const uint16_t node_address_set[10] = { 00, 02, 05, 012, 015, 022, 025, 032, 035, 045 };
-
-// 0 = Master
-// 1-2 (02,05)   = Children of Master(00)
-// 3,5 (012,022) = Children of (02)
-// 4,6 (015,025) = Children of (05)
-// 7   (032)     = Child of (02)
-// 8,9 (035,045) = Children of (05)
-
-uint8_t NODE_ADDRESS = 1; // Use numbers 0 through to select an address from the array
+// https://github.com/nRF24/RF24Network/blob/master/examples/Network_Ping/Network_Ping.ino
 
 /***********************************************************************/
 /***********************************************************************/
-
 RF24 radio(33, 26); // CE & CS pins to use (Using 7,8 on Uno,Nano)
 RF24Network network(radio);
 
 uint16_t this_node; // Our node address
 
-const unsigned long interval = 1000; // ms       // Delay manager to send pings regularly.
+const unsigned long interval = 3000; // ms       // Delay manager to send pings regularly.
 unsigned long last_time_sent;
+unsigned long last_fail_time = 0;
 
-const short max_active_nodes = 10; // Array of nodes we are aware of
-uint16_t active_nodes[max_active_nodes];
-short num_active_nodes = 0;
-short next_ping_node_index = 0;
-
-uint8_t _throttle;
-
-bool send_T(uint16_t to); // Prototypes for functions to send & handle messages
-bool send_N(uint16_t to);
-void handle_T(RF24NetworkHeader & header);
-void handle_N(RF24NetworkHeader & header);
-void handler_Throttle(RF24NetworkHeader & header);
-void add_node(uint16_t node);
-
+unsigned long last_id_received = -1;
+unsigned long current_id = 0;
+//--------------------------------------------------------------
 void setup() {
 
     Serial.begin(9600);
-    Serial.println("Board: ready...");
-    //printf_begin();
-    Serial.printf("\n\rRF24Network/examples/meshping/\n\r");
+    const char filepath[] = __FILE__;
+    Serial.printf("\n\r%s\n\r", filepath);
 
-    this_node = node_address_set[NODE_ADDRESS]; // Which node are we?
+    uint64_t chipid = ESP.getEfuseMac();    //The chip ID is essentially its MAC address(length: 6 bytes).
+    Serial.printf("ESP32 Chip ID = %04u \n", (uint16_t)(chipid>>32));//print High 2 bytes
+
+    WiFi.mode( WIFI_OFF );  // WIFI_MODE_NULL
+    btStop();   // turn bluetooth module off
+
+    this_node = NODE_BOARD;
+    Serial.printf("this_node: 0%o - NODE_BOARD\n\n", this_node);
 
     SPI.begin(); // Bring up the RF network
     radio.begin();
-    radio.setPALevel(RF24_PA_HIGH);
+    radio.setPALevel(RF24_PA_MIN);
+    radio.printDetails();
+    
     network.begin( /*channel*/ 100, /*node address*/ this_node);
-
+    // network.multicastRelay = true;
 }
+//--------------------------------------------------------------
+
+int rxCount = 0;
+long nowMs = 0;
+#define TX_INTERVAL 500
 
 void loop() {
 
@@ -75,39 +68,61 @@ void loop() {
         network.peek(header);
 
         switch (header.type) { // Dispatch the message to the correct handler.
-        case 'T':
-            handle_T(header);
-            break;
-        case 'N':
-            handle_N(header);
-            break;
-        case 'A':
-        	handler_Throttle(header);
-        	if (send_Throttle(00) == true) {
-        		Serial.printf("Send %d to 00 \n", _throttle);
-        	} else {
-        		Serial.printf("Failed to send %d to 00 \n", _throttle);
-        	}
-        	break;
-        default:
-            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
-            network.read(header, 0, 0);
-            break;
+	        case 'T':
+	            handle_T(header);
+	            break;
+	        default:
+	            Serial.printf("*** WARNING *** Unknown message type %c\n\r", header.type);
+	            network.read(header, 0, 0);
+	            break;
         };
+
+        if (rxCount++ % 60 == 0) {
+            Serial.println();
+        }
+    }
+
+    if (millis() - nowMs > TX_INTERVAL) {
+        nowMs = millis();
+
+        send_Multicast();
     }
 }
 //--------------------------------------------------------------
-bool send_Throttle(uint16_t to) {
+int send_Multicast() {
+    RF24NetworkHeader header(00, /*type*/ 'T' /*Time*/ );
 
-    RF24NetworkHeader header( to, 'A' );
+    unsigned long message = 9999;
+    uint8_t level = 1;
+    return network.multicast(header, &message, sizeof(unsigned long), level);
+}
 
-    return network.write(header, &_throttle, sizeof(_throttle));
+
+//--------------------------------------------------------------
+void handle_T(RF24NetworkHeader &header) {
+    unsigned long message;
+    network.read(header, &message, sizeof(unsigned long));
+
+    if (header.from_node == NODE_CONTROLLER) {
+        Serial.print(".");
+        last_id_received = message;
+    }
+    else {
+	    Serial.printf("-----> Id received %lu from 0%o\n\r", message, header.from_node);
+    }
 }
 //--------------------------------------------------------------
-void handler_Throttle(RF24NetworkHeader & header) {
-	
-	static uint8_t throttle = 127;
-	network.read(header, &throttle, sizeof(throttle));
-	_throttle = throttle;
-	Serial.printf("Throttle from Controler: %d\n", _throttle);
+bool checksumMatches(unsigned long message) {
+    return last_id_received + 1 == message;
 }
+//--------------------------------------------------------------
+bool send_T(uint16_t to) {
+    RF24NetworkHeader header( /*to node*/ to, /*type*/ 'T' /*Time*/ );
+
+    // The 'T' message that we send is just a ulong, containing the time
+    unsigned long message = millis();
+    // Serial.printf("---------------------------------\n\r");
+    // Serial.printf("APP Sending %lu to 0%o...", current_id, to);
+    return network.write(header, &message, sizeof(unsigned long));
+}
+//--------------------------------------------------------------

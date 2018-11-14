@@ -4,6 +4,11 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <RF24.h>
+#include <RF24Network.h > 
+
+#include <esp_int_wdt.h>
+#include <esp_task_wdt.h>
+
 // #include <debugHelper.h>
 
 //--------------------------------------------------------------------------------
@@ -11,13 +16,22 @@
 struct BoardStruct{
 	// int32_t rpm;
 	float batteryVoltage;
+	int id;
+	int vescOnline;
 };
 
 
 struct ControllerStruct {
 	int throttle;
 	int encoderButton;
+	int id;
 };
+
+struct HudReqStruct {
+	int id;
+};
+
+typedef void ( *PacketAvailableCallback )( int test );
 
 // #define	STARTUP 		1 << 0
 // #define WARNING 		1 << 1
@@ -35,32 +49,52 @@ class esk8Lib
 			ERR_TIMEOUT
 		};
 
+		enum Role {
+			RF24_BOARD		=	0,
+			RF24_CONTROLLER	=	1,
+			RF24_HUD		=	2
+		};
+
+		enum RoleType {
+			CONTROLLER,
+			BOARD,
+			HUD
+		};
+
 		esk8Lib();
-		// void begin(RF24 *radio, int role, int radioNumber, debugHelper *debug);
 		
-		void begin(RF24 *radio, int role, int radioNumber);
-		
-		int checkForPacket();
-		int packetChanged();
-		int sendThenReadACK();
+		void begin(Role role);
+		void service();
+		int send();
 		int controllerOnline();
-		int controllerOnline(int period);
 		int boardOnline();
-		int getSendInterval();
+		void enableDebug();
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
+		HudReqStruct hudReqPacket;
 
-		// VESC_DATA vescdata;
-
-
+		const uint64_t talking_pipes[5] = { 0xF0F0F0F0D2LL, 0xF0F0F0F0C3LL, 0xF0F0F0F0B4LL, 0xF0F0F0F0A5LL, 0xF0F0F0F096LL };
+		const uint64_t listening_pipes[5] = { 0x3A3A3A3AD2LL, 0x3A3A3A3AC3LL, 0x3A3A3A3AB4LL, 0x3A3A3A3AA5LL, 0x3A3A3A3A96LL };
 
 	private:
 		RF24 *_radio;
-		int _role;
+		RF24Network *_network;
+		uint16_t _this_node;
+		uint16_t _other_node;
+
+		long _lastSentToController;
+		long _lastSentToBoard;
+
 		long _lastPacketReadTime;
-		// debugHelper *_debug;
-		// ControllerStruct _oldControllerPacket;
+		long _lastControllerCommsTime;
+		long _lastBoardCommsTime;
+		bool _debugMessages = false;
+
+		void handle_Controller_Message(RF24NetworkHeader& header);
+		void handle_Board_Message(RF24NetworkHeader& header);
+
+		PacketAvailableCallback _packetAvailableCallback;
 
 };
 
