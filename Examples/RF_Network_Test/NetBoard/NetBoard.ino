@@ -96,21 +96,25 @@ void setup() {
 **************************************************************/
 
 long now = 0;
+byte boardCounter = 0;
 
 void loop() {
 
 	byte pipeNo, gotByte;     
 
-	while (radio.available(&pipeNo)) {
-		radio.read(&counter, 1);
+	while (radio.available()) {
+		esk8.readPacket();
+		//radio.read(&counter, 1);
 		// radio.writeAckPayload(pipeNo, &gotByte, 1);
-		debug.print(DEBUG, "Rx from Controller: %d (pipe: %d) \n", counter, pipeNo);
+		debug.print(DEBUG, "Rx from Controller: %d (pipe: %d) \n", esk8.rxCounter);
 	}
 
 	bool timeToTx = millis()-now > 2000;
 	if ( timeToTx ) {
 		now = millis();
-		sendPacket();
+		esk8.sendPacket(boardCounter);
+		debug.print(DEBUG, "Sent: %d \n", boardCounter);
+		boardCounter++;
 	}
 
 	vTaskDelay( 10 );
@@ -135,41 +139,8 @@ void codeForEncoderTask( void *parameter ) {
 
 void setupRadio() {
 	SPI.begin();                                           // Bring up the RF network
+
 	radio.begin();
-	// radio.setAutoAck(1);                    // Ensure autoACK is enabled
-	// radio.enableAckPayload();               // Allow optional ack payloads
-	radio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
-	radio.setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
-	radio.openWritingPipe(pipes[0]);        // Both radios listen on the same pipes by default, and switch when writing
-	radio.openReadingPipe(1, pipes[1]);
-	radio.startListening();                 // Start listening
-	radio.printDetails();                   // Dump the configuration of the rf unit for debugging
+
+	esk8.begin(&radio, esk8.RF24_BOARD);
 }
-
-bool sendPacket() {
-	
-	radio.stopListening();
-
-	bool sentOk = radio.write(&counter, sizeof(counter));
-
-	radio.startListening();                 // Start listening
-
-	debug.print(DEBUG, "Sent %d to Controller \n", counter);
-	// if (sentOk) { 
-	// 	if ( radio.available() == false ) {
-	// 		debug.print(DEBUG, "Blank response \n");
-	// 	}
-	// 	else {
-	// 		while ( radio.available() ) {
-	// 			radio.read(&gotByte, 1);
-	// 			debug.print(DEBUG, "Response: %d \n", gotByte);
-	// 		}
-	// 	}
-	// }
-
-	return sentOk;
-}
-
-void readPacket() {
-}
-
