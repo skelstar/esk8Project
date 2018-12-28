@@ -135,35 +135,5 @@ void setupRadio() {
 
 	radio.begin();
 
-	esk8.begin(&radio, true);
+	esk8.begin(&radio, esk8.RF24_CONTROLLER);
 }
-
-// bool sendPacket() {
-	
-// 	radio.stopListening();
-
-// 	bool sentOk = radio.write(&counter, ROLE_BOARD);
-
-// 	radio.startListening();                 // Start listening
-
-// 	if (sentOk == false) {
-// 		debug.print(DEBUG, "FAILED \n");
-// 	}
-
-// 	counter++;
-// 	return sentOk;
-// }
-
-// void readPacket() {
-
-// 	esk8.readPacket();
-
-// 	byte pipeNo;     
-
-// 	while (radio.available(&pipeNo)) {
-// 		radio.read(&counter, 1);
-// 		debug.print(DEBUG, "Rx from Board: %d (pipe: %d) \n", counter, pipeNo);
-// 	}
-// }
-
-

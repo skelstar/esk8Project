@@ -42,11 +42,6 @@ typedef void ( *PacketAvailableCallback )( int test );
 class esk8Lib
 {
 	public:
-		enum ReturnCode {
-			CODE_SUCCESS,
-			ERR_NOT_SEND_OK,
-			ERR_TIMEOUT
-		};
 
 		enum Role {
 			RF24_BOARD		=	0,
@@ -62,7 +57,7 @@ class esk8Lib
 
 		esk8Lib();
 		
-		void begin(RF24 *radio, bool isMaster);
+		void begin(RF24 *radio, Role role);
 		void service();
 		bool sendPacket(byte counter);
 		void readPacket();
@@ -77,6 +72,7 @@ class esk8Lib
 
 	private:
 		RF24 *_radio;
+		Role _role;
 
 		uint16_t _this_node;
 		uint16_t _other_node;

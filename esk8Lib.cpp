@@ -6,9 +6,11 @@
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(RF24 *radio, bool isController) {	
+void esk8Lib::begin(RF24 *radio, Role role) {	
 
 	byte pipes[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
+
+	_role = role;
 
 	_radio = radio;
 
@@ -16,7 +18,7 @@ void esk8Lib::begin(RF24 *radio, bool isController) {
 	_radio->setRetries(0,15);                 // Smallest time between retries, max no. of retries
 	_radio->setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
 	
-	if ( isController ) {
+	if ( _role == RF24_CONTROLLER ) {
 		_radio->openWritingPipe(pipes[1]);        // Both radios listen on the same pipes by default, and switch when writing
 		_radio->openReadingPipe(1, pipes[0]);
 	}
