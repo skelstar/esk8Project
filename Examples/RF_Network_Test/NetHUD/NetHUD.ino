@@ -30,6 +30,7 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 // TTGO-TQ
 #define SPI_CE        15
 #define SPI_CS        13
+#define NRF24_POWER_PIN        2
 // M5Stack
 // #define SPI_CE        5 
 // #define SPI_CS        13
@@ -79,6 +80,9 @@ void setup() {
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetHUD.ino \n");
+
+    pinMode(NRF24_POWER_PIN, OUTPUT);
+    digitalWrite(NRF24_POWER_PIN, HIGH);
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
