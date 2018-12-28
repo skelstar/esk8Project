@@ -95,7 +95,7 @@ void setup() {
 					LOOP
 **************************************************************/
 
-int millisUntilSendPacket = 500;
+int millisUntilSendPacket = 1000;
 long now = 0;
 
 void loop() {

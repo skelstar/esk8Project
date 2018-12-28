@@ -44,7 +44,7 @@ RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 
 int radioNumber = ROLE_BOARD;
 
-byte addresses[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
+byte pipes[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
 
 byte counter = 0;
 
@@ -79,24 +79,7 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetBoard.ino \n");
 
-	SPI.begin();                                           // Bring up the RF network
-	radio.begin();
-	radio.setPALevel(RF24_PA_HIGH);
-
-	radio.enableAckPayload();                     // Allow optional ack payloads
-	radio.enableDynamicPayloads();                // Ack payloads are dynamic payloads
-
-	if (this_node == ROLE_MASTER) {
-		radio.openWritingPipe(addresses[1]);
-		radio.openReadingPipe(1, addresses[0]);
-	}
-	else {
-		radio.openWritingPipe(addresses[0]);
-		radio.openReadingPipe(1, addresses[1]);
-	}
-	radio.startListening();
-	radio.writeAckPayload(1, &counter, 1);          // Pre-load an ack-paylod into the FIFO buffer for pipe 1
-	radio.printDetails();
+    setupRadio();
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -112,14 +95,22 @@ void setup() {
 					LOOP
 **************************************************************/
 
+long now = 0;
+
 void loop() {
 
 	byte pipeNo, gotByte;     
 
 	while (radio.available(&pipeNo)) {
-		radio.read(&gotByte, 1);
-		radio.writeAckPayload(pipeNo, &gotByte, 1);
-		debug.print(DEBUG, "Replied with %d \n", gotByte);
+		radio.read(&counter, 1);
+		// radio.writeAckPayload(pipeNo, &gotByte, 1);
+		debug.print(DEBUG, "Rx from Controller: %d (pipe: %d) \n", counter, pipeNo);
+	}
+
+	bool timeToTx = millis()-now > 2000;
+	if ( timeToTx ) {
+		now = millis();
+		sendPacket();
 	}
 
 	vTaskDelay( 10 );
@@ -142,9 +133,41 @@ void codeForEncoderTask( void *parameter ) {
 }
 //**************************************************************
 
-bool sendPacket(uint16_t to) {
+void setupRadio() {
+	SPI.begin();                                           // Bring up the RF network
+	radio.begin();
+	// radio.setAutoAck(1);                    // Ensure autoACK is enabled
+	// radio.enableAckPayload();               // Allow optional ack payloads
+	radio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
+	radio.setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
+	radio.openWritingPipe(pipes[0]);        // Both radios listen on the same pipes by default, and switch when writing
+	radio.openReadingPipe(1,pipes[1]);
+	radio.startListening();                 // Start listening
+	radio.printDetails();                   // Dump the configuration of the rf unit for debugging
+}
+
+bool sendPacket() {
 	
-	return true;
+	radio.stopListening();
+
+	bool sentOk = radio.write(&counter, sizeof(counter));
+
+	radio.startListening();                 // Start listening
+
+	debug.print(DEBUG, "Sent %d to Controller \n", counter);
+	// if (sentOk) { 
+	// 	if ( radio.available() == false ) {
+	// 		debug.print(DEBUG, "Blank response \n");
+	// 	}
+	// 	else {
+	// 		while ( radio.available() ) {
+	// 			radio.read(&gotByte, 1);
+	// 			debug.print(DEBUG, "Response: %d \n", gotByte);
+	// 		}
+	// 	}
+	// }
+
+	return sentOk;
 }
 
 void readPacket() {
