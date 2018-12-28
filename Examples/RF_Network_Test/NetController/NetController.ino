@@ -30,16 +30,16 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 #define SPI_CE        5 	// 33 dev    // white/purple
 #define SPI_CS        13	// 26 dev   // green
 
-#define ROLE_CONTROLLER    	0
-#define ROLE_BOARD    		1
-#define ROLE_HUD    		2
+#define ROLE_MASTER    		0
+#define ROLE_BOARD    		2
+#define ROLE_HUD    		3
 
 bool radioNumber = 1;
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
-uint16_t  this_node = ROLE_CONTROLLER;
+uint16_t  this_node = ROLE_MASTER;
 
 int offlineCount = 0;
 int encoderOfflineCount = 0;
@@ -74,7 +74,7 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetController.ino \n");
 
-	this_node = ROLE_CONTROLLER;            // Which node are we?
+	this_node = ROLE_MASTER;            // Which node are we?
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();

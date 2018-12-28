@@ -30,9 +30,9 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 #define SPI_CE        5 	//33    // white/purple
 #define SPI_CS        13	//26  // green
 
-#define ROLE_CONTROLLER    	0
-#define ROLE_BOARD    		1
-#define ROLE_HUD    		2
+#define ROLE_MASTER    		0
+#define ROLE_BOARD    		2
+#define ROLE_HUD    		3
 
 int role = ROLE_CONTROLLER;
 bool radioNumber = 1;
