@@ -44,8 +44,6 @@ RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 
 int radioNumber = ROLE_MASTER;
 
-byte pipes[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
-
 byte counter = 0;
 
 uint16_t  this_node = ROLE_MASTER;
@@ -102,11 +100,14 @@ void loop() {
 
 	if (millis() - now > millisUntilSendPacket) {
 		now = millis();
-		sendPacket();
+		if ( esk8.sendPacket(counter) ) {
+			counter++;
+		}
 	}
 
 	if ( radio.available() == true ) {
-		readPacket();
+		esk8.readPacket();
+		debug.print(DEBUG, "Rx %d from Board \n", esk8.rxCounter);
 	}
 
 	vTaskDelay( 10 );
@@ -131,49 +132,38 @@ void codeForEncoderTask( void *parameter ) {
 
 void setupRadio() {
 	SPI.begin();                                           // Bring up the RF network
+
 	radio.begin();
-	// radio.setAutoAck(1);                    // Ensure autoACK is enabled
-	// radio.enableAckPayload();               // Allow optional ack payloads
-	radio.setRetries(0, 15);                 // Smallest time between retries, max no. of retries
-	radio.setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
-	radio.openWritingPipe(pipes[1]);        // Both radios listen on the same pipes by default, and switch when writing
-	radio.openReadingPipe(1, pipes[0]);
-	radio.startListening();                 // Start listening
-	radio.printDetails();                   // Dump the configuration of the rf unit for debugging
+
+	esk8.begin(&radio, true);
 }
 
-bool sendPacket() {
+// bool sendPacket() {
 	
-	radio.stopListening();
+// 	radio.stopListening();
 
-	bool sentOk = radio.write(&counter, ROLE_BOARD);
+// 	bool sentOk = radio.write(&counter, ROLE_BOARD);
 
-	radio.startListening();                 // Start listening
+// 	radio.startListening();                 // Start listening
 
-	if (sentOk == false) {
-		debug.print(DEBUG, "FAILED \n");
-	}
+// 	if (sentOk == false) {
+// 		debug.print(DEBUG, "FAILED \n");
+// 	}
 
-	counter++;
-	return sentOk;
-}
+// 	counter++;
+// 	return sentOk;
+// }
 
-bool sendBroadcastPacket(uint16_t to) {
-	// RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
+// void readPacket() {
 
-	// unsigned long message = millis();
-	
-	// return network.multicast(header, &message, sizeof(unsigned long), 1);
-}
+// 	esk8.readPacket();
 
-void readPacket() {
+// 	byte pipeNo;     
 
-	byte pipeNo;     
-
-	while (radio.available(&pipeNo)) {
-		radio.read(&counter, 1);
-		debug.print(DEBUG, "Rx from Board: %d (pipe: %d) \n", counter, pipeNo);
-	}
-}
+// 	while (radio.available(&pipeNo)) {
+// 		radio.read(&counter, 1);
+// 		debug.print(DEBUG, "Rx from Board: %d (pipe: %d) \n", counter, pipeNo);
+// 	}
+// }
 
 
