@@ -1,5 +1,5 @@
 #include <SPI.h>
-#include <RF24Network.h>
+//#include <RF24Network.h>
 #include <RF24.h> 
 #include "WiFi.h"
 
@@ -31,17 +31,18 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 #define SPI_CS        13	// 26 dev   // green
 
 #define ROLE_MASTER    		0
-#define ROLE_BOARD    		2
-#define ROLE_HUD    		3
+#define ROLE_BOARD    		1
+#define ROLE_HUD    		2
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
-RF24Network network(radio); 
+
+int radioNumber = ROLE_MASTER;
+
+byte addresses[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
+
+byte counter = 0;
 
 uint16_t  this_node = ROLE_MASTER;
-
-int offlineCount = 0;
-int encoderOfflineCount = 0;
-bool encoderOnline = true;
 
 //--------------------------------------------------------------------------------
 
@@ -75,8 +76,23 @@ void setup() {
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
 	radio.setPALevel(RF24_PA_HIGH);
-    radio.printDetails();
-	network.begin(/*channel*/ 100, /*node address*/ this_node );
+
+	radio.enableAckPayload();                     // Allow optional ack payloads
+	radio.enableDynamicPayloads();                // Ack payloads are dynamic payloads
+
+	if (this_node == ROLE_MASTER) {
+		radio.openWritingPipe(addresses[1]);
+		radio.openReadingPipe(1, addresses[0]);
+	}
+	else {
+		radio.openWritingPipe(addresses[0]);
+		radio.openReadingPipe(1, addresses[1]);
+	}
+	radio.startListening();
+	radio.writeAckPayload(1, &counter, 1);          // Pre-load an ack-paylod into the FIFO buffer for pipe 1
+	radio.printDetails();
+
+	// network.begin(channel 100, /*node address*/ this_node );
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -99,13 +115,8 @@ void loop() {
 
 	if (millis() - now > millisUntilSendPacket) {
 		now = millis();
-		debug.print(DEBUG, "Sending: %s \n", sendBroadcastPacket(ROLE_BOARD) ? "OK!" : "FAILED");
-	}
-
-	network.update();
-
-	if (network.available()) {
-		readPacket();
+		sendPacket();
+		// debug.print(DEBUG, "Sending: %s \n", sendBroadcastPacket(ROLE_BOARD) ? "OK!" : "FAILED");
 	}
 
 	vTaskDelay( 10 );
@@ -128,30 +139,45 @@ void codeForEncoderTask( void *parameter ) {
 }
 //**************************************************************
 
-bool sendPacket(uint16_t to) {
+bool sendPacket() {
 	
-	RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
+	byte rxByte;
 
-	unsigned long message = millis();
-	
-	return network.write(header, &message, sizeof(unsigned long));
+	radio.stopListening();
+
+	bool sentOk = radio.write(&counter, 1);
+
+	if (sentOk) { 
+		if (!radio.available()) {
+			debug.print(DEBUG, "Blank response \n");
+		}
+		else {
+			while (radio.available()) {
+				radio.read(&rxByte, 1);
+				debug.print(DEBUG, "Response: %d", rxByte);
+			}
+		}
+	}
+
+	counter++;
+	return sentOk;
 }
 
 bool sendBroadcastPacket(uint16_t to) {
-	RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
+	// RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
 
-	unsigned long message = millis();
+	// unsigned long message = millis();
 	
-	return network.multicast(header, &message, sizeof(unsigned long), 1);
+	// return network.multicast(header, &message, sizeof(unsigned long), 1);
 }
 
 void readPacket() {
- 	RF24NetworkHeader header;                            // If so, take a look at it
-    network.peek(header);
+//  	RF24NetworkHeader header;                            // If so, take a look at it
+//     network.peek(header);
 
-	unsigned long message;                                                                      // The 'T' message is just a ulong, containing the time
-	network.read(header, &message, sizeof(unsigned long));
-	printf_P(PSTR("%lu: APP Received %lu from 0%o\n\r"), millis(), message, header.from_node);
+// 	unsigned long message;                                                                      // The 'T' message is just a ulong, containing the time
+// 	network.read(header, &message, sizeof(unsigned long));
+// 	printf_P(PSTR("%lu: APP Received %lu from 0%o\n\r"), millis(), message, header.from_node);
 }
 
 
