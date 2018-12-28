@@ -34,8 +34,6 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 #define ROLE_BOARD    		2
 #define ROLE_HUD    		3
 
-bool radioNumber = 1;
-
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
@@ -74,8 +72,6 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetController.ino \n");
 
-	this_node = ROLE_MASTER;            // Which node are we?
-
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
 	radio.setPALevel(RF24_PA_HIGH);
@@ -103,7 +99,7 @@ void loop() {
 
 	if (millis() - now > millisUntilSendPacket) {
 		now = millis();
-		debug.print(DEBUG, "Sending: %s \n", sendPacket(ROLE_BOARD) ? "OK!" : "FAILED");
+		debug.print(DEBUG, "Sending: %s \n", sendBroadcastPacket(ROLE_BOARD) ? "OK!" : "FAILED");
 	}
 
 	network.update();
@@ -137,10 +133,16 @@ bool sendPacket(uint16_t to) {
 	RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
 
 	unsigned long message = millis();
-	//printf_P(PSTR("---------------------------------\n\r"));
-	//printf_P(PSTR("%lu: APP Sending %lu to 0%o...\n\r"), millis(), message, to);	
 	
 	return network.write(header, &message, sizeof(unsigned long));
+}
+
+bool sendBroadcastPacket(uint16_t to) {
+	RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
+
+	unsigned long message = millis();
+	
+	return network.multicast(header, &message, sizeof(unsigned long), 1);
 }
 
 void readPacket() {
