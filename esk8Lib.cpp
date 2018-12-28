@@ -16,20 +16,19 @@
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(Role role) {	
+void esk8Lib::begin(RF24 *radio, bool isMaster) {	
 
-	_this_node = role; // Which node are we?
-	switch (role) {
-		case RF24_CONTROLLER:
-			_other_node = RF24_BOARD;
-			break;
-		case RF24_BOARD:
-			_other_node = RF24_CONTROLLER;
-			break;
-		default:
-			break;
-	}
+	_radio = radio;
 
+	// _radio.begin();
+	// // radio.setAutoAck(1);                    // Ensure autoACK is enabled
+	// // radio.enableAckPayload();               // Allow optional ack payloads
+	// _radio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
+	// _radio.setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
+	// _radio.openWritingPipe(pipes[0]);        // Both radios listen on the same pipes by default, and switch when writing
+	// _radio.openReadingPipe(1,pipes[1]);
+	// _radio.startListening();                 // Start listening
+	// _radio.printDetails();                   // Dump the configuration of the rf unit for debugging
 
 	Serial.printf("this_node: 0%o, _other_node: 0%o \n", _this_node, _other_node);
 

@@ -105,6 +105,10 @@ void loop() {
 		sendPacket();
 	}
 
+	if ( radio.available() == true ) {
+		readPacket();
+	}
+
 	vTaskDelay( 10 );
 }
 /**************************************************************
@@ -128,34 +132,26 @@ void codeForEncoderTask( void *parameter ) {
 void setupRadio() {
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
-	radio.setAutoAck(1);                    // Ensure autoACK is enabled
-	radio.enableAckPayload();               // Allow optional ack payloads
-	radio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
+	// radio.setAutoAck(1);                    // Ensure autoACK is enabled
+	// radio.enableAckPayload();               // Allow optional ack payloads
+	radio.setRetries(0, 15);                 // Smallest time between retries, max no. of retries
 	radio.setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
 	radio.openWritingPipe(pipes[1]);        // Both radios listen on the same pipes by default, and switch when writing
-	radio.openReadingPipe(1,pipes[0]);
+	radio.openReadingPipe(1, pipes[0]);
 	radio.startListening();                 // Start listening
 	radio.printDetails();                   // Dump the configuration of the rf unit for debugging
 }
 
 bool sendPacket() {
 	
-	byte gotByte;
-
 	radio.stopListening();
 
 	bool sentOk = radio.write(&counter, ROLE_BOARD);
 
-	if (sentOk) { 
-		if ( radio.available() == false ) {
-			debug.print(DEBUG, "Blank response \n");
-		}
-		else {
-			while ( radio.available() ) {
-				radio.read(&gotByte, 1);
-				debug.print(DEBUG, "Response: %d \n", gotByte);
-			}
-		}
+	radio.startListening();                 // Start listening
+
+	if (sentOk == false) {
+		debug.print(DEBUG, "FAILED \n");
 	}
 
 	counter++;
@@ -171,12 +167,13 @@ bool sendBroadcastPacket(uint16_t to) {
 }
 
 void readPacket() {
-//  	RF24NetworkHeader header;                            // If so, take a look at it
-//     network.peek(header);
 
-// 	unsigned long message;                                                                      // The 'T' message is just a ulong, containing the time
-// 	network.read(header, &message, sizeof(unsigned long));
-// 	printf_P(PSTR("%lu: APP Received %lu from 0%o\n\r"), millis(), message, header.from_node);
+	byte pipeNo;     
+
+	while (radio.available(&pipeNo)) {
+		radio.read(&counter, 1);
+		debug.print(DEBUG, "Rx from Board: %d (pipe: %d) \n", counter, pipeNo);
+	}
 }
 
 

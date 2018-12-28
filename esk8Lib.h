@@ -63,7 +63,7 @@ class esk8Lib
 
 		esk8Lib();
 		
-		void begin(Role role);
+		void begin(RF24 *radio, bool isMaster);
 		void service();
 		int send();
 		int controllerOnline();
