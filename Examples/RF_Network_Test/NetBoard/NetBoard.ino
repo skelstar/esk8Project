@@ -129,7 +129,6 @@ void codeForEncoderTask( void *parameter ) {
 	
 	for (;;) {
 
-
 		vTaskDelay( 10 );
 	}
 

@@ -102,14 +102,9 @@ void loop() {
 
 	byte pipeNo, gotByte;     
 
-	while (radio.available(&pipeNo)) {
-		radio.read(&gotByte, 1);
-		if ( pipeNo == 1 ) {
-			debug.print(DEBUG, "Rx from Controller: %d (pipe: %d) \n", gotByte, pipeNo);
-		}
-		else if ( pipeNo == 2 ) {
-			debug.print(DEBUG, "Rx from Board: %d (pipe: %d) \n", gotByte, pipeNo);
-		}
+	if (radio.available()) {
+		esk8.readPacket();
+		debug.print(DEBUG, "Rxd from someone: %d \n", esk8.rxCounter);
 	}
 
 	vTaskDelay( 10 );
@@ -135,29 +130,8 @@ void codeForEncoderTask( void *parameter ) {
 void setupRadio() {
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
-	// radio.setAutoAck(1);                    // Ensure autoACK is enabled
-	// radio.enableAckPayload();               // Allow optional ack payloads
-	radio.setRetries(0, 15);                 // Smallest time between retries, max no. of retries
-	radio.setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
-	radio.openWritingPipe(pipes[0]);        // Both radios listen on the same pipes by default, and switch when writing
-	radio.openReadingPipe(1, pipes[1]);
-	radio.openReadingPipe(2, pipes[0]);
-	radio.startListening();                 // Start listening
-	radio.printDetails();                   // Dump the configuration of the rf unit for debugging
-}
-
-bool sendPacket(uint16_t to) {
 	
-	// RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
-
-	// unsigned long message = millis();
-	// printf_P(PSTR("---------------------------------\n\r"));
-	// printf_P(PSTR("%lu: APP Sending %lu to 0%o...\n\r"), millis(), message, to);	
-	
-	// return network.write(header, &message, sizeof(unsigned long));
-	return true;
+	esk8.begin(&radio, esk8.RF24_HUD);
 }
 
-void readPacket() {
-}
 

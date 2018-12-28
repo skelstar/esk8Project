@@ -18,13 +18,17 @@ void esk8Lib::begin(RF24 *radio, Role role) {
 	_radio->setRetries(0,15);                 // Smallest time between retries, max no. of retries
 	_radio->setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
 	
-	if ( _role == RF24_CONTROLLER ) {
-		_radio->openWritingPipe(pipes[1]);        // Both radios listen on the same pipes by default, and switch when writing
-		_radio->openReadingPipe(1, pipes[0]);
-	}
-	else {
-		_radio->openWritingPipe(pipes[0]);        // Both radios listen on the same pipes by default, and switch when writing
-		_radio->openReadingPipe(1,pipes[1]);
+	switch (_role) {
+		case RF24_CONTROLLER:
+			_radio->openWritingPipe(pipes[1]);        
+			_radio->openReadingPipe(1, pipes[0]);
+			break;
+		case RF24_HUD:
+			_radio->openReadingPipe(2,pipes[0]);	// reads Board packets
+		case RF24_BOARD:
+			_radio->openWritingPipe(pipes[0]);       // reads Master packets
+			_radio->openReadingPipe(1,pipes[1]);
+			break;
 	}
 	_radio->startListening();                 // Start listening
 	_radio->printDetails();                   // Dump the configuration of the rf unit for debugging
@@ -52,6 +56,7 @@ void esk8Lib::readPacket() {
 
 	if ( _radio->available(&pipeNo) ) {
 		_radio->read(&rxCounter, sizeof(rxCounter));
+		Serial.printf("Read from %d \n", pipeNo);
 	}
 }
 //---------------------------------------------------------------------------------
