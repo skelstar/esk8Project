@@ -1,7 +1,5 @@
 #include <SPI.h>
-#include <RF24Network.h>
 #include <RF24.h> 
-#include "WiFi.h"
 
 #include <TaskScheduler.h>
 
@@ -27,8 +25,16 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
-#define SPI_CE        33    // white/purple
-#define SPI_CS        26  // green
+// TTGO-TQ
+// #define SPI_CE        15
+// #define SPI_CS        13
+// #define NRF24_POWER_PIN        2
+// M5Stack
+#define SPI_CE        5 
+#define SPI_CS        13
+// DEV board
+// #define SPI_CE        33    	// white/purple
+// #define SPI_CS        26  	// green
 
 #define ROLE_MASTER    		0
 #define ROLE_BOARD    		1
@@ -138,22 +144,9 @@ void codeForEncoderTask( void *parameter ) {
 
 bool sendPacket(uint16_t to) {
 	
-	// RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
-
-	// unsigned long message = millis();
-	// printf_P(PSTR("---------------------------------\n\r"));
-	// printf_P(PSTR("%lu: APP Sending %lu to 0%o...\n\r"), millis(), message, to);	
-	
-	// return network.write(header, &message, sizeof(unsigned long));
 	return true;
 }
 
 void readPacket() {
- // 	RF24NetworkHeader header;                            // If so, take a look at it
- //    network.peek(header);
-
-	// unsigned long message;                                                                      // The 'T' message is just a ulong, containing the time
-	// network.read(header, &message, sizeof(unsigned long));
-	// printf_P(PSTR("%lu: APP Received %lu from 0%o\n\r"), millis(), message, header.from_node);
 }
 

@@ -1,7 +1,5 @@
 #include <SPI.h>
-#include <RF24Network.h>
 #include <RF24.h> 
-#include "WiFi.h"
 
 #include <TaskScheduler.h>
 
@@ -28,9 +26,9 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 //--------------------------------------------------------------
 
 // TTGO-TQ
-#define SPI_CE        15
-#define SPI_CS        13
-#define NRF24_POWER_PIN        2
+#define SPI_CE        		15
+#define SPI_CS        		13
+#define NRF24_POWER_PIN     2
 // M5Stack
 // #define SPI_CE        5 
 // #define SPI_CS        13
@@ -40,17 +38,16 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 
 #define ROLE_MASTER    		0
-#define ROLE_BOARD    		2
-#define ROLE_HUD    		3
+#define ROLE_BOARD    		1
+#define ROLE_HUD    		1
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
-RF24Network network(radio); 
 
-uint16_t  this_node = ROLE_HUD;
+int radioNumber = ROLE_HUD;
 
-int offlineCount = 0;
-int encoderOfflineCount = 0;
-bool encoderOnline = true;
+byte addresses[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
+
+byte counter = 0;
 
 //--------------------------------------------------------------------------------
 
@@ -81,14 +78,28 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetHUD.ino \n");
 
+    // nRF24 power
     pinMode(NRF24_POWER_PIN, OUTPUT);
     digitalWrite(NRF24_POWER_PIN, HIGH);
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
 	radio.setPALevel(RF24_PA_HIGH);
-    radio.printDetails();
-	network.begin(/*channel*/ 100, /*node address*/ this_node );
+
+	radio.enableAckPayload();                     // Allow optional ack payloads
+	radio.enableDynamicPayloads();                // Ack payloads are dynamic payloads
+
+	if (radioNumber == ROLE_MASTER) {
+		radio.openWritingPipe(addresses[1]);
+		radio.openReadingPipe(1, addresses[0]);
+	}
+	else {
+		radio.openWritingPipe(addresses[0]);
+		radio.openReadingPipe(1, addresses[1]);
+	}
+	radio.startListening();
+	// radio.writeAckPayload(1, &counter, 1);          // Pre-load an ack-paylod into the FIFO buffer for pipe 1
+	radio.printDetails();
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -106,10 +117,12 @@ void setup() {
 
 void loop() {
 
-	network.update();
+	byte pipeNo, gotByte;     
 
-	if (network.available()) {
-		readPacket();
+	while (radio.available(&pipeNo)) {
+		radio.read(&gotByte, 1);
+		// radio.writeAckPayload(pipeNo, &gotByte, 1);
+		debug.print(DEBUG, "Replied with %d \n", gotByte);
 	}
 
 	vTaskDelay( 10 );
@@ -135,21 +148,16 @@ void codeForEncoderTask( void *parameter ) {
 
 bool sendPacket(uint16_t to) {
 	
-	RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
+	// RF24NetworkHeader header(/*to node*/ to, /*type*/ 'T' /*Time*/);
 
-	unsigned long message = millis();
-	printf_P(PSTR("---------------------------------\n\r"));
-	printf_P(PSTR("%lu: APP Sending %lu to 0%o...\n\r"), millis(), message, to);	
+	// unsigned long message = millis();
+	// printf_P(PSTR("---------------------------------\n\r"));
+	// printf_P(PSTR("%lu: APP Sending %lu to 0%o...\n\r"), millis(), message, to);	
 	
-	return network.write(header, &message, sizeof(unsigned long));
+	// return network.write(header, &message, sizeof(unsigned long));
+	return true;
 }
 
 void readPacket() {
- 	RF24NetworkHeader header;                            // If so, take a look at it
-    network.peek(header);
-
-	unsigned long message;                                                                      // The 'T' message is just a ulong, containing the time
-	network.read(header, &message, sizeof(unsigned long));
-	printf_P(PSTR("%lu: APP Received %lu from 0%o\n\r"), millis(), message, header.from_node);
 }
 

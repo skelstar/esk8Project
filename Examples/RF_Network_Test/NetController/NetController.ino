@@ -1,7 +1,5 @@
 #include <SPI.h>
-//#include <RF24Network.h>
 #include <RF24.h> 
-#include "WiFi.h"
 
 #include <TaskScheduler.h>
 
@@ -27,8 +25,16 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
-#define SPI_CE        5 	// 33 dev    // white/purple
-#define SPI_CS        13	// 26 dev   // green
+// TTGO-TQ
+// #define SPI_CE        15
+// #define SPI_CS        13
+// #define NRF24_POWER_PIN        2
+// M5Stack
+#define SPI_CE        5 
+#define SPI_CS        13
+// DEV board
+// #define SPI_CE        33    	// white/purple
+// #define SPI_CS        26  	// green
 
 #define ROLE_MASTER    		0
 #define ROLE_BOARD    		1
@@ -92,8 +98,6 @@ void setup() {
 	radio.writeAckPayload(1, &counter, 1);          // Pre-load an ack-paylod into the FIFO buffer for pipe 1
 	radio.printDetails();
 
-	// network.begin(channel 100, /*node address*/ this_node );
-
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
 		"Task_Encoder",		// name
@@ -116,7 +120,6 @@ void loop() {
 	if (millis() - now > millisUntilSendPacket) {
 		now = millis();
 		sendPacket();
-		// debug.print(DEBUG, "Sending: %s \n", sendBroadcastPacket(ROLE_BOARD) ? "OK!" : "FAILED");
 	}
 
 	vTaskDelay( 10 );
@@ -145,7 +148,7 @@ bool sendPacket() {
 
 	radio.stopListening();
 
-	bool sentOk = radio.write(&counter, 1);
+	bool sentOk = radio.write(&counter, ROLE_BOARD);
 
 	if (sentOk) { 
 		if (!radio.available()) {
