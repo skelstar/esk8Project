@@ -16,7 +16,7 @@
 struct BoardStruct{
 	// int32_t rpm;
 	float batteryVoltage;
-	byte id;
+	int id;
 	int vescOnline;
 };
 
@@ -24,7 +24,7 @@ struct BoardStruct{
 struct ControllerStruct {
 	int throttle;
 	int encoderButton;
-	byte id;
+	int id;
 };
 
 struct HudReqStruct {
@@ -56,6 +56,11 @@ class esk8Lib
 			HUD
 		};
 
+		enum StateEnum {
+			OK,
+			MISSED_PACKET
+		};
+
 		esk8Lib();
 		
 		void begin(RF24 *radio, RF24Network *network, Role role);
@@ -68,6 +73,9 @@ class esk8Lib
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
 		HudReqStruct hudReqPacket;
+		int missingPackets;
+		StateEnum state;
+
 
 	private:
 		RF24 *_radio;
@@ -75,6 +83,9 @@ class esk8Lib
 		Role _role;
 
 		PacketAvailableCallback _packetAvailableCallback;
+
+		int _lastControllerId;
+		int _lastBoardId;
 };
 
 #endif

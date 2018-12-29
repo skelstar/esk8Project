@@ -105,13 +105,22 @@ void loop() {
 	if (millis() - now > millisUntilSendPacket) {
 		now = millis();
 		esk8.sendPacket();
-		debug.print(DEBUG, "Sent: %d \n", esk8.controllerPacket.id);
+		// debug.print(DEBUG, "Sent: %d \n", esk8.controllerPacket.id);
 		esk8.controllerPacket.id++;
 	}
 
 	if ( network.available() ) {
 		esk8.readPacket();
-		debug.print(DEBUG, "Rx %d from Board \n", esk8.boardPacket.id);
+		if ( esk8.state != esk8.OK ) {
+			if ( esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
+				debug.print(DEBUG, 
+					"Missed %d packets from Board at %d minutes \n", 
+					esk8.missingPackets, 
+					millis()/1000/60);
+				esk8.missingPackets = 0;
+			}
+			esk8.state = esk8.OK;
+		}
 	}
 
 	vTaskDelay( 10 );

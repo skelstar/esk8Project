@@ -98,14 +98,23 @@ void loop() {
 
 	while (network.available()) {
 		esk8.readPacket();
-		debug.print(DEBUG, "Rx from Controller: %d \n", esk8.controllerPacket.id);
+		if (esk8.state != OK) {
+			if (esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
+				debug.print(DEBUG, 
+					"Missed %d packets from Controller at %d minutes\n", 
+					esk8.missingPackets, 
+					millis()/1000/60);
+				esk8.missingPackets = 0;
+			}
+			esk8.state = esk8.OK;
+		}
 	}
 
 	bool timeToTx = millis()-now > 2000;
 	if ( timeToTx ) {
 		now = millis();
 		esk8.sendPacket();
-		debug.print(DEBUG, "Sent: %d \n", esk8.boardPacket.id);
+		// debug.print(DEBUG, "Sent: %d \n", esk8.boardPacket.id);
 		esk8.boardPacket.id++;
 	}
 

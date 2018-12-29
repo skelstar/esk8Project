@@ -16,7 +16,7 @@ void esk8Lib::begin(RF24 *radio, RF24Network *network, Role role) {
 	_network = network;
 
 	_radio->begin();
-	_radio->setPALevel(RF24_PA_HIGH);
+	_radio->setPALevel(RF24_PA_LOW);
 
 	switch (_role) {
 		case RF24_BOARD:
@@ -37,6 +37,10 @@ void esk8Lib::begin(RF24 *radio, RF24Network *network, Role role) {
 
 	controllerPacket.throttle = 126;
 	controllerPacket.id = 0;
+
+	missingPackets = 0;
+	state = OK;
+
 	boardPacket.id = 0;
 	hudReqPacket.id = 0;
 }
@@ -68,9 +72,21 @@ char esk8Lib::readPacket() {
 
 	if ( header.type == 'C' ) {
 		_network->read(header, &controllerPacket, sizeof(ControllerStruct));
+		int idDifference = controllerPacket.id - _lastControllerId;
+		_lastControllerId = controllerPacket.id;
+		if ( idDifference > 1 ) {
+			missingPackets = idDifference;
+			state = MISSED_PACKET;
+		}
 	}
 	else if ( header.type == 'B' ) {
 		_network->read(header, &boardPacket, sizeof(BoardStruct));
+		int idDifference = boardPacket.id - _lastBoardId;
+		_lastBoardId = boardPacket.id;
+		if ( idDifference > 1 ) {
+			missingPackets = idDifference;
+			state = MISSED_PACKET;
+		}
 	}
 	else if ( header.type == 'H' ) {
 		//network->read(header, &controllerPacket, sizeof(ControllerStruct));

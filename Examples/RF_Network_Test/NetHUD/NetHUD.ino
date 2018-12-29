@@ -99,16 +99,30 @@ void loop() {
 	network.update();
 
 	if (network.available()) {
+		
 		char type = esk8.readPacket();
-		if (type == 'C') {
-			debug.print(DEBUG, "Rxd from Controller: %d \n", esk8.controllerPacket.id);
+
+		if (esk8.state != OK) {
+			if (esk8.state == esk8.MISSED_PACKET && millis()/1000 > 0) {
+				debug.print(DEBUG, 
+					"Missed %d packets from %s at %d minutes \n", 
+					esk8.missingPackets, 
+					type == 'C' ? "Controller" : "Board",
+					millis()/1000/60);
+				esk8.missingPackets = 0;
+			}
+			esk8.state = esk8.OK;
 		}
-		else if (type == 'B') {
-			debug.print(DEBUG, "Rxd from Board: %d \n", esk8.boardPacket.id);	
-		}
-		else {
-			debug.print(DEBUG, "Unknown packet recieved: '%c' \n", type);		
-		}
+
+		// if (type == 'C') {
+		// 	debug.print(DEBUG, "Rxd from Controller: %d \n", esk8.controllerPacket.id);
+		// }
+		// else if (type == 'B') {
+		// 	debug.print(DEBUG, "Rxd from Board: %d \n", esk8.boardPacket.id);	
+		// }
+		// else {
+		// 	debug.print(DEBUG, "Unknown packet recieved: '%c' \n", type);		
+		// }
 	}
 
 	vTaskDelay( 10 );
