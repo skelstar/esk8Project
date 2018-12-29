@@ -52,6 +52,25 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 #define COMMS_TIMEOUT_PERIOD 	1000
 
+int commsCount = 0;
+int sendPacketInterval = 500;
+
+void packetAvailableCallback( uint16_t from ) {
+
+	reportComms('r');
+	if (esk8.state != OK) {
+		if (esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
+			debug.print(DEBUG, 
+				"Missed %d packets from Controller at %d minutes\n", 
+				esk8.missingPackets, 
+				millis()/1000/60);
+			esk8.missingPackets = 0;
+			commsCount = 0;
+		}
+		esk8.state = esk8.OK;
+	}
+}
+
 /**************************************************************
 					SETUP
 **************************************************************/
@@ -72,6 +91,7 @@ void setup() {
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetBoard.ino \n");
+    debug.print(STARTUP, "Sending every %dms \n", sendPacketInterval);
 
     setupRadio();
 
@@ -90,32 +110,29 @@ void setup() {
 **************************************************************/
 
 long now = 0;
+long now2 = 0;
 byte boardCounter = 0;
 
 void loop() {
 
 	network.update();
 
-	while (network.available()) {
-		esk8.readPacket();
-		if (esk8.state != OK) {
-			if (esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
-				debug.print(DEBUG, 
-					"Missed %d packets from Controller at %d minutes\n", 
-					esk8.missingPackets, 
-					millis()/1000/60);
-				esk8.missingPackets = 0;
-			}
-			esk8.state = esk8.OK;
-		}
-	}
+	esk8.service();
 
-	bool timeToTx = millis()-now > 2000;
+	bool timeToTx = millis()-now > sendPacketInterval;
 	if ( timeToTx ) {
 		now = millis();
 		esk8.sendPacket();
-		// debug.print(DEBUG, "Sent: %d \n", esk8.boardPacket.id);
+		reportComms('+');
 		esk8.boardPacket.id++;
+	}
+
+	bool timeToUpdateHUD = millis() - now2 > 1510;
+	if ( timeToUpdateHUD ) {
+		now2 = millis();
+		esk8.hudPacket.boardState = boardCounter++;
+		esk8.sendPacketToHUD();
+		reportComms('h');
 	}
 
 	vTaskDelay( 10 );
@@ -125,9 +142,6 @@ void loop() {
 **************************************************************/
 void codeForEncoderTask( void *parameter ) {
 
-	#define TX_INTERVAL 200
-	long nowMs = 0;
-	
 	for (;;) {
 
 		vTaskDelay( 10 );
@@ -140,5 +154,13 @@ void codeForEncoderTask( void *parameter ) {
 void setupRadio() {
 	SPI.begin();        
 	radio.begin();
-	esk8.begin(&radio, &network, esk8.RF24_BOARD);
+	esk8.begin(&radio, &network, esk8.RF24_BOARD, packetAvailableCallback);
+}
+
+void reportComms(char c) {
+	Serial.printf("%c", c);
+	if (commsCount++ > 30) {
+		commsCount = 0;
+		Serial.printf("\n");
+	}
 }

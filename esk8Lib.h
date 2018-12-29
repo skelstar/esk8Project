@@ -27,18 +27,12 @@ struct ControllerStruct {
 	int id;
 };
 
-struct HudReqStruct {
-	int id;
+struct HudStruct {
+	byte controllerState;
+	byte boardState;
 };
 
-typedef void ( *PacketAvailableCallback )( int test );
-
-// #define	STARTUP 		1 << 0
-// #define WARNING 		1 << 1
-// #define ERROR 			1 << 2
-// #define DEBUG 			1 << 3
-// #define COMMUNICATION 	1 << 4
-// #define VESC_COMMS		1 << 5
+typedef void ( *PacketAvailableCallback )( uint16_t from );
 
 class esk8Lib
 {
@@ -50,11 +44,11 @@ class esk8Lib
 			RF24_HUD		=	2
 		};
 
-		enum RoleType {
-			CONTROLLER,
-			BOARD,
-			HUD
-		};
+		// enum RoleType {
+		// 	CONTROLLER,
+		// 	BOARD,
+		// 	HUD
+		// };
 
 		enum StateEnum {
 			OK,
@@ -63,16 +57,23 @@ class esk8Lib
 
 		esk8Lib();
 		
-		void begin(RF24 *radio, RF24Network *network, Role role);
+		void begin(
+			RF24 *radio, 
+			RF24Network *network, 
+			Role role, 
+			PacketAvailableCallback packetAvailableCallback);
 		void service();
 		bool sendPacket();
-		char readPacket();
+		bool sendPacketToHUD();
+		bool sendPacket(uint16_t to, char type, const void *message);
+		uint16_t readPacket();
 		int controllerOnline();
 		int boardOnline();
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
-		HudReqStruct hudReqPacket;
+		HudStruct hudPacket;
+
 		int missingPackets;
 		StateEnum state;
 

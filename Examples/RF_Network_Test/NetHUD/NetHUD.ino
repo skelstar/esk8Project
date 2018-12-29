@@ -53,6 +53,34 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 #define COMMS_TIMEOUT_PERIOD 	1000
 
+void packetAvailableCallback( uint16_t from ) {
+
+	if (esk8.state != OK) {
+		if (esk8.state == esk8.MISSED_PACKET && millis()/1000 > 0) {
+			debug.print(DEBUG, 
+				"Missed %d packets from %d at %d minutes \n", 
+				esk8.missingPackets, 
+				from,
+				millis()/1000/60);
+			esk8.missingPackets = 0;
+		}
+		esk8.state = esk8.OK;
+	}
+	else {
+		if ( from == esk8.RF24_CONTROLLER ) {
+			debug.print(DEBUG, "Received from Controller: %d \n", esk8.hudPacket.controllerState);
+		}
+		else if ( from == esk8.RF24_BOARD ) {
+			debug.print(DEBUG, "Received from Board: %d \n", esk8.hudPacket.boardState);
+		}
+		else {
+			// error condition
+		}
+	}
+
+
+}
+
 /**************************************************************
 					SETUP
 **************************************************************/
@@ -98,32 +126,7 @@ void loop() {
 
 	network.update();
 
-	if (network.available()) {
-		
-		char type = esk8.readPacket();
-
-		if (esk8.state != OK) {
-			if (esk8.state == esk8.MISSED_PACKET && millis()/1000 > 0) {
-				debug.print(DEBUG, 
-					"Missed %d packets from %s at %d minutes \n", 
-					esk8.missingPackets, 
-					type == 'C' ? "Controller" : "Board",
-					millis()/1000/60);
-				esk8.missingPackets = 0;
-			}
-			esk8.state = esk8.OK;
-		}
-
-		// if (type == 'C') {
-		// 	debug.print(DEBUG, "Rxd from Controller: %d \n", esk8.controllerPacket.id);
-		// }
-		// else if (type == 'B') {
-		// 	debug.print(DEBUG, "Rxd from Board: %d \n", esk8.boardPacket.id);	
-		// }
-		// else {
-		// 	debug.print(DEBUG, "Unknown packet recieved: '%c' \n", type);		
-		// }
-	}
+	esk8.service();
 
 	vTaskDelay( 10 );
 }
@@ -148,7 +151,7 @@ void codeForEncoderTask( void *parameter ) {
 void setupRadio() {
 	SPI.begin();             
 	radio.begin();
-	esk8.begin(&radio, &network, esk8.RF24_HUD);
+	esk8.begin(&radio, &network, esk8.RF24_HUD, packetAvailableCallback);
 }
 
 

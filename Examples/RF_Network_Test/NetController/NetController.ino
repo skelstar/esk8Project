@@ -47,8 +47,10 @@ RF24Network network(radio);
 int radioNumber = ROLE_MASTER;
 
 byte counter = 0;
+int commsCount = 0;
 
 uint16_t  this_node = ROLE_MASTER;
+int sendPacketInterval = 200;
 
 //--------------------------------------------------------------------------------
 
@@ -56,7 +58,22 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 //--------------------------------------------------------------
 
-#define COMMS_TIMEOUT_PERIOD 	1000
+void packetAvailableCallback( uint16_t from ) {
+	
+	reportComms('r');
+
+	if ( esk8.state != esk8.OK ) {
+		if ( esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
+			debug.print(DEBUG, 
+				"Missed %d packets from Board at %d minutes \n", 
+				esk8.missingPackets, 
+				millis()/1000/60);
+			esk8.missingPackets = 0;
+			commsCount = 0;
+		}
+		esk8.state = esk8.OK;
+	}
+}
 
 /**************************************************************
 					SETUP
@@ -78,6 +95,7 @@ void setup() {
 
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetController.ino \n");
+    debug.print(STARTUP, "Sending every %dms \n", sendPacketInterval);
 
 	setupRadio();
 
@@ -95,33 +113,48 @@ void setup() {
 					LOOP
 **************************************************************/
 
-int millisUntilSendPacket = 1000;
 long now = 0;
+long now2 = 0;
 
 void loop() {
 
 	network.update();
 
-	if (millis() - now > millisUntilSendPacket) {
+	esk8.service();
+
+	bool timeToTx = millis() - now > sendPacketInterval;
+	if ( timeToTx ) {
 		now = millis();
 		esk8.sendPacket();
-		// debug.print(DEBUG, "Sent: %d \n", esk8.controllerPacket.id);
+		reportComms('+');
+
 		esk8.controllerPacket.id++;
 	}
 
-	if ( network.available() ) {
-		esk8.readPacket();
-		if ( esk8.state != esk8.OK ) {
-			if ( esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
-				debug.print(DEBUG, 
-					"Missed %d packets from Board at %d minutes \n", 
-					esk8.missingPackets, 
-					millis()/1000/60);
-				esk8.missingPackets = 0;
-			}
-			esk8.state = esk8.OK;
-		}
+	bool timeToUpdateHUD = millis() - now2 > 1200;
+	if ( timeToUpdateHUD ) {
+		now2 = millis();
+		esk8.hudPacket.controllerState = counter++;
+		esk8.sendPacket(esk8.RF24_HUD, 'H', &esk8.hudPacket);
+		reportComms('h');
 	}
+
+	// if ( network.available() ) {
+	// 	esk8.readPacket();
+	// 	reportComms('r');
+
+	// 	if ( esk8.state != esk8.OK ) {
+	// 		if ( esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
+	// 			debug.print(DEBUG, 
+	// 				"Missed %d packets from Board at %d minutes \n", 
+	// 				esk8.missingPackets, 
+	// 				millis()/1000/60);
+	// 			esk8.missingPackets = 0;
+	// 			commsCount = 0;
+	// 		}
+	// 		esk8.state = esk8.OK;
+	// 	}
+	// }
 
 	vTaskDelay( 10 );
 }
@@ -148,5 +181,13 @@ void setupRadio() {
 
 	radio.begin();
 
-	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER);
+	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
+}
+
+void reportComms(char c) {
+	Serial.printf("%c", c);
+	if (commsCount++ > 30) {
+		commsCount = 0;
+		Serial.printf("\n");
+	}
 }

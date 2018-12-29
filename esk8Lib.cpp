@@ -6,17 +6,21 @@
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(RF24 *radio, RF24Network *network, Role role) {	
+void esk8Lib::begin(
+	RF24 *radio, 
+	RF24Network *network, 
+	Role role, 
+	PacketAvailableCallback packetAvailableCallback) {	
 
 	byte pipes[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
 
 	_role = role;
-
 	_radio = radio;
 	_network = network;
+	_packetAvailableCallback = packetAvailableCallback;
 
 	_radio->begin();
-	_radio->setPALevel(RF24_PA_LOW);
+	_radio->setPALevel(RF24_PA_HIGH);
 
 	switch (_role) {
 		case RF24_BOARD:
@@ -42,21 +46,30 @@ void esk8Lib::begin(RF24 *radio, RF24Network *network, Role role) {
 	state = OK;
 
 	boardPacket.id = 0;
-	hudReqPacket.id = 0;
+	hudPacket.controllerState = 0;
+	hudPacket.boardState = 0;
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::service() {
+	_network->update();
+	if ( _network->available() ) {
+		uint16_t from = readPacket();
+		_packetAvailableCallback(from);
+	}
 }
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacket() {
 
 	if (_role == RF24_CONTROLLER) {
-		RF24NetworkHeader header(/*to node*/ RF24_BOARD, /*type*/ 'C' /*Controller*/);
-		return _network->write(header, &controllerPacket, sizeof(ControllerStruct));
+		return sendPacket(RF24_BOARD, 'C', &controllerPacket);
+		// RF24NetworkHeader header(/*to node*/ RF24_BOARD, /*type*/ 'C' /*Controller*/);
+		// return _network->write(header, &controllerPacket, sizeof(ControllerStruct));
 	}
 	else if (_role == RF24_BOARD) {
-		RF24NetworkHeader header(/*to node*/ RF24_HUD, /*type*/ 'B' /*Board*/);
-		return _network->multicast(header, &boardPacket, sizeof(BoardStruct), 1);
+		return sendPacket(RF24_CONTROLLER, 'B', &boardPacket);
+
+		// RF24NetworkHeader header(/*to node*/ RF24_CONTROLLER, /*type*/ 'B' Board);
+		// return _network->write(header, &boardPacket, sizeof(BoardStruct));
 	}
 	else if (_role == RF24_HUD) {
 		// exception
@@ -65,7 +78,24 @@ bool esk8Lib::sendPacket() {
 	return false;
 }
 //---------------------------------------------------------------------------------
-char esk8Lib::readPacket() {
+bool esk8Lib::sendPacketToHUD() {
+	if (_role == RF24_CONTROLLER) {
+		return sendPacket(RF24_HUD, 'H', &hudPacket);
+	}
+	else if (_role == RF24_BOARD) {
+		return sendPacket(RF24_HUD, 'H', &hudPacket);
+	}
+	else if (_role == RF24_HUD) {
+		// exception
+	}
+}
+//---------------------------------------------------------------------------------
+bool esk8Lib::sendPacket(uint16_t to, char type, const void *message) {
+	RF24NetworkHeader header(to, type);
+	return _network->write(header, message, sizeof(message));
+}
+//---------------------------------------------------------------------------------
+uint16_t esk8Lib::readPacket() {
 
 	RF24NetworkHeader header;                            // If so, take a look at it
     _network->peek(header);
@@ -75,7 +105,7 @@ char esk8Lib::readPacket() {
 		int idDifference = controllerPacket.id - _lastControllerId;
 		_lastControllerId = controllerPacket.id;
 		if ( idDifference > 1 ) {
-			missingPackets = idDifference;
+			missingPackets = idDifference - 1;
 			state = MISSED_PACKET;
 		}
 	}
@@ -84,14 +114,17 @@ char esk8Lib::readPacket() {
 		int idDifference = boardPacket.id - _lastBoardId;
 		_lastBoardId = boardPacket.id;
 		if ( idDifference > 1 ) {
-			missingPackets = idDifference;
+			missingPackets = idDifference - 1;
 			state = MISSED_PACKET;
 		}
 	}
 	else if ( header.type == 'H' ) {
-		//network->read(header, &controllerPacket, sizeof(ControllerStruct));
+		_network->read(header, &hudPacket, sizeof(HudStruct));
 	}
-	return header.type;
+	else {
+		Serial.printf("ERROR CONDITION!!! (23) \n");
+	}
+	return header.from_node;
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::controllerOnline() {
