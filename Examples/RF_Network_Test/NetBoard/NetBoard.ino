@@ -104,17 +104,15 @@ void loop() {
 
 	while (radio.available()) {
 		esk8.readPacket();
-		//radio.read(&counter, 1);
-		// radio.writeAckPayload(pipeNo, &gotByte, 1);
-		debug.print(DEBUG, "Rx from Controller: %d (pipe: %d) \n", esk8.rxCounter);
+		debug.print(DEBUG, "Rx from Controller: %d (pipe: %d) \n", esk8.controllerPacket.id);
 	}
 
 	bool timeToTx = millis()-now > 2000;
 	if ( timeToTx ) {
 		now = millis();
-		esk8.sendPacket(boardCounter);
-		debug.print(DEBUG, "Sent: %d \n", boardCounter);
-		boardCounter++;
+		esk8.sendPacket();
+		debug.print(DEBUG, "Sent: %d \n", esk8.boardPacket.id);
+		esk8.boardPacket.id++;
 	}
 
 	vTaskDelay( 10 );

@@ -100,14 +100,14 @@ void loop() {
 
 	if (millis() - now > millisUntilSendPacket) {
 		now = millis();
-		if ( esk8.sendPacket(counter) ) {
-			counter++;
-		}
+		esk8.sendPacket();
+		debug.print(DEBUG, "Sent: %d \n", esk8.controllerPacket.id);
+		esk8.controllerPacket.id++;
 	}
 
 	if ( radio.available() == true ) {
 		esk8.readPacket();
-		debug.print(DEBUG, "Rx %d from Board \n", esk8.rxCounter);
+		debug.print(DEBUG, "Rx %d from Board \n", esk8.boardPacket.id);
 	}
 
 	vTaskDelay( 10 );

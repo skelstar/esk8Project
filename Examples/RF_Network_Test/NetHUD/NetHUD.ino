@@ -103,8 +103,13 @@ void loop() {
 	byte pipeNo, gotByte;     
 
 	if (radio.available()) {
-		esk8.readPacket();
-		debug.print(DEBUG, "Rxd from someone: %d \n", esk8.rxCounter);
+		byte pipeNo = esk8.readPacket();
+		if (pipeNo == 1) {
+			debug.print(DEBUG, "Rxd from Controller: %d \n", esk8.controllerPacket.id);
+		}
+		else if (pipeNo == 2) {
+			debug.print(DEBUG, "Rxd from Board: %d \n", esk8.boardPacket.id);	
+		}
 	}
 
 	vTaskDelay( 10 );

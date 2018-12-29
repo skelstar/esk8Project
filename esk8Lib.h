@@ -59,12 +59,10 @@ class esk8Lib
 		
 		void begin(RF24 *radio, Role role);
 		void service();
-		bool sendPacket(byte counter);
-		void readPacket();
+		bool sendPacket();
+		int readPacket();
 		int controllerOnline();
 		int boardOnline();
-
-		int rxCounter;
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
