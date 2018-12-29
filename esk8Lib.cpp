@@ -6,31 +6,33 @@
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(RF24 *radio, Role role) {	
+void esk8Lib::begin(RF24 *radio, RF24Network *network, Role role) {	
 
 	byte pipes[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
 
 	_role = role;
 
 	_radio = radio;
+	_network = network;
 
 	_radio->begin();
-	_radio->setRetries(0,15);                 // Smallest time between retries, max no. of retries
-	_radio->setPayloadSize(1);                // Here we are sending 1-byte payloads to test the call-response speed
-	
+	_radio->setPALevel(RF24_PA_HIGH);
+
 	switch (_role) {
+		case RF24_BOARD:
+			_network->begin(/*channel*/ 100, /*node address*/ 00 );
+			_network->multicastLevel(0);
+			break;
 		case RF24_CONTROLLER:
-			_radio->openWritingPipe(pipes[1]);        
-			_radio->openReadingPipe(1, pipes[0]);
+			_network->begin(/*channel*/ 100, /*node address*/ 01 );
+			_network->multicastLevel(1);
 			break;
 		case RF24_HUD:
-			_radio->openReadingPipe(2,pipes[0]);	// reads Board packets
-		case RF24_BOARD:
-			_radio->openWritingPipe(pipes[0]);       // reads Master packets
-			_radio->openReadingPipe(1,pipes[1]);
+			_network->begin(/*channel*/ 100, /*node address*/ 02 );
+			_network->multicastLevel(1);
 			break;
 	}
-	_radio->startListening();                 // Start listening
+
 	_radio->printDetails();                   // Dump the configuration of the rf unit for debugging
 
 	controllerPacket.throttle = 126;
@@ -44,52 +46,36 @@ void esk8Lib::service() {
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacket() {
 
-	bool sentOk = false;
-	_radio->stopListening();
-	
 	if (_role == RF24_CONTROLLER) {
-		sentOk = _radio->write(&controllerPacket, sizeof(controllerPacket));
+		RF24NetworkHeader header(/*to node*/ RF24_BOARD, /*type*/ 'C' /*Controller*/);
+		return _network->write(header, &controllerPacket, sizeof(ControllerStruct));
 	}
 	else if (_role == RF24_BOARD) {
-		sentOk = _radio->write(&boardPacket, sizeof(boardPacket));
+		RF24NetworkHeader header(/*to node*/ RF24_HUD, /*type*/ 'B' /*Board*/);
+		return _network->multicast(header, &boardPacket, sizeof(BoardStruct), 1);
 	}
 	else if (_role == RF24_HUD) {
 		// exception
 	}
-	_radio->startListening();
 
-	return sentOk;
+	return false;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::readPacket() {
-	byte pipeNo = -1;
+char esk8Lib::readPacket() {
 
-	if (_role == RF24_CONTROLLER) {
-		if ( _radio->available(&pipeNo) ) {
-			_radio->read(&boardPacket, sizeof(boardPacket));
-			Serial.printf("Read from Board (pipe %d) \n", pipeNo);
-		}
-	}
-	else if (_role == RF24_BOARD) {
-		if ( _radio->available(&pipeNo) ) {
-			_radio->read(&controllerPacket, sizeof(controllerPacket));
-			Serial.printf("Read from Controller (pipe %d) \n", pipeNo);
-		}
-	}
-	else if (_role == RF24_HUD) {
-		if ( _radio->available(&pipeNo) ) {
-			if (pipeNo == 1) {
-				_radio->read(&controllerPacket, sizeof(controllerPacket));
-				Serial.printf("Read from Controller (pipe %d) \n", pipeNo);
-			}
-			else if (pipeNo == 2) {
-				_radio->read(&boardPacket, sizeof(boardPacket));
-				Serial.printf("Read from Board (pipe %d) \n", pipeNo);
-			}
-		}
-	}
+	RF24NetworkHeader header;                            // If so, take a look at it
+    _network->peek(header);
 
-	return pipeNo;
+	if ( header.type == 'C' ) {
+		_network->read(header, &controllerPacket, sizeof(ControllerStruct));
+	}
+	else if ( header.type == 'B' ) {
+		_network->read(header, &boardPacket, sizeof(BoardStruct));
+	}
+	else if ( header.type == 'H' ) {
+		//network->read(header, &controllerPacket, sizeof(ControllerStruct));
+	}
+	return header.type;
 }
 //---------------------------------------------------------------------------------
 int esk8Lib::controllerOnline() {

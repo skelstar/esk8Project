@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include <RF24Network.h>
 #include <RF24.h> 
 
 #include <TaskScheduler.h>
@@ -41,6 +42,7 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 #define ROLE_HUD    		2
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
+RF24Network network(radio); 
 
 int radioNumber = ROLE_MASTER;
 
@@ -98,6 +100,8 @@ long now = 0;
 
 void loop() {
 
+	network.update();
+
 	if (millis() - now > millisUntilSendPacket) {
 		now = millis();
 		esk8.sendPacket();
@@ -105,7 +109,7 @@ void loop() {
 		esk8.controllerPacket.id++;
 	}
 
-	if ( radio.available() == true ) {
+	if ( network.available() ) {
 		esk8.readPacket();
 		debug.print(DEBUG, "Rx %d from Board \n", esk8.boardPacket.id);
 	}
@@ -135,5 +139,5 @@ void setupRadio() {
 
 	radio.begin();
 
-	esk8.begin(&radio, esk8.RF24_CONTROLLER);
+	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER);
 }

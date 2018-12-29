@@ -1,4 +1,5 @@
 #include <SPI.h>
+#include <RF24Network.h>
 #include <RF24.h> 
 
 #include <TaskScheduler.h>
@@ -42,12 +43,7 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 #define ROLE_HUD    		1
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
-
-int radioNumber = ROLE_HUD;
-
-byte pipes[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
-
-byte counter = 0;
+RF24Network network(radio); 
 
 //--------------------------------------------------------------------------------
 
@@ -100,15 +96,18 @@ void setup() {
 
 void loop() {
 
-	byte pipeNo, gotByte;     
+	network.update();
 
-	if (radio.available()) {
-		byte pipeNo = esk8.readPacket();
-		if (pipeNo == 1) {
+	if (network.available()) {
+		char type = esk8.readPacket();
+		if (type == 'C') {
 			debug.print(DEBUG, "Rxd from Controller: %d \n", esk8.controllerPacket.id);
 		}
-		else if (pipeNo == 2) {
+		else if (type == 'B') {
 			debug.print(DEBUG, "Rxd from Board: %d \n", esk8.boardPacket.id);	
+		}
+		else {
+			debug.print(DEBUG, "Unknown packet recieved: '%c' \n", type);		
 		}
 	}
 
@@ -133,10 +132,9 @@ void codeForEncoderTask( void *parameter ) {
 //**************************************************************
 
 void setupRadio() {
-	SPI.begin();                                           // Bring up the RF network
+	SPI.begin();             
 	radio.begin();
-	
-	esk8.begin(&radio, esk8.RF24_HUD);
+	esk8.begin(&radio, &network, esk8.RF24_HUD);
 }
 
 
