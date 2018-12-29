@@ -67,24 +67,24 @@ int esk8Lib::readPacket() {
 	if (_role == RF24_CONTROLLER) {
 		if ( _radio->available(&pipeNo) ) {
 			_radio->read(&boardPacket, sizeof(boardPacket));
-			// Serial.printf("Read from Board (pipe %d) \n", pipeNo);
+			Serial.printf("Read from Board (pipe %d) \n", pipeNo);
 		}
 	}
 	else if (_role == RF24_BOARD) {
 		if ( _radio->available(&pipeNo) ) {
 			_radio->read(&controllerPacket, sizeof(controllerPacket));
-			// Serial.printf("Read from Controller (pipe %d) \n", pipeNo);
+			Serial.printf("Read from Controller (pipe %d) \n", pipeNo);
 		}
 	}
 	else if (_role == RF24_HUD) {
 		if ( _radio->available(&pipeNo) ) {
 			if (pipeNo == 1) {
 				_radio->read(&controllerPacket, sizeof(controllerPacket));
-				// Serial.printf("Read from Controller (pipe %d) \n", pipeNo);
+				Serial.printf("Read from Controller (pipe %d) \n", pipeNo);
 			}
 			else if (pipeNo == 2) {
 				_radio->read(&boardPacket, sizeof(boardPacket));
-				// Serial.printf("Read from Board (pipe %d) \n", pipeNo);
+				Serial.printf("Read from Board (pipe %d) \n", pipeNo);
 			}
 		}
 	}

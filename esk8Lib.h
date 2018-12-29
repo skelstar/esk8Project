@@ -15,7 +15,7 @@
 struct BoardStruct{
 	// int32_t rpm;
 	float batteryVoltage;
-	int id;
+	byte id;
 	int vescOnline;
 };
 
@@ -23,7 +23,7 @@ struct BoardStruct{
 struct ControllerStruct {
 	int throttle;
 	int encoderButton;
-	int id;
+	byte id;
 };
 
 struct HudReqStruct {
@@ -71,17 +71,6 @@ class esk8Lib
 	private:
 		RF24 *_radio;
 		Role _role;
-
-		uint16_t _this_node;
-		uint16_t _other_node;
-
-		long _lastSentToController;
-		long _lastSentToBoard;
-
-		long _lastPacketReadTime;
-		long _lastControllerCommsTime;
-		long _lastBoardCommsTime;
-		bool _debugMessages = false;
 
 		PacketAvailableCallback _packetAvailableCallback;
 };
