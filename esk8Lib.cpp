@@ -44,6 +44,9 @@ void esk8Lib::begin(
 	controllerPacket.throttle = 127;
 	controllerPacket.id = 0;
 
+	ctime = millis();
+	btime = millis();
+
 	boardPacket.id = 0;
 	hudPacket.controllerState = 0;
 	hudPacket.boardState = 0;
@@ -106,9 +109,11 @@ uint16_t esk8Lib::readPacket() {
 	return header.from_node;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::controllerOnline() {
+bool esk8Lib::controllerOnline(int timeoutMs) {
+	return millis() - ctime > timeoutMs;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::boardOnline() {
+bool esk8Lib::boardOnline(int timeoutMs) {
+	return millis() - btime > timeoutMs;
 }
 //---------------------------------------------------------------------------------

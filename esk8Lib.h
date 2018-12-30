@@ -51,8 +51,8 @@ class esk8Lib
 		bool sendPacketToController();
 		bool sendPacketToBoard();
 		bool sendPacketToHUD();
-		int controllerOnline();
-		int boardOnline();
+		bool controllerOnline(int timeoutMs);
+		bool boardOnline(int timeoutMs);
 
 		BoardStruct boardPacket;
 		ControllerStruct controllerPacket;
@@ -62,6 +62,10 @@ class esk8Lib
 		RF24 *_radio;
 		RF24Network *_network;
 		Role _role;
+
+
+		long ctime;
+		long btime;
 
 		uint16_t readPacket();
 		bool sendPacket(uint16_t to, char type, const void *message);

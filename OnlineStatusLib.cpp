@@ -13,7 +13,7 @@ bool OnlineStatusLib::serviceState(bool online) {
 		case TN_ONLINE:
 			if (online) {
 				state = ST_ONLINE;
-				Serial.printf("TN_ONLINE > ST_ONLINE \n");
+				//Serial.printf("TN_ONLINE > ST_ONLINE \n");
 				_isOnlineCb();
 			}
 			else {
