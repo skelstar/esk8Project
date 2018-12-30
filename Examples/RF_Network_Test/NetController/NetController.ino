@@ -61,18 +61,6 @@ const char compile_date[] = __DATE__ " " __TIME__;
 void packetAvailableCallback( uint16_t from ) {
 	
 	reportComms('r');
-
-	if ( esk8.state != esk8.OK ) {
-		if ( esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
-			debug.print(DEBUG, 
-				"Missed %d packets from Board at %d minutes \n", 
-				esk8.missingPackets, 
-				millis()/1000/60);
-			esk8.missingPackets = 0;
-			commsCount = 0;
-		}
-		esk8.state = esk8.OK;
-	}
 }
 
 /**************************************************************
@@ -96,6 +84,8 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetController.ino \n");
     debug.print(STARTUP, "Sending every %dms \n", sendPacketInterval);
+
+    pinMode(39, INPUT_PULLUP);
 
 	setupRadio();
 
@@ -125,7 +115,7 @@ void loop() {
 	bool timeToTx = millis() - now > sendPacketInterval;
 	if ( timeToTx ) {
 		now = millis();
-		esk8.sendPacket();
+		esk8.sendPacketToBoard();
 		reportComms('+');
 
 		esk8.controllerPacket.id++;
@@ -135,26 +125,17 @@ void loop() {
 	if ( timeToUpdateHUD ) {
 		now2 = millis();
 		esk8.hudPacket.controllerState = counter++;
-		esk8.sendPacket(esk8.RF24_HUD, 'H', &esk8.hudPacket);
+		esk8.sendPacketToHUD();
 		reportComms('h');
 	}
 
-	// if ( network.available() ) {
-	// 	esk8.readPacket();
-	// 	reportComms('r');
+	int btn_a = digitalRead(39);
 
-	// 	if ( esk8.state != esk8.OK ) {
-	// 		if ( esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
-	// 			debug.print(DEBUG, 
-	// 				"Missed %d packets from Board at %d minutes \n", 
-	// 				esk8.missingPackets, 
-	// 				millis()/1000/60);
-	// 			esk8.missingPackets = 0;
-	// 			commsCount = 0;
-	// 		}
-	// 		esk8.state = esk8.OK;
-	// 	}
-	// }
+	if ( btn_a == 0 ) {
+		esk8.controllerPacket.id++;
+		Serial.printf("^");
+		commsCount++;
+	}
 
 	vTaskDelay( 10 );
 }

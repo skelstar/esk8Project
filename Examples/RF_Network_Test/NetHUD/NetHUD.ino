@@ -27,15 +27,19 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 //--------------------------------------------------------------
 
 // TTGO-TQ
-#define SPI_CE        		15
-#define SPI_CS        		13
-#define NRF24_POWER_PIN     2
+// #define SPI_CE        		15
+// #define SPI_CS        		13
+// #define NRF24_POWER_PIN     2
 // M5Stack
 // #define SPI_CE        5 
 // #define SPI_CS        13
 // DEV board
 // #define SPI_CE        33    	// white/purple
 // #define SPI_CS        26  	// green
+// NODEMcu
+#define SPI_CE        		5 // white
+#define SPI_CS        		13 // green
+
 
 
 #define ROLE_MASTER    		0
@@ -55,30 +59,15 @@ const char compile_date[] = __DATE__ " " __TIME__;
 
 void packetAvailableCallback( uint16_t from ) {
 
-	if (esk8.state != OK) {
-		if (esk8.state == esk8.MISSED_PACKET && millis()/1000 > 0) {
-			debug.print(DEBUG, 
-				"Missed %d packets from %d at %d minutes \n", 
-				esk8.missingPackets, 
-				from,
-				millis()/1000/60);
-			esk8.missingPackets = 0;
-		}
-		esk8.state = esk8.OK;
+	if ( from == esk8.RF24_CONTROLLER ) {
+		debug.print(DEBUG, "Received from Controller: %d \n", esk8.hudPacket.controllerState);
+	}
+	else if ( from == esk8.RF24_BOARD ) {
+		debug.print(DEBUG, "Received from Board: %d \n", esk8.hudPacket.boardState);
 	}
 	else {
-		if ( from == esk8.RF24_CONTROLLER ) {
-			debug.print(DEBUG, "Received from Controller: %d \n", esk8.hudPacket.controllerState);
-		}
-		else if ( from == esk8.RF24_BOARD ) {
-			debug.print(DEBUG, "Received from Board: %d \n", esk8.hudPacket.boardState);
-		}
-		else {
-			// error condition
-		}
+		// error condition
 	}
-
-
 }
 
 /**************************************************************
@@ -102,9 +91,9 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/NetHUD.ino \n");
 
-    // nRF24 power
-    pinMode(NRF24_POWER_PIN, OUTPUT);
-    digitalWrite(NRF24_POWER_PIN, HIGH);
+    // nRF24 power (TTGO TQ)
+    // pinMode(NRF24_POWER_PIN, OUTPUT);
+    // digitalWrite(NRF24_POWER_PIN, HIGH);
 
     setupRadio();
 

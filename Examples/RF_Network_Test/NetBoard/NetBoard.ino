@@ -58,17 +58,6 @@ int sendPacketInterval = 500;
 void packetAvailableCallback( uint16_t from ) {
 
 	reportComms('r');
-	if (esk8.state != OK) {
-		if (esk8.state == esk8.MISSED_PACKET  && millis()/1000 > 0) {
-			debug.print(DEBUG, 
-				"Missed %d packets from Controller at %d minutes\n", 
-				esk8.missingPackets, 
-				millis()/1000/60);
-			esk8.missingPackets = 0;
-			commsCount = 0;
-		}
-		esk8.state = esk8.OK;
-	}
 }
 
 /**************************************************************
@@ -122,7 +111,7 @@ void loop() {
 	bool timeToTx = millis()-now > sendPacketInterval;
 	if ( timeToTx ) {
 		now = millis();
-		esk8.sendPacket();
+		esk8.sendPacketToController();
 		reportComms('+');
 		esk8.boardPacket.id++;
 	}

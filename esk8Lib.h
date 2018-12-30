@@ -9,22 +9,18 @@
 #include <esp_int_wdt.h>
 #include <esp_task_wdt.h>
 
-// #include <debugHelper.h>
-
 //--------------------------------------------------------------------------------
 
 struct BoardStruct{
-	// int32_t rpm;
-	float batteryVoltage;
 	int id;
-	int vescOnline;
+	float batteryVoltage;
 };
 
 
 struct ControllerStruct {
-	int throttle;
-	int encoderButton;
 	int id;
+	byte throttle;
+	byte encoderButton;
 };
 
 struct HudStruct {
@@ -44,17 +40,6 @@ class esk8Lib
 			RF24_HUD		=	2
 		};
 
-		// enum RoleType {
-		// 	CONTROLLER,
-		// 	BOARD,
-		// 	HUD
-		// };
-
-		enum StateEnum {
-			OK,
-			MISSED_PACKET
-		};
-
 		esk8Lib();
 		
 		void begin(
@@ -63,10 +48,9 @@ class esk8Lib
 			Role role, 
 			PacketAvailableCallback packetAvailableCallback);
 		void service();
-		bool sendPacket();
+		bool sendPacketToController();
+		bool sendPacketToBoard();
 		bool sendPacketToHUD();
-		bool sendPacket(uint16_t to, char type, const void *message);
-		uint16_t readPacket();
 		int controllerOnline();
 		int boardOnline();
 
@@ -74,19 +58,15 @@ class esk8Lib
 		ControllerStruct controllerPacket;
 		HudStruct hudPacket;
 
-		int missingPackets;
-		StateEnum state;
-
-
 	private:
 		RF24 *_radio;
 		RF24Network *_network;
 		Role _role;
 
-		PacketAvailableCallback _packetAvailableCallback;
+		uint16_t readPacket();
+		bool sendPacket(uint16_t to, char type, const void *message);
 
-		int _lastControllerId;
-		int _lastBoardId;
+		PacketAvailableCallback _packetAvailableCallback;
 };
 
 #endif
