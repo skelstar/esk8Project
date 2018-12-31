@@ -18,10 +18,13 @@ class OnlineStatusLib
 
 		StatusCallback _isOfflineCb;
 		StatusCallback _isOnlineCb;
+		bool _debugOutput;
+
+		void debug(char *output);
 
 	public:
 
-		OnlineStatusLib(StatusCallback isOfflineCb, StatusCallback isOnlineCb);
+		OnlineStatusLib(StatusCallback isOfflineCb, StatusCallback isOnlineCb, bool debug);
 
 		bool serviceState(bool online);
 		bool getState();

@@ -13,14 +13,15 @@
 
 struct BoardStruct{
 	int id;
-	float batteryVoltage;
+	// bool vescOnline;
+	// float batteryVoltage;
 };
 
 
 struct ControllerStruct {
 	int id;
 	byte throttle;
-	byte encoderButton;
+	// byte encoderButton;
 };
 
 struct HudStruct {
@@ -29,6 +30,12 @@ struct HudStruct {
 };
 
 typedef void ( *PacketAvailableCallback )( uint16_t from );
+
+enum MessageType {
+	BOARD_TYPE		=	0,
+	CONTROLLER_TYPE	=	1,
+	HUD_TYPE		=	2
+};
 
 class esk8Lib
 {
@@ -68,7 +75,7 @@ class esk8Lib
 		long btime;
 
 		uint16_t readPacket();
-		bool sendPacket(uint16_t to, char type, const void *message);
+		bool sendPacket(uint16_t to, unsigned char type, const void *message);
 
 		PacketAvailableCallback _packetAvailableCallback;
 };

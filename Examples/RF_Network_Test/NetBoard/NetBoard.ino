@@ -31,15 +31,11 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 // #define SPI_CS        13
 // #define NRF24_POWER_PIN        2
 // M5Stack
-#define SPI_CE        5 
-#define SPI_CS        13
+// #define SPI_CE        5 
+// #define SPI_CS        13
 // DEV board
-// #define SPI_CE        33    	// white/purple
-// #define SPI_CS        26  	// green
-
-#define ROLE_MASTER    		0
-#define ROLE_BOARD    		1
-#define ROLE_HUD    		2
+#define SPI_CE        33    	// white/purple
+#define SPI_CS        26  	// green
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
@@ -104,8 +100,6 @@ byte boardCounter = 0;
 
 void loop() {
 
-	network.update();
-
 	esk8.service();
 
 	bool timeToTx = millis()-now > sendPacketInterval;
@@ -141,7 +135,11 @@ void codeForEncoderTask( void *parameter ) {
 //**************************************************************
 
 void setupRadio() {
-	SPI.begin();        
+	SPI.begin();     
+	#ifdef NRF24_POWER_PIN
+	pinMode(NRF24_POWER_PIN, OUTPUT);
+	digitalWrite(NRF24_POWER_PIN, HIGH);   
+	#endif
 	radio.begin();
 	esk8.begin(&radio, &network, esk8.RF24_BOARD, packetAvailableCallback);
 }

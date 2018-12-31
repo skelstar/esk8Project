@@ -2,7 +2,7 @@
 #include <RF24Network.h>
 #include <RF24.h> 
 // #include "WiFi.h"
-
+#include <Adafruit_NeoPixel.h>
 #include <TaskScheduler.h>
 
 #include <myPushButton.h>
@@ -17,6 +17,12 @@
 // #include "Free_Fonts.h" 
 
 //--------------------------------------------------------------------------------
+
+
+
+#define SEND_TO_BOARD_INTERVAL_MS 	200
+#define BOARD_OFFLINE_PERIOD		1000
+
 
 #define ENCODER_PIN_A		26
 #define ENCODER_PIN_B 		36
@@ -41,7 +47,6 @@
 debugHelper debug;
 
 esk8Lib esk8;
-
 
 void attachEncoderInterrupts() {
 	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), callback, CHANGE);
@@ -75,7 +80,7 @@ int32_t packetsFailed = 0;
 //--------------------------------------------------------------
 
 volatile long lastRxFromBoard = 0;
-volatile bool rxDataFromBoard = false;
+
 portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
@@ -83,17 +88,15 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 #define SPI_CE        5 	//33    // white/purple
 #define SPI_CS        13	//26  // green
 
-#define ROLE_CONTROLLER    0
-
-int role = ROLE_CONTROLLER;
-bool radioNumber = 1;
-
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
 int offlineCount = 0;
 int encoderOfflineCount = 0;
 bool encoderOnline = true;
+
+#define NUMPIXELS 10
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(/*numpixels*/ NUMPIXELS, /*pin*/ 15, NEO_GRB + NEO_KHZ800);
 
 //--------------------------------------------------------------------------------
 
@@ -104,27 +107,25 @@ const char compile_date[] = __DATE__ " " __TIME__;
 bool throttleChanged = false;
 int throttle = 127;
 
-#define SEND_TO_BOARD_INTERVAL_MS 			200
-
 //--------------------------------------------------------------
 
-#define PULLUP		true
-#define OFFSTATE	LOW
-void m5ButtonACallback(int eventCode, int eventPin, int eventParam);
-myPushButton m5ButtonA(M5_BUTTON_A, PULLUP, /* offstate*/ HIGH, m5ButtonACallback);
-void m5ButtonACallback(int eventCode, int eventPin, int eventParam) {
+// #define PULLUP		true
+// #define OFFSTATE	LOW
+// void m5ButtonACallback(int eventCode, int eventPin, int eventParam);
+// myPushButton m5ButtonA(M5_BUTTON_A, PULLUP, /* offstate*/ HIGH, m5ButtonACallback);
+// void m5ButtonACallback(int eventCode, int eventPin, int eventParam) {
     
-	switch (eventCode) {
-		case m5ButtonA.EV_BUTTON_PRESSED:
-			break;
-		// case m5ButtonA.EV_RELEASED:
-		// 	break;
-		// case m5ButtonA.EV_DOUBLETAP:
-		// 	break;
-		// case m5ButtonA.EV_HELD_SECONDS:
-		// 	break;
-    }
-}
+// 	switch (eventCode) {
+// 		case m5ButtonA.EV_BUTTON_PRESSED:
+// 			break;
+// 		// case m5ButtonA.EV_RELEASED:
+// 		// 	break;
+// 		// case m5ButtonA.EV_DOUBLETAP:
+// 		// 	break;
+// 		// case m5ButtonA.EV_HELD_SECONDS:
+// 		// 	break;
+//     }
+// }
 
 //--------------------------------------------------------------
 
@@ -159,16 +160,23 @@ void tFlashLedsOff_callback() {
 	return;
 }
 //--------------------------------------------------------------
+int txCharsLength = 0;
 
 void packetAvailableCallback( uint16_t from ) {
-	
+	lastRxFromBoard = millis();
 	Serial.printf("r");
+	txCharsLength++;
+	if ( txCharsLength > 30 ) {
+		txCharsLength = 0;
+		Serial.printf("\n");
+	}
 }
 
 //--------------------------------------------------------------
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
+	esk8.controllerPacket.id++;
 	bool sentOK = 	esk8.sendPacketToBoard();
     taskEXIT_CRITICAL(&mmux);
 
@@ -183,6 +191,7 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 //--------------------------------------------------------------
 void boardOfflineCallback() {
+	setPixelsColor(pixels.Color(0, 0, 120));
 	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	// tFlashLeds.enable();
 	// offlineCount++;
@@ -190,16 +199,15 @@ void boardOfflineCallback() {
 }
 
 void boardOnlineCallback() {
+	setPixelsColor(pixels.Color(120, 0, 0));
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
 }
 
-OnlineStatusLib boardStatus(boardOfflineCallback, boardOnlineCallback);
+OnlineStatusLib boardStatus(boardOfflineCallback, boardOnlineCallback, /*debug*/ true);
 
 //--------------------------------------------------------------
-
-#define COMMS_TIMEOUT_PERIOD 	1000
 
 /**************************************************************
 					SETUP
@@ -216,7 +224,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(TIMING, "TIMING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | DEBUG );
+	debug.setFilter( STARTUP | DEBUG | COMMUNICATION );
 	//debug.setFilter( STARTUP );
 
 	// tft.begin();
@@ -238,6 +246,9 @@ void setup() {
 	debug.print(STARTUP, "%s \n", compile_date);
     debug.print(STARTUP, "esk8Project/Controller.ino \n");
 
+    pixels.begin();
+    setPixelsColor(pixels.Color(0, 150, 0));
+	
 	throttleChanged = true;	// initialise
 
 	SPI.begin();                                           // Bring up the RF network
@@ -256,7 +267,7 @@ void setup() {
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
 
-	boardStatus.serviceState(false);
+	boardStatus.serviceState(/*online*/ false);
 
 	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
 
@@ -273,7 +284,6 @@ void setup() {
 /**************************************************************
 					LOOP
 **************************************************************/
-#define BOARD_OFFLINE_PERIOD	1000
 
 void loop() {
 
@@ -281,6 +291,8 @@ void loop() {
 	boardStatus.serviceState(connected);
 
 	runner.execute();
+
+	esk8.service();
 
 	throttleDevice.update();
 
@@ -335,4 +347,12 @@ void updateDisplay(int mode, int backlight) {
 
 	// 		break;
 	// }
+}
+
+void setPixelsColor(uint16_t color) {
+	for (int i = 0; i < NUMPIXELS; i++){
+		pixels.setPixelColor(i, color);
+		vTaskDelay( 1 );
+	}
+	pixels.show();
 }

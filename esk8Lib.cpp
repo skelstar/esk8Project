@@ -41,7 +41,6 @@ void esk8Lib::begin(
 
 	_radio->printDetails();                   // Dump the configuration of the rf unit for debugging
 
-	controllerPacket.throttle = 127;
 	controllerPacket.id = 0;
 
 	ctime = millis();
@@ -53,6 +52,7 @@ void esk8Lib::begin(
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::service() {
+
 	_network->update();
 	if ( _network->available() ) {
 		uint16_t from = readPacket();
@@ -61,21 +61,18 @@ void esk8Lib::service() {
 }
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToController() {
-
-	return sendPacket(/*to:*/ RF24_CONTROLLER, /*type:*/ 'B', /*message*/ &boardPacket);
+	RF24NetworkHeader header(RF24_CONTROLLER, BOARD_TYPE);
+	return _network->write(header, &boardPacket, sizeof(boardPacket));
 }
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToBoard() {
-
-	return sendPacket(/*to:*/ RF24_BOARD, /*type:*/ 'C', /*message*/ &controllerPacket);
+	RF24NetworkHeader header(RF24_BOARD, CONTROLLER_TYPE);
+	return _network->write(header, &controllerPacket, sizeof(controllerPacket));
 }
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToHUD() {
-	if (_role == RF24_CONTROLLER) {
-		return sendPacket(RF24_HUD, 'H', &hudPacket);
-	}
-	else if (_role == RF24_BOARD) {
-		return sendPacket(RF24_HUD, 'H', &hudPacket);
+	if (_role == RF24_CONTROLLER || _role == RF24_BOARD) {
+		return sendPacket(RF24_HUD, HUD_TYPE, &hudPacket);
 	}
 	else {
 		// exception
@@ -84,7 +81,7 @@ bool esk8Lib::sendPacketToHUD() {
 	return false;
 }
 //---------------------------------------------------------------------------------
-bool esk8Lib::sendPacket(uint16_t to, char type, const void *message) {
+bool esk8Lib::sendPacket(uint16_t to, unsigned char type, const void *message) {
 	RF24NetworkHeader header(to, type);
 	return _network->write(header, message, sizeof(message));
 }
@@ -94,17 +91,19 @@ uint16_t esk8Lib::readPacket() {
 	RF24NetworkHeader header;                            // If so, take a look at it
     _network->peek(header);
 
-	if ( header.type == 'C' ) {
+    // Serial.printf("%s\n", header.toString());
+
+	if ( header.type == CONTROLLER_TYPE ) {
 		_network->read(header, &controllerPacket, sizeof(controllerPacket));
 	}
-	else if ( header.type == 'B' ) {
+	else if ( header.type == BOARD_TYPE ) {
 		_network->read(header, &boardPacket, sizeof(boardPacket));
 	}
-	else if ( header.type == 'H' ) {
+	else if ( header.type == HUD_TYPE ) {
 		_network->read(header, &hudPacket, sizeof(hudPacket));
 	}
 	else {
-		Serial.printf("ERROR CONDITION!!! readPacket (from: %d) (23) \n", header.from_node);
+		Serial.printf("ERROR CONDITION!!! readPacket (type: '%d') (23) \n", header.type);
 	}
 	return header.from_node;
 }
