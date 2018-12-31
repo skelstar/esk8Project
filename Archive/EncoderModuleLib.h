@@ -2,8 +2,6 @@
 #define EncoderModuleLib_h
 
 #include <Arduino.h>
-#include "i2cEncoderLib.h"
-#include <Wire.h>
 
 class EncoderModuleLib 
 {

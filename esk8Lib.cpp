@@ -1,62 +1,118 @@
 #include "Arduino.h"
 #include "esk8Lib.h"
 
-#define 	ADDR_INDEX_LISTENER	2
-#define 	ADDR_INDEX_CONTROLLER	1
-#define 	ADDR_INDEX_BOARD		0
-
-#define 	CONTROLLER_SEND_INTERVAL	400 + 50
-#define 	BOARD_SEND_INTERVAL			4000
-
-#define 	MSG_CONTROLLER_PACKET 		'A'
-#define 	MSG_BOARD_PACKET			'B'
-
 //--------------------------------------------------------------------------------
 
 esk8Lib::esk8Lib() {}
 
 //--------------------------------------------------------------------------------
-void esk8Lib::begin(Role role) {	
+void esk8Lib::begin(
+	RF24 *radio, 
+	RF24Network *network, 
+	Role role, 
+	PacketAvailableCallback packetAvailableCallback) {	
 
-	_this_node = role; // Which node are we?
-	switch (role) {
-		case RF24_CONTROLLER:
-			_other_node = RF24_BOARD;
-			break;
+	byte pipes[][6] = { "1Node", "2Node" };              // Radio pipe addresses for the 2 nodes to communicate.
+
+	_role = role;
+	_radio = radio;
+	_network = network;
+	_packetAvailableCallback = packetAvailableCallback;
+
+	_radio->begin();
+	_radio->setPALevel(RF24_PA_HIGH);
+	_radio->setDataRate(RF24_1MBPS);
+
+
+	switch (_role) {
 		case RF24_BOARD:
-			_other_node = RF24_CONTROLLER;
+			_network->begin(/*channel*/ 100, /*node address*/ 00 );
+			_network->multicastLevel(0);
 			break;
-		default:
+		case RF24_CONTROLLER:
+			_network->begin(/*channel*/ 100, /*node address*/ 01 );
+			_network->multicastLevel(1);
+			break;
+		case RF24_HUD:
+			_network->begin(/*channel*/ 100, /*node address*/ 02 );
+			_network->multicastLevel(1);
 			break;
 	}
 
+	_radio->printDetails();                   // Dump the configuration of the rf unit for debugging
 
-	Serial.printf("this_node: 0%o, _other_node: 0%o \n", _this_node, _other_node);
+	controllerPacket.throttle = 0;
 
-	controllerPacket.throttle = 127;
-	controllerPacket.id = 0;
-	boardPacket.id = 0;
-	hudReqPacket.id = 0;
+	ctime = millis();
+	btime = millis();
+
+	boardPacket.batteryVoltage = 0.0;
+	boardPacket.vescOnline = false;
+
+	hudPacket.controllerState = 0;
+	hudPacket.boardState = 0;
 }
 //---------------------------------------------------------------------------------
 void esk8Lib::service() {
+
+	_network->update();
+	if ( _network->available() ) {
+		uint16_t from = readPacket();
+		_packetAvailableCallback(from);
+	}
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::send() {
+bool esk8Lib::sendPacketToController() {
+	RF24NetworkHeader header( RF24_CONTROLLER );
+	return _network->write(header, &boardPacket, sizeof(BoardStruct));
 }
 //---------------------------------------------------------------------------------
-void esk8Lib::handle_Controller_Message(RF24NetworkHeader& header) {
+bool esk8Lib::sendPacketToBoard() {
+	RF24NetworkHeader header( RF24_BOARD );
+	return _network->write(header, &controllerPacket, sizeof(ControllerStruct));
 }
 //---------------------------------------------------------------------------------
-void esk8Lib::handle_Board_Message(RF24NetworkHeader& header) {
+bool esk8Lib::sendPacketToHUD() {
+	RF24NetworkHeader header( RF24_HUD );
+	if (_role == RF24_CONTROLLER || _role == RF24_BOARD) {
+		return _network->write(header, &hudPacket, sizeof(HudStruct));
+	}
+	else {
+		// exception
+		Serial.printf("ERROR CONDITION!!! sendPacketToHUD (role: %d) (23) \n", _role);
+	}
+	return false;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::controllerOnline() {
+uint16_t esk8Lib::readPacket() {
+
+	RF24NetworkHeader header;                            // If so, take a look at it
+    _network->peek(header);
+
+	long time = 0;
+
+	if ( header.from_node == RF24_CONTROLLER ) {
+		 _network->read(header, &controllerPacket, sizeof(controllerPacket));
+		// Serial.printf("%s %d\n", header.toString(), controllerPacket.throttle);
+	}
+	else if ( header.from_node == RF24_BOARD ) {
+		_network->read(header, &boardPacket, sizeof(boardPacket));
+		// Serial.printf("%s %.1f \n", header.toString(), boardPacket.batteryVoltage);
+	}
+	else if ( header.from_node == RF24_HUD ) {
+		_network->read(header, &hudPacket, sizeof(hudPacket));
+	}
+	else {
+		Serial.printf("ERROR CONDITION!!! readPacket (from_node: '%d') (23) \n", header.from_node);
+	}
+	return header.from_node;
 }
 //---------------------------------------------------------------------------------
-int esk8Lib::boardOnline() {
+bool esk8Lib::controllerOnline(int timeoutMs) {
+	return millis() - ctime > timeoutMs;
 }
 //---------------------------------------------------------------------------------
-void esk8Lib::enableDebug() {
+bool esk8Lib::boardOnline(int timeoutMs) {
+	return millis() - btime > timeoutMs;
 }
 //---------------------------------------------------------------------------------

@@ -1,9 +1,9 @@
 
 #include <SPI.h>
-// #include <RF24Network.h> 
+#include <RF24Network.h> 
 #include <RF24.h> 
-// #include <myWifiHelper.h>
 #include <esk8Lib.h>
+#include <OnlineStatusLib.h>
 
 #include <ESP8266VESC.h>
 #include <VescUart.h>	// https://github.com/SolidGeek/VescUart
@@ -18,39 +18,37 @@
 /*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
-
-// #define 	WIFI_HOSTNAME   "/mobile/Esk8Board"
-
-// MyWifiHelper wifiHelper(WIFI_HOSTNAME);
+const char file_name[] = __FILE__;
 
 //--------------------------------------------------------------
-
-
 
 bool controllerStatusChanged = true;
 bool vescStatusChanged = true;
 int currentThrottle = 127;
 int currentEncoderButton = 0;
-
+volatile long lastRxFromController = 0;
 //--------------------------------------------------------------------------------
 bool radioNumber = 0;
-// WEMOS TTGO
-#define 	SPI_CE			33	// white - do we need it?
-#define 	SPI_CS			26	// green
-const char boardSetup[] = "WEMOS TTGO Board";
+// TTGO-TQ
+// #define SPI_CE        15
+// #define SPI_CS        13
+// #define NRF24_POWER_PIN        2
+// M5Stack
+// #define SPI_CE        5 
+// #define SPI_CS        13
+// DEV board
+#define SPI_CE        33    	// white/purple
+#define SPI_CS        26  	// green
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
-// RF24Network network(radio);
+RF24Network network(radio);
 
 esk8Lib esk8;
 
 VescUart UART;
 
-#define 	ROLE_BOARD 		1
-#define 	ROLE_CONTROLLER 0
-
 #define 	GET_VESC_DATA_INTERVAL	1000
-#define 	CONTROLLER_ONLINE_MS	500
+#define 	CONTROLLER_TIMEOUT		300
 
 //--------------------------------------------------------------------------------
 #define	STARTUP 			1 << 0	// 1
@@ -59,7 +57,7 @@ VescUart UART;
 #define DEBUG 				1 << 3	// 8
 #define COMMUNICATION 		1 << 4	// 16
 #define HARDWARE			1 << 5	// 32
-// #define VESC_COMMS			1 << 6	// 64
+#define STATUS				1 << 6	// 64 << MAX
 
 debugHelper debug;
 
@@ -75,164 +73,107 @@ HardwareSerial Serial1(2);
 
 //--------------------------------------------------------------
 
-#define	TN_ONLINE 	1
-#define	ST_ONLINE 	2
-#define	TN_OFFLINE  3
-#define	ST_OFFLINE  4
+int txCharsLength = 0;
 
-class OnlineStatus 
-{
-	private:
-		uint8_t state = ST_OFFLINE;
-		uint8_t oldstate = ST_OFFLINE;
-		uint8_t _timeoutMillis = 200;
-		long lastOnlineTime = 0;
-		const char* _name;
-
-	public:
-
-		OnlineStatus(int timeoutMillis, const char* name) {
-			_timeoutMillis = timeoutMillis;
-			_name = name;
-		}
-
-		bool serviceState(bool online) {
-			if (online) {
-				lastOnlineTime = millis();
-			}
-			bool timeout = millis() - lastOnlineTime > _timeoutMillis;
-
-			switch (state) {
-				case TN_ONLINE:
-					debug.print(DEBUG, "%s -> TN_ONLINE \n", _name);
-					state = timeout == false ? ST_ONLINE : TN_OFFLINE;
-					break;
-				case ST_ONLINE:
-					state = timeout == false ? ST_ONLINE : TN_OFFLINE;
-					break;
-				case TN_OFFLINE:
-					debug.print(DEBUG, "%s -> TN_OFFLINE \n", _name);
-					state = timeout == false ? TN_ONLINE : ST_OFFLINE;
-					break;
-				case ST_OFFLINE:
-					state = timeout == false ? TN_ONLINE : ST_OFFLINE;
-					break;
-				default:
-					state = timeout == false ? TN_ONLINE : TN_OFFLINE;
-					break;
-			}
-			bool stateChanged = oldstate != state;
-			oldstate = state;
-			return stateChanged;
-		}
-
-		bool online() {
-			return state == ST_ONLINE;
-		}
-};
-
-OnlineStatus controllerStatus(500, "controller");
-OnlineStatus vescStatus(200, "VESC");
+void controllerPacketAvailableCallback( uint16_t from ) {
+	lastRxFromController = millis();
+	Serial.printf("r");
+	txCharsLength++;
+	if ( txCharsLength > 30 ) {
+		txCharsLength = 0;
+		Serial.printf("\n");
+	}
+}
 
 //--------------------------------------------------------------
 
-uint8_t controllerCommsState;
-uint8_t vescCommsState;
-long lastControllerOfflineTime = 0;
+void controllerOfflineCallback() {
+	esk8.controllerPacket.throttle = 127;
+	debug.print(STATUS, "controllerOfflineCallback(); (%d)\n", millis() - lastRxFromController);
+}
+void controllerOnlineCallback() {
+	debug.print(STATUS, "controllerOnlineCallback();\n");
+}
+void vescOfflineCallback() {
+	debug.print(STATUS, "vescOfflineCallback();\n");
+}
+void vescOnlineCallback() {
+	debug.print(STATUS, "vescOnlineCallback();\n");
+}
+
+OnlineStatusLib controllerStatus(controllerOfflineCallback, controllerOnlineCallback, /*debug*/ false);
+OnlineStatusLib vescStatus(vescOfflineCallback, vescOnlineCallback, /*debug*/ false);
+
+//--------------------------------------------------------------
+
 portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------------------------
 
+#define SEND_TO_CONTROLLER_INTERVAL	300
+#define SEND_TO_VESC_INTERVAL	300
+
 Scheduler runner;
 
 void tSendToVESC_callback();
-Task tSendToVESC(300, TASK_FOREVER, &tSendToVESC_callback);
+Task tSendToVESC(SEND_TO_VESC_INTERVAL, TASK_FOREVER, &tSendToVESC_callback);
 void tSendToVESC_callback() {
-
-	if ( controllerStatus.online() == false ) {
-		esk8.controllerPacket.throttle = 127;
-		debug.print(COMMUNICATION, "tSendToVESC_callback: Controller OFFLINE (127) \n");
-	}
 
 	taskENTER_CRITICAL(&mmux);
 
 	UART.nunchuck.valueY = esk8.controllerPacket.throttle;
 	UART.nunchuck.lowerButton = false;
 
-  UART.setNunchuckValues();
+  	UART.setNunchuckValues();
 
     taskEXIT_CRITICAL(&mmux);
 }
 
 void tGetFromVESC_callback();
-Task tGetFromVESC(300, TASK_FOREVER, &tGetFromVESC_callback);
+Task tGetFromVESC(SEND_TO_CONTROLLER_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback);
 void tGetFromVESC_callback() {
 
-	bool vescOnline = getVescValues();
-	bool vescStatusChanged = vescStatus.serviceState(vescOnline);
-	esk8.boardPacket.vescOnline = vescOnline;
+	// bool vescOnline = getVescValues();
+	// bool vescStatusChanged = vescStatus.serviceState(vescOnline);
+	// // esk8.boardPacket.vescOnline = vescOnline;
 
-	// if (vescOnline == true) {
-		// debug.print(COMMUNICATION, "tGetFromVESC_callback(): batteryVoltage = %.1f vescOnline=%d \n", esk8.boardPacket.batteryVoltage, vescOnline);
-	// }
-	// else {
-		// debug.print(COMMUNICATION, "tGetFromVESC_callback(): OFFLINE : batteryVoltage = %.1f \n", esk8.boardPacket.batteryVoltage);
-	// }
+	// esk8.sendPacketToController();
 }
 //--------------------------------------------------------------------------------
 TaskHandle_t RF24CommsRxTask;
 //--------------------------------------------------------------------------------
-// void controllerPacketAvailable_Callback(int test) {
-// 	debug.print(COMMUNICATION, "controllerPacketAvailable_Callback() \n");
-// }
-//--------------------------------------------------------------
 void setup()
 {
     Serial.begin(9600);
+    Serial1.begin(VESC_UART_BAUDRATE);
 
 	debug.init();
-
-	// #define	STARTUP 			1 << 0	// 1
-	// #define WARNING 				1 << 1	// 2
-	// #define ERROR 				1 << 2	// 4
-	// #define DEBUG 				1 << 3	// 8
-	// #define CONTROLLER_COMMS 	1 << 4	// 16
-	// #define HARDWARE				1 << 5	// 32
-	// #define VESC_COMMS			1 << 6	// 64
 
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(DEBUG, "DEBUG");
 	debug.addOption(ERROR, "ERROR");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
-	// debug.addOption(VESC_COMMS, "VESC_COMMS");
-	debug.setFilter( STARTUP );
+	debug.addOption(STATUS, "STATUS");
+	debug.setFilter( STARTUP | STATUS | COMMUNICATION );
+	// debug.setFilter( STARTUP | COMMUNICATION | DEBUG );
 
+    debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
-	debug.print(STARTUP, "NOTE: %s\n", boardSetup);
 
 	// print_reset_reason(rtc_get_reset_reason(0), 0);
 	// print_reset_reason(rtc_get_reset_reason(1), 1);
 
-    // Setup serial connection to VESC
-    Serial1.begin(VESC_UART_BAUDRATE);
 
-  while (!Serial) {;}
+  	while (!Serial) {;}
 
 	/** Define which ports to use as UART */
 	UART.setSerialPort(&Serial1);
 
 	setupRadio();
 
-    // wifiHelper.setupWifi();
-    // wifiHelper.setupOTA(WIFI_HOSTNAME);
-
-	esk8.begin(esk8.RF24_BOARD);
-	// esk8.begin(&radio, &network, esk8.RF24_BOARD, controllerPacketAvailable_Callback);
-	//esk8.enableDebug();
-
 	runner.startNow();
 	runner.addTask(tSendToVESC);
-	runner.addTask(tGetFromVESC);
+	// runner.addTask(tGetFromVESC);
 	tSendToVESC.enable();
 	// tGetFromVESC.enable();
 
@@ -251,8 +192,6 @@ void setup()
 	vTaskDelay(100);
 }
 
-#define SEND_TO_CONTROLLER_INTERVAL	300
-
 //*************************************************************
 long intervalStarts = 0;
 int otaHandleTimeoutMillis = 30*1000;
@@ -261,19 +200,18 @@ void loop() {
 
 	bool timeToUpdateController = millis() - intervalStarts > SEND_TO_CONTROLLER_INTERVAL;
 
-	if (timeToUpdateController) {
+	if ( timeToUpdateController ) {
 		intervalStarts = millis();
 		// update controller
 		bool vescOnline = getVescValues();
+		esk8.sendPacketToController();
 
 		bool vescStatusChanged = vescStatus.serviceState(vescOnline);
-
-		if (vescOnline) {
-
-		}
 	}
 
 	esp_task_wdt_feed();
+
+	esk8.service();
 
 	runner.execute();
 
@@ -281,9 +219,7 @@ void loop() {
 }
 //*************************************************************
 long nowms = 0;
-long lastPacketFromControllerTime = 0;
 bool controllerOnline = true;
-#define CONTROLLER_ONLINE_PERIOD	500
 
 void codeForRF24CommsRxTask( void *parameter ) {
 
@@ -291,9 +227,9 @@ void codeForRF24CommsRxTask( void *parameter ) {
 
 	for (;;) {
 
-		bool controllerPacketFound = checkForControllerPacketThenRespond();
+		bool controllerOnline = millis() - lastRxFromController < CONTROLLER_TIMEOUT;
 
-		controllerStatusChanged = controllerStatus.serviceState(controllerPacketFound);
+		controllerStatusChanged = controllerStatus.serviceState(controllerOnline);
 
 		vTaskDelay( 10 );
 	}
@@ -301,70 +237,25 @@ void codeForRF24CommsRxTask( void *parameter ) {
 }
 
 /***************************************************************/
-bool checkForControllerPacketThenRespond() {
-
-	bool packetFound = false;
-	byte pipeNo;
-
-  	radio.openWritingPipe( esk8.talking_pipes[esk8.RF24_BOARD] );
-  	radio.openReadingPipe( 1, esk8.listening_pipes[esk8.RF24_BOARD] );
-
-	// pong back
-	if( radio.available( &pipeNo ) ){
-		respond( pipeNo );
-		packetFound = true;
-   	}
-    return packetFound;
-}
-//--------------------------------------------------------------
-bool respond(byte pipeNo) {
-
-	while ( radio.available() ) {
-		radio.read( &esk8.controllerPacket, sizeof(esk8.controllerPacket) );
-		radio.writeAckPayload(pipeNo, &esk8.boardPacket, sizeof(esk8.boardPacket));
-
-		vTaskDelay( 1 );
-	}
-	return true;
-}
-//--------------------------------------------------------------
 bool getVescValues() {
 
-  esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-    }
-    else {
-    	vescConnected = false;
-    }
-  // if ( UART.getVescValues() == false ) {
-    // 	return false;
-    // }
-
     bool success = UART.getVescValues();
-	esk8.boardPacket.vescOnline = success;
-
-	// Serial.println(UART.data.ampHours);
-	// Serial.println(UART.data.tachometerAbs);
-	// Serial.println(UART.data.rpm);
-
-	esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-	debug.print(DEBUG, "esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.batteryVoltage);
+	// esk8.boardPacket.vescOnline = success;
+	// esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
+	// debug.print(DEBUG, "esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.batteryVoltage);
     return success;
 }
 //--------------------------------------------------------------
 void setupRadio() {
-    SPI.begin(); // Bring up the RF network
-
-    radio.begin();
-    radio.setPALevel(RF24_PA_MIN);
-    radio.setAutoAck(1);                    // Ensure autoACK is enabled
-  	radio.enableAckPayload();               // Allow optional ack payloadsradio.setRetries(0,15);                 // Smallest time between retries, max no. of retries
-    radio.printDetails();
-
-  	radio.openWritingPipe( esk8.talking_pipes[esk8.RF24_BOARD] );
-  	radio.openReadingPipe( 1, esk8.listening_pipes[esk8.RF24_BOARD] );
-
-	radio.startListening();
-
+	SPI.begin();     
+	// TTGO TQ
+	#ifdef NRF24_POWER_PIN
+	pinMode(NRF24_POWER_PIN, OUTPUT);
+	digitalWrite(NRF24_POWER_PIN, HIGH);   
+	#endif
+	radio.begin();
+	radio.setAutoAck(true);
+	esk8.begin(&radio, &network, esk8.RF24_BOARD, controllerPacketAvailableCallback);
 }
 
 //--------------------------------------------------------------------------------
