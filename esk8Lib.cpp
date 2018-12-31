@@ -41,12 +41,14 @@ void esk8Lib::begin(
 
 	_radio->printDetails();                   // Dump the configuration of the rf unit for debugging
 
-	controllerPacket.id = 0;
+	controllerPacket.throttle = 0;
 
 	ctime = millis();
 	btime = millis();
 
-	boardPacket.id = 0;
+	boardPacket.batteryVoltage = 0.0;
+	boardPacket.vescOnline = false;
+
 	hudPacket.controllerState = 0;
 	hudPacket.boardState = 0;
 }
@@ -61,18 +63,19 @@ void esk8Lib::service() {
 }
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToController() {
-	RF24NetworkHeader header(RF24_CONTROLLER, BOARD_TYPE);
-	return _network->write(header, &boardPacket, sizeof(boardPacket));
+	RF24NetworkHeader header( RF24_CONTROLLER );
+	return _network->write(header, &boardPacket, sizeof(BoardStruct));
 }
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToBoard() {
-	RF24NetworkHeader header(RF24_BOARD, CONTROLLER_TYPE);
-	return _network->write(header, &controllerPacket, sizeof(controllerPacket));
+	RF24NetworkHeader header( RF24_BOARD );
+	return _network->write(header, &controllerPacket, sizeof(ControllerStruct));
 }
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToHUD() {
+	RF24NetworkHeader header( RF24_HUD );
 	if (_role == RF24_CONTROLLER || _role == RF24_BOARD) {
-		return sendPacket(RF24_HUD, HUD_TYPE, &hudPacket);
+		return _network->write(header, &hudPacket, sizeof(HudStruct));
 	}
 	else {
 		// exception
@@ -81,29 +84,26 @@ bool esk8Lib::sendPacketToHUD() {
 	return false;
 }
 //---------------------------------------------------------------------------------
-bool esk8Lib::sendPacket(uint16_t to, unsigned char type, const void *message) {
-	RF24NetworkHeader header(to, type);
-	return _network->write(header, message, sizeof(message));
-}
-//---------------------------------------------------------------------------------
 uint16_t esk8Lib::readPacket() {
 
 	RF24NetworkHeader header;                            // If so, take a look at it
     _network->peek(header);
 
-    // Serial.printf("%s\n", header.toString());
+	long time = 0;
 
-	if ( header.type == CONTROLLER_TYPE ) {
-		_network->read(header, &controllerPacket, sizeof(controllerPacket));
+	if ( header.from_node == RF24_CONTROLLER ) {
+		 _network->read(header, &controllerPacket, sizeof(controllerPacket));
+		// Serial.printf("%s %d\n", header.toString(), controllerPacket.throttle);
 	}
-	else if ( header.type == BOARD_TYPE ) {
+	else if ( header.from_node == RF24_BOARD ) {
 		_network->read(header, &boardPacket, sizeof(boardPacket));
+		// Serial.printf("%s %.1f \n", header.toString(), boardPacket.batteryVoltage);
 	}
-	else if ( header.type == HUD_TYPE ) {
+	else if ( header.from_node == RF24_HUD ) {
 		_network->read(header, &hudPacket, sizeof(hudPacket));
 	}
 	else {
-		Serial.printf("ERROR CONDITION!!! readPacket (type: '%d') (23) \n", header.type);
+		Serial.printf("ERROR CONDITION!!! readPacket (from_node: '%d') (23) \n", header.from_node);
 	}
 	return header.from_node;
 }

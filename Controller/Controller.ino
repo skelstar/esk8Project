@@ -101,6 +101,7 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel(/*numpixels*/ NUMPIXELS, /*pin*/ 15
 //--------------------------------------------------------------------------------
 
 const char compile_date[] = __DATE__ " " __TIME__;
+const char file_name[] = __FILE__;
 
 //--------------------------------------------------------------
 
@@ -176,7 +177,7 @@ void packetAvailableCallback( uint16_t from ) {
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
-	esk8.controllerPacket.id++;
+	esk8.controllerPacket.throttle++;
 	bool sentOK = 	esk8.sendPacketToBoard();
     taskEXIT_CRITICAL(&mmux);
 
@@ -243,9 +244,9 @@ void setup() {
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
  //    btStop();   // turn bluetooth module off
 
-	debug.print(STARTUP, "%s \n", compile_date);
-    debug.print(STARTUP, "esk8Project/Controller.ino \n");
-
+    debug.print(STARTUP, "%s\n", file_name);
+	debug.print(STARTUP, "%s\n", compile_date);
+	
     pixels.begin();
     setPixelsColor(pixels.Color(0, 150, 0));
 	
@@ -253,6 +254,7 @@ void setup() {
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
+	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
 
  	pinMode(ENCODER_PIN_A, INPUT_PULLUP);

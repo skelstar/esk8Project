@@ -18,6 +18,7 @@
 /*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
+const char file_name[] = __FILE__;
 
 //--------------------------------------------------------------
 
@@ -132,11 +133,11 @@ void tGetFromVESC_callback();
 Task tGetFromVESC(SEND_TO_CONTROLLER_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback);
 void tGetFromVESC_callback() {
 
-	bool vescOnline = getVescValues();
-	bool vescStatusChanged = vescStatus.serviceState(vescOnline);
-	// esk8.boardPacket.vescOnline = vescOnline;
+	// bool vescOnline = getVescValues();
+	// bool vescStatusChanged = vescStatus.serviceState(vescOnline);
+	// // esk8.boardPacket.vescOnline = vescOnline;
 
-	esk8.sendPacketToController();
+	// esk8.sendPacketToController();
 }
 //--------------------------------------------------------------------------------
 TaskHandle_t RF24CommsRxTask;
@@ -156,6 +157,7 @@ void setup()
 	debug.setFilter( STARTUP | STATUS | COMMUNICATION );
 	// debug.setFilter( STARTUP | COMMUNICATION | DEBUG );
 
+    debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
 
 	// print_reset_reason(rtc_get_reset_reason(0), 0);
@@ -171,7 +173,7 @@ void setup()
 
 	runner.startNow();
 	runner.addTask(tSendToVESC);
-	runner.addTask(tGetFromVESC);
+	// runner.addTask(tGetFromVESC);
 	tSendToVESC.enable();
 	// tGetFromVESC.enable();
 
@@ -209,6 +211,8 @@ void loop() {
 
 	esp_task_wdt_feed();
 
+	esk8.service();
+
 	runner.execute();
 
 	vTaskDelay( 10 );
@@ -222,8 +226,6 @@ void codeForRF24CommsRxTask( void *parameter ) {
 	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
 
 	for (;;) {
-
-		esk8.service();
 
 		bool controllerOnline = millis() - lastRxFromController < CONTROLLER_TIMEOUT;
 
@@ -252,6 +254,7 @@ void setupRadio() {
 	digitalWrite(NRF24_POWER_PIN, HIGH);   
 	#endif
 	radio.begin();
+	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_BOARD, controllerPacketAvailableCallback);
 }
 

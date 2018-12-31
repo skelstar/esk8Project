@@ -105,9 +105,12 @@ void loop() {
 	bool timeToTx = millis()-now > sendPacketInterval;
 	if ( timeToTx ) {
 		now = millis();
-		esk8.sendPacketToController();
+		bool sentOk = esk8.sendPacketToController();
+		if (!sentOk) {
+    		Serial.printf("sendPacketToController(): ERR_NOT_SEND_OK \n");
+		}
 		reportComms('+');
-		esk8.boardPacket.id++;
+		esk8.boardPacket.batteryVoltage+=0.1;
 	}
 
 	bool timeToUpdateHUD = millis() - now2 > 1510;
@@ -141,6 +144,7 @@ void setupRadio() {
 	digitalWrite(NRF24_POWER_PIN, HIGH);   
 	#endif
 	radio.begin();
+	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_BOARD, packetAvailableCallback);
 }
 

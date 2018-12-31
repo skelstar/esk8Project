@@ -12,16 +12,13 @@
 //--------------------------------------------------------------------------------
 
 struct BoardStruct{
-	int id;
-	// bool vescOnline;
-	// float batteryVoltage;
+	bool vescOnline;
+	float batteryVoltage;
 };
 
 
 struct ControllerStruct {
-	int id;
 	byte throttle;
-	// byte encoderButton;
 };
 
 struct HudStruct {
@@ -30,12 +27,6 @@ struct HudStruct {
 };
 
 typedef void ( *PacketAvailableCallback )( uint16_t from );
-
-enum MessageType {
-	BOARD_TYPE		=	0,
-	CONTROLLER_TYPE	=	1,
-	HUD_TYPE		=	2
-};
 
 class esk8Lib
 {
@@ -69,7 +60,6 @@ class esk8Lib
 		RF24 *_radio;
 		RF24Network *_network;
 		Role _role;
-
 
 		long ctime;
 		long btime;
