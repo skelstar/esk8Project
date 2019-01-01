@@ -47,15 +47,16 @@ esk8Lib esk8;
 
 VescUart UART;
 
-#define 	GET_VESC_DATA_INTERVAL	1000
+#define 	GET_VESC_DATA_AND_SEND_TO_CONTROLLER_INTERVAL	1000
 #define 	CONTROLLER_TIMEOUT		300
+#define 	SEND_TO_VESC_INTERVAL	300
 
 //--------------------------------------------------------------------------------
 #define	STARTUP 			1 << 0	// 1
 #define WARNING 			1 << 1	// 2
-#define ERROR 				1 << 2	// 4
+#define VESC_COMMS 				1 << 2	// 4
 #define DEBUG 				1 << 3	// 8
-#define COMMUNICATION 		1 << 4	// 16
+#define CONTROLLER_COMMS 		1 << 4	// 16
 #define HARDWARE			1 << 5	// 32
 #define STATUS				1 << 6	// 64 << MAX
 
@@ -63,6 +64,7 @@ debugHelper debug;
 
 volatile long lastControllerPacketTime = 0;
 volatile float packetData = 0.1;
+long lastSentToController = 0;
 
 //--------------------------------------------------------------------------------
 #define 	VESC_UART_RX		16		// orange - VESC 5
@@ -73,19 +75,35 @@ HardwareSerial Serial1(2);
 
 //--------------------------------------------------------------
 
-int txCharsLength = 0;
+portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
+
+//--------------------------------------------------------------
+
+Scheduler runner;
+
+void tSendToVESC_callback();
+Task tSendToVESC(SEND_TO_VESC_INTERVAL, TASK_FOREVER, &tSendToVESC_callback);
+void tSendToVESC_callback() {
+
+	taskENTER_CRITICAL(&mmux);
+
+	UART.nunchuck.valueY = esk8.controllerPacket.throttle;
+	UART.nunchuck.lowerButton = false;
+
+  	UART.setNunchuckValues();
+
+    taskEXIT_CRITICAL(&mmux);
+}
+
+/**************************************************************/
 
 void controllerPacketAvailableCallback( uint16_t from ) {
 	lastRxFromController = millis();
-	Serial.printf("r");
-	txCharsLength++;
-	if ( txCharsLength > 30 ) {
-		txCharsLength = 0;
-		Serial.printf("\n");
-	}
+	debug.print(CONTROLLER_COMMS, "Controller throttle: %d \n", esk8.controllerPacket.throttle);
+	tSendToVESC.restart();
 }
 
-//--------------------------------------------------------------
+/**************************************************************/
 
 void controllerOfflineCallback() {
 	esk8.controllerPacket.throttle = 127;
@@ -104,41 +122,8 @@ void vescOnlineCallback() {
 OnlineStatusLib controllerStatus(controllerOfflineCallback, controllerOnlineCallback, /*debug*/ false);
 OnlineStatusLib vescStatus(vescOfflineCallback, vescOnlineCallback, /*debug*/ false);
 
-//--------------------------------------------------------------
+/**************************************************************/
 
-portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
-
-//--------------------------------------------------------------------------------
-
-#define SEND_TO_CONTROLLER_INTERVAL	300
-#define SEND_TO_VESC_INTERVAL	300
-
-Scheduler runner;
-
-void tSendToVESC_callback();
-Task tSendToVESC(SEND_TO_VESC_INTERVAL, TASK_FOREVER, &tSendToVESC_callback);
-void tSendToVESC_callback() {
-
-	taskENTER_CRITICAL(&mmux);
-
-	UART.nunchuck.valueY = esk8.controllerPacket.throttle;
-	UART.nunchuck.lowerButton = false;
-
-  	UART.setNunchuckValues();
-
-    taskEXIT_CRITICAL(&mmux);
-}
-
-void tGetFromVESC_callback();
-Task tGetFromVESC(SEND_TO_CONTROLLER_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback);
-void tGetFromVESC_callback() {
-
-	// bool vescOnline = getVescValues();
-	// bool vescStatusChanged = vescStatus.serviceState(vescOnline);
-	// // esk8.boardPacket.vescOnline = vescOnline;
-
-	// esk8.sendPacketToController();
-}
 //--------------------------------------------------------------------------------
 TaskHandle_t RF24CommsRxTask;
 //--------------------------------------------------------------------------------
@@ -151,11 +136,13 @@ void setup()
 
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(DEBUG, "DEBUG");
-	debug.addOption(ERROR, "ERROR");
-	debug.addOption(COMMUNICATION, "COMMUNICATION");
+	debug.addOption(VESC_COMMS, "VESC_COMMS");
+	debug.addOption(CONTROLLER_COMMS, "CONTROLLER");
+	debug.addOption(HARDWARE, "HARDWARE");
 	debug.addOption(STATUS, "STATUS");
-	debug.setFilter( STARTUP | STATUS | COMMUNICATION );
-	// debug.setFilter( STARTUP | COMMUNICATION | DEBUG );
+	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
+	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
+	debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -163,11 +150,13 @@ void setup()
 	// print_reset_reason(rtc_get_reset_reason(0), 0);
 	// print_reset_reason(rtc_get_reset_reason(1), 1);
 
-
   	while (!Serial) {;}
 
 	/** Define which ports to use as UART */
 	UART.setSerialPort(&Serial1);
+
+	bool vescOnline = getVescValues();
+	debug.print(STARTUP, "%s\n", vescOnline ? "VESC Online!" : "ERROR: VESC Offline!");
 
 	setupRadio();
 
@@ -193,25 +182,14 @@ void setup()
 }
 
 //*************************************************************
-long intervalStarts = 0;
-int otaHandleTimeoutMillis = 30*1000;
 
 void loop() {
 
-	bool timeToUpdateController = millis() - intervalStarts > SEND_TO_CONTROLLER_INTERVAL;
+	esk8.service();
 
-	if ( timeToUpdateController ) {
-		intervalStarts = millis();
-		// update controller
-		bool vescOnline = getVescValues();
-		esk8.sendPacketToController();
-
-		bool vescStatusChanged = vescStatus.serviceState(vescOnline);
-	}
+	sendToController();		// if it's time
 
 	esp_task_wdt_feed();
-
-	esk8.service();
 
 	runner.execute();
 
@@ -237,12 +215,28 @@ void codeForRF24CommsRxTask( void *parameter ) {
 }
 
 /***************************************************************/
+void sendToController() { 	
+	
+	bool timeToUpdateController = millis() - lastSentToController > GET_VESC_DATA_AND_SEND_TO_CONTROLLER_INTERVAL;
+
+	if ( timeToUpdateController ) {
+		lastSentToController = millis();
+		// update controller
+		bool vescOnline = getVescValues();
+		esk8.sendPacketToController();
+
+		bool vescStatusChanged = vescStatus.serviceState(vescOnline);
+	}
+}
+//--------------------------------------------------------------
 bool getVescValues() {
 
     bool success = UART.getVescValues();
-	// esk8.boardPacket.vescOnline = success;
-	// esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-	// debug.print(DEBUG, "esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.batteryVoltage);
+    // UART.setDebugPort(&Serial);
+    // UART.printVescValues();
+	esk8.boardPacket.vescOnline = success;
+	esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
+	debug.print(VESC_COMMS, "vescOnline = %d, esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.vescOnline, esk8.boardPacket.batteryVoltage);
     return success;
 }
 //--------------------------------------------------------------

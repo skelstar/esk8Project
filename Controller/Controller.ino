@@ -9,9 +9,10 @@
 #include <debugHelper.h>
 
 #include <esk8Lib.h>
-#include <EncoderBasicModule.h>
+// #include <EncoderBasicModule.h>
+// #include <Rotary.h>
+#include <Encoderi2cModulev1Lib.h>
 #include <OnlineStatusLib.h>
-#include <Rotary.h>
 
 // #include "TFT_eSPI.h"
 // #include "Free_Fonts.h" 
@@ -21,15 +22,18 @@
 
 
 #define SEND_TO_BOARD_INTERVAL_MS 	200
-#define BOARD_OFFLINE_PERIOD		1000
+#define BOARD_OFFLINE_PERIOD		500
 
+#define ENCODER_MIN 	-20 	// decceleration (ie -20 divides 0-127 into 20)
+#define ENCODER_MAX 	15 	// acceleration (ie 15 divides 127-255 into 15)
 
 #define ENCODER_PIN_A		26
 #define ENCODER_PIN_B 		36
 
 #define	PIXEL_PIN			16	// was 5
 
-#define DEADMAN_SWITCH		35
+// can't use pins: 17, 16, 35
+#define DEADMAN_SWITCH		2
 
 #define M5_BUTTON_A			39
 #define M5_BUTTON_B			38
@@ -48,38 +52,49 @@ debugHelper debug;
 
 esk8Lib esk8;
 
-void attachEncoderInterrupts() {
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), callback, CHANGE);
-	attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), callback, CHANGE);
+/*****************************************************/
+
+void encoderChangedEventCallback(int newThrottleValue);
+void encoderPressedEventCallback();
+bool getEncoderCanAccelerateCallback();
+
+Encoderi2cModulev1Lib throttleDevice(
+		encoderChangedEventCallback,
+		encoderPressedEventCallback,
+		getEncoderCanAccelerateCallback,
+		ENCODER_MIN, 
+		ENCODER_MAX);
+
+void encoderChangedEventCallback(int newThrottleValue) {
+	esk8.controllerPacket.throttle = newThrottleValue;
+	debug.print(HARDWARE, "Encoder changed: %d \n", newThrottleValue);
 }
 
-EncoderBasicModule throttleDevice;
+bool throttleChanged = false;
 
-Rotary rotary(ENCODER_PIN_A, ENCODER_PIN_B);
-
-void callback() {
-	throttleDevice.encoderInterruptHandler();
+void encoderPressedEventCallback() {
+	debug.print(HARDWARE, "Encoder Pressed! \n");
+	// reset encoder/throttle back to 0 (127)
+	esk8.controllerPacket.throttle = 127;
+	throttleChanged = true;
+	throttleDevice.setEncoderCount(0);
 }
 
-void encoderChangedEventCallback() {
-	debug.print(DEBUG, "Encoder changed: %d \n", throttleDevice.getEncoderCount());
+bool getEncoderCanAccelerateCallback() {
+	bool deadmanPressed = digitalRead(DEADMAN_SWITCH);
+	debug.print(HARDWARE, "Deadman pressed: %d \n", deadmanPressed);
+	return deadmanPressed;
 }
+
+/*****************************************************/
+
+
+volatile long lastAckFromBoard = 0;
 
 // TFT_eSPI tft = TFT_eSPI();
 // TFT_eSprite img = TFT_eSprite(&tft);
 
 //--------------------------------------------------------------
-
-int32_t throttleValue;
-int32_t oldThrottleValue = 0;
-uint8_t encoder_status;
-// stats
-int32_t packetsSent = 0;
-int32_t packetsFailed = 0;
-
-//--------------------------------------------------------------
-
-volatile long lastRxFromBoard = 0;
 
 portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
@@ -91,10 +106,6 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
-int offlineCount = 0;
-int encoderOfflineCount = 0;
-bool encoderOnline = true;
-
 #define NUMPIXELS 10
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(/*numpixels*/ NUMPIXELS, /*pin*/ 15, NEO_GRB + NEO_KHZ800);
 
@@ -104,9 +115,6 @@ const char compile_date[] = __DATE__ " " __TIME__;
 const char file_name[] = __FILE__;
 
 //--------------------------------------------------------------
-
-bool throttleChanged = false;
-int throttle = 127;
 
 //--------------------------------------------------------------
 
@@ -164,24 +172,19 @@ void tFlashLedsOff_callback() {
 int txCharsLength = 0;
 
 void packetAvailableCallback( uint16_t from ) {
-	lastRxFromBoard = millis();
-	Serial.printf("r");
-	txCharsLength++;
-	if ( txCharsLength > 30 ) {
-		txCharsLength = 0;
-		Serial.printf("\n");
-	}
+	lastAckFromBoard = millis();
+	debug.print(COMMUNICATION, "Rx from Board: batt voltage %.1f \n", esk8.boardPacket.batteryVoltage);
 }
 
 //--------------------------------------------------------------
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
-	esk8.controllerPacket.throttle++;
 	bool sentOK = 	esk8.sendPacketToBoard();
     taskEXIT_CRITICAL(&mmux);
 
     if ( sentOK ) {
+    	lastAckFromBoard = millis();
 		throttleChanged = false;
     }
     else {
@@ -192,7 +195,7 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 //--------------------------------------------------------------
 void boardOfflineCallback() {
-	setPixelsColor(pixels.Color(0, 0, 120));
+	ledsUpdate(pixels.Color(0, 0, 120));
 	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	// tFlashLeds.enable();
 	// offlineCount++;
@@ -200,7 +203,7 @@ void boardOfflineCallback() {
 }
 
 void boardOnlineCallback() {
-	setPixelsColor(pixels.Color(120, 0, 0));
+	ledsUpdate(pixels.Color(120, 0, 0));
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
@@ -223,7 +226,7 @@ void setup() {
 	debug.addOption(HARDWARE, "HARDWARE");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
-	debug.addOption(TIMING, "TIMING");
+	// debug.addOption(TIMING, "TIMING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
 	debug.setFilter( STARTUP | DEBUG | COMMUNICATION );
 	//debug.setFilter( STARTUP );
@@ -248,7 +251,7 @@ void setup() {
 	debug.print(STARTUP, "%s\n", compile_date);
 	
     pixels.begin();
-    setPixelsColor(pixels.Color(0, 150, 0));
+    ledsUpdate(pixels.Color(0, 150, 0));
 	
 	throttleChanged = true;	// initialise
 
@@ -257,10 +260,9 @@ void setup() {
 	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
 
- 	pinMode(ENCODER_PIN_A, INPUT_PULLUP);
-	pinMode(ENCODER_PIN_B, INPUT_PULLUP);
-   	attachEncoderInterrupts();
-	throttleDevice.begin(DEADMAN_SWITCH, rotary, encoderChangedEventCallback);
+	if ( throttleDevice.isConnected() == false ) {
+		debug.print(STARTUP, "WARNING: encoder device is not connected!");
+	}
 
 	// img.pushSprite(200, 100); delay(500);	
 
@@ -289,7 +291,7 @@ void setup() {
 
 void loop() {
 
-	bool connected = millis() - lastRxFromBoard < BOARD_OFFLINE_PERIOD;
+	bool connected = millis() - lastAckFromBoard < BOARD_OFFLINE_PERIOD;
 	boardStatus.serviceState(connected);
 
 	runner.execute();
@@ -299,8 +301,8 @@ void loop() {
 	throttleDevice.update();
 
 	if ( throttleChanged ) {
-		tSendControllerValues.restart();
 		throttleChanged = false;
+		tSendControllerValues.restart();
 	}
 
 	vTaskDelay( 10 );
@@ -350,11 +352,12 @@ void updateDisplay(int mode, int backlight) {
 	// 		break;
 	// }
 }
-
-void setPixelsColor(uint16_t color) {
+//--------------------------------------------------------------
+void ledsUpdate(uint16_t color) {
 	for (int i = 0; i < NUMPIXELS; i++){
 		pixels.setPixelColor(i, color);
 		vTaskDelay( 1 );
 	}
 	pixels.show();
 }
+//--------------------------------------------------------------

@@ -41,7 +41,7 @@ void esk8Lib::begin(
 
 	_radio->printDetails();                   // Dump the configuration of the rf unit for debugging
 
-	controllerPacket.throttle = 0;
+	controllerPacket.throttle = 127;
 
 	ctime = millis();
 	btime = millis();
@@ -69,6 +69,7 @@ bool esk8Lib::sendPacketToController() {
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToBoard() {
 	RF24NetworkHeader header( RF24_BOARD );
+	// Serial.printf("Sending %d \n", controllerPacket.throttle);
 	return _network->write(header, &controllerPacket, sizeof(ControllerStruct));
 }
 //---------------------------------------------------------------------------------
