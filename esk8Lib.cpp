@@ -48,7 +48,7 @@ void esk8Lib::begin(
 
 	boardPacket.batteryVoltage = 0.0;
 	boardPacket.vescOnline = false;
-
+	
 	hudPacket.controllerState = 0;
 	hudPacket.boardState = 0;
 }
