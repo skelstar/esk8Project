@@ -1,22 +1,21 @@
 #include "Arduino.h"
-#include "EncoderModuleLib.h"
+#include "i2cEncoderLib.h"
+#include "Encoderi2cModulev1Lib.h"
 
 
 i2cEncoderLib encoder(0x30); 
 
 //--------------------------------------------------------------------------------
-EncoderModuleLib::EncoderModuleLib(
+Encoderi2cModulev1Lib::Encoderi2cModulev1Lib(
         	EncoderChangedEventCallback encoderChangedEventCallback,
         	EncoderPressedEventCallback encoderPressedEventCallback,
-			EncoderOnlineEventCallback encoderOnlineEventCallback,
-			EncoderCanAccelerateCallback canAccelerateCallback,
+        	GetEncoderCanAccelerateCallback getCanAccelerateCallback,
 			int minLimit, 
 			int maxLimit) {
 
 	_encoderChangedEventCallback = encoderChangedEventCallback;
 	_encoderPressedEventCallback = encoderPressedEventCallback;
-	_encoderOnlineEventCallback = encoderOnlineEventCallback;
-	_canAccelerateCallback = canAccelerateCallback;
+	_getCanAccelerateCallback = getCanAccelerateCallback;
 
 	_encoderCounterMinLimit = minLimit;
 	_encoderCounterMaxLimit = maxLimit;
@@ -24,9 +23,9 @@ EncoderModuleLib::EncoderModuleLib(
 	setupEncoder(_encoderCounterMaxLimit, _encoderCounterMinLimit);
 }
 
-void EncoderModuleLib::update() {
+void Encoderi2cModulev1Lib::update() {
 
-	bool newCanAccelerate = _canAccelerateCallback();
+	bool newCanAccelerate = _getCanAccelerateCallback();
 
 	bool canAccelerateStateChanged = _oldCanAccelerate != newCanAccelerate;
 	_oldCanAccelerate = newCanAccelerate;
@@ -52,20 +51,16 @@ void EncoderModuleLib::update() {
 	}
 }
 
-bool EncoderModuleLib::isConnected() {
-	Wire.beginTransmission(0x30);
-	Wire.write(0x00);
-	Wire.endTransmission();
-	Wire.requestFrom(0x30, 1);
-	return Wire.available();
+bool Encoderi2cModulev1Lib::isConnected() {
+	return encoder.isConnected();
 }
 
-void EncoderModuleLib::setEncoderCount(int count) {
+void Encoderi2cModulev1Lib::setEncoderCount(int count) {
 	_oldCounter = 0;
 	encoder.writeCounter(_oldCounter);
 }
 
-void EncoderModuleLib::setEncoderMinMax(int minLimit, int maxLimit) {
+void Encoderi2cModulev1Lib::setEncoderMinMax(int minLimit, int maxLimit) {
 	_encoderCounterMinLimit = minLimit;
 	_encoderCounterMaxLimit = maxLimit;
 
@@ -73,15 +68,15 @@ void EncoderModuleLib::setEncoderMinMax(int minLimit, int maxLimit) {
 	encoder.writeMin(_encoderCounterMaxLimit); //Set minimum threshold
 }
 
-int EncoderModuleLib::getEncoderMaxLimit() {
+int Encoderi2cModulev1Lib::getEncoderMaxLimit() {
 	return _encoderCounterMaxLimit;
 }
 
-int EncoderModuleLib::getEncoderMinLimit() {
+int Encoderi2cModulev1Lib::getEncoderMinLimit() {
 	return _encoderCounterMinLimit;
 }
 
-void EncoderModuleLib::handleCounterChanged(int newCounter, bool canAccelerate) {
+void Encoderi2cModulev1Lib::handleCounterChanged(int newCounter, bool canAccelerate) {
 
 	if (newCounter > 0 && canAccelerate == false) {
 		newCounter = 0;
@@ -112,7 +107,7 @@ void EncoderModuleLib::handleCounterChanged(int newCounter, bool canAccelerate) 
 }
 
 // map minLimit-0-maxlimit to 0-127-255
-int EncoderModuleLib::mapCounterTo127to255(int counter) {
+int Encoderi2cModulev1Lib::mapCounterTo127to255(int counter) {
 	int rawMiddle = 0;
 
 	if (counter >= rawMiddle) {
@@ -121,13 +116,13 @@ int EncoderModuleLib::mapCounterTo127to255(int counter) {
 	return map(counter, _encoderCounterMinLimit, rawMiddle, 0, 127);
 }
 
-bool EncoderModuleLib::encoderPressed() {
+bool Encoderi2cModulev1Lib::encoderPressed() {
 	return encoder.readStatus(E_PUSH);
 }
 
-void EncoderModuleLib::setupEncoder(int maxCounts, int minCounts) {
+void Encoderi2cModulev1Lib::setupEncoder(int maxCounts, int minCounts) {
 
-	encoder.begin(( INTE_DISABLE | LEDE_DISABLE | WRAP_DISABLE | DIRE_RIGHT | IPUP_DISABLE | RMOD_X1 )); //INTE_ENABLE | LEDE_ENABLE | 
+	encoder.begin(( INTE_DISABLE | LEDE_DISABLE | WRAP_DISABLE | DIRE_RIGHT | IPUP_DISABLE | RMOD_X1 ));
 	encoder.writeCounter(0);
 	encoder.writeMax(maxCounts); //Set maximum threshold
 	encoder.writeMin(minCounts); //Set minimum threshold
