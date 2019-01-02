@@ -18,9 +18,9 @@
 
 #include <OnlineStatusLib.h>
 
-// #include "TFT_eSPI.h"
-// #include "Free_Fonts.h" 
-
+/* Display */
+#include "TFT_eSPI.h"
+#include "Free_Fonts.h" 
 //--------------------------------------------------------------------------------
 
 
@@ -61,37 +61,8 @@ esk8Lib esk8;
 
 /*****************************************************/
 
-// void encoderChangedEventCallback(int newThrottleValue);
-// void encoderPressedEventCallback();
-// bool getEncoderCanAccelerateCallback();
-
-// Encoderi2cModulev1Lib throttleDevice(
-// 		encoderChangedEventCallback,
-// 		encoderPressedEventCallback,
-// 		getEncoderCanAccelerateCallback,
-// 		ENCODER_MIN, 
-// 		ENCODER_MAX);
-
-// void encoderChangedEventCallback(int newThrottleValue) {
-// 	esk8.controllerPacket.throttle = newThrottleValue;
-// 	debug.print(HARDWARE, "Encoder changed: %d \n", newThrottleValue);
-// }
-
 bool updateBoardImmediately = false;
-
-// void encoderPressedEventCallback() {
-// 	debug.print(HARDWARE, "Encoder Pressed! \n");
-// 	// reset encoder/throttle back to 0 (127)
-// 	esk8.controllerPacket.throttle = 127;
-// 	updateBoardImmediately = true;
-// 	throttleDevice.setEncoderCount(0);
-// }
-
-// bool getEncoderCanAccelerateCallback() {
-// 	bool deadmanPressed = digitalRead(DEADMAN_SWITCH);
-// 	debug.print(HARDWARE, "Deadman pressed: %d \n", deadmanPressed);
-// 	return deadmanPressed;
-// }
+volatile long lastAckFromBoard = 0;
 
 // raw min-max values (not something to configure)
 int joystickDeadZone = 3;
@@ -138,11 +109,11 @@ int getRawValuesFromJoystick() {
 
 /*****************************************************/
 
+TFT_eSPI tft = TFT_eSPI();
+TFT_eSprite img = TFT_eSprite(&tft);
 
-volatile long lastAckFromBoard = 0;
-
-// TFT_eSPI tft = TFT_eSPI();
-// TFT_eSprite img = TFT_eSprite(&tft);
+#define IWIDTH	320
+#define IHEIGHT	240
 
 //--------------------------------------------------------------
 
@@ -248,7 +219,8 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 //--------------------------------------------------------------
 void boardOfflineCallback() {
-	ledsUpdate(pixels.Color(0, 0, 120));
+    uint16_t red = pixels.Color(255, 0, 0);
+	ledsUpdate(255, 0, 0);
 	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
 	// tFlashLeds.enable();
 	// offlineCount++;
@@ -256,7 +228,8 @@ void boardOfflineCallback() {
 }
 
 void boardOnlineCallback() {
-	ledsUpdate(pixels.Color(120, 0, 0));
+    uint16_t green = pixels.Color(0, 255, 0);
+	ledsUpdate(0, 255, 0);
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
@@ -289,19 +262,6 @@ void setup() {
 
 
 
-	// tft.begin();
-
- //  	tft.setRotation(1);
-	// tft.fillScreen(TFT_BLACK);            // Clear screen
-
-	// //img.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
-	// img.createSprite(IWIDTH, IHEIGHT);
-	// img.fillSprite(TFT_BLUE);
-	// img.setFreeFont(FF18);                 // Select the font
- //  	img.setTextDatum(MC_DATUM);
-	// img.setTextColor(TFT_YELLOW, TFT_BLACK);
-	// img.drawString("Ready!", 10, 20, 2);
-	
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
  //    btStop();   // turn bluetooth module off
 
@@ -309,7 +269,7 @@ void setup() {
 	debug.print(STARTUP, "%s\n", compile_date);
 	
     pixels.begin();
-    ledsUpdate(pixels.Color(0, 150, 0));
+    ledsUpdate(0, 150, 0);
 	
 	updateBoardImmediately = true;	// initialise
 
@@ -324,7 +284,7 @@ void setup() {
 	
 	// if ( throttleDevice.isConnected() == false ) {
 
-	// img.pushSprite(200, 100); delay(500);	
+	setupDisplay();
 
 	runner.startNow();
 	runner.addTask(tFlashLeds);
@@ -348,7 +308,7 @@ void setup() {
 /**************************************************************
 					LOOP
 **************************************************************/
-long now = 0;
+long timeLastReadJoystick = 0;
 
 void loop() {
 
@@ -392,8 +352,8 @@ void codeForEncoderTask( void *parameter ) {
 
 bool readJoystickOk() {
 	
-	if (millis() - now > READ_JOYSTICK_INTERVAL) {
-		now = millis();
+	if (millis() - timeLastReadJoystick > READ_JOYSTICK_INTERVAL) {
+		timeLastReadJoystick = millis();
 		byte result = getRawValuesFromJoystick();
 		// check ERROR condition
 		if ( result == -1 ) {
@@ -466,6 +426,23 @@ byte mapJoystickToThrottle(byte joystickValue) {
 
 //--------------------------------------------------------------
 
+void setupDisplay() {
+
+	tft.begin();
+
+  	tft.setRotation(1); // 0 is portrait
+	tft.fillScreen(TFT_BLACK);            // Clear screen
+
+	img.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img.createSprite(IWIDTH, IHEIGHT);
+	// img.fillSprite(TFT_BLUE);
+	img.setFreeFont(FF18);                 // Select the font
+  	img.setTextDatum(MC_DATUM);
+	img.setTextColor(TFT_YELLOW, TFT_BLACK);
+	img.drawString("READY!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
+	img.pushSprite(0, 0);
+}
+
 void updateDisplay(int mode, int backlight) {
 	// #define LINE_1 20
 	// #define LINE_2 45
@@ -494,9 +471,9 @@ void updateDisplay(int mode, int backlight) {
 	// }
 }
 //--------------------------------------------------------------
-void ledsUpdate(uint16_t color) {
+void ledsUpdate(int r, int g, int b) {
 	for (int i = 0; i < NUMPIXELS; i++){
-		pixels.setPixelColor(i, color);
+		pixels.setPixelColor(i, pixels.Color(r, g, b));
 		vTaskDelay( 1 );
 	}
 	pixels.show();
