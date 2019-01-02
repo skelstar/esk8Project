@@ -15,6 +15,8 @@ class OnlineStatusLib
 	private:
 		uint8_t state = ST_ONLINE;
 		uint8_t oldstate = ST_ONLINE;
+		int _offlineConsecutiveTimesCount = 0;
+		int _offlineNumConsecutiveTimesAllowance = 0;
 
 		StatusCallback _isOfflineCb;
 		StatusCallback _isOnlineCb;
@@ -24,7 +26,7 @@ class OnlineStatusLib
 
 	public:
 
-		OnlineStatusLib(StatusCallback isOfflineCb, StatusCallback isOnlineCb, bool debug);
+		OnlineStatusLib(StatusCallback isOfflineCb, StatusCallback isOnlineCb, int offlineNumConsecutiveTimes, bool debug);
 
 		bool serviceState(bool online);
 		bool getState();

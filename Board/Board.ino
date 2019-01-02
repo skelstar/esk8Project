@@ -49,7 +49,7 @@ VescUart UART;
 
 #define 	GET_VESC_DATA_AND_SEND_TO_CONTROLLER_INTERVAL	1000
 #define 	CONTROLLER_TIMEOUT		300
-#define 	SEND_TO_VESC_INTERVAL	300
+#define 	SEND_TO_VESC_INTERVAL	200
 
 //--------------------------------------------------------------------------------
 #define	STARTUP 			1 << 0	// 1
@@ -142,7 +142,8 @@ void setup()
 	debug.addOption(STATUS, "STATUS");
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
-	debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
+	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
+	debug.setFilter( STARTUP );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);

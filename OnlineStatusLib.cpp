@@ -2,10 +2,16 @@
 #include "OnlineStatusLib.h"
 
 
-OnlineStatusLib::OnlineStatusLib(StatusCallback isOfflineCb, StatusCallback isOnlineCb, bool debug) {
+OnlineStatusLib::OnlineStatusLib(
+		StatusCallback isOfflineCb, 
+		StatusCallback isOnlineCb, 
+		int offlineNumConsecutiveTimesAllowance,
+		bool debug) {
 	_isOfflineCb = isOfflineCb;
 	_isOnlineCb = isOnlineCb;
 	_debugOutput = debug;
+
+	_offlineNumConsecutiveTimesAllowance = offlineNumConsecutiveTimesAllowance;
 	state = ST_ONLINE;
 }
 
@@ -23,9 +29,16 @@ bool OnlineStatusLib::serviceState(bool online) {
 			}
 			break;
 		case ST_ONLINE:
-			if (online == false) {
-				state = TN_OFFLINE;
-				debug( "ST_ONLINE > TN_OFFLINE \n" );
+			if ( online == false ) {
+				_offlineConsecutiveTimesCount++;
+				if ( _offlineConsecutiveTimesCount >= _offlineNumConsecutiveTimesAllowance) {
+					state = TN_OFFLINE;
+					debug( "ST_ONLINE > TN_OFFLINE \n" );
+					_offlineConsecutiveTimesCount = 0;
+				}
+				else {
+					Serial.printf("Offline %d consecutive times\n", _offlineConsecutiveTimesCount);
+				}
 			}
 			break;
 		case TN_OFFLINE:
