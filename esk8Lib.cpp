@@ -20,7 +20,7 @@ void esk8Lib::begin(
 	_packetAvailableCallback = packetAvailableCallback;
 
 	_radio->begin();
-	_radio->setPALevel(RF24_PA_HIGH);
+	_radio->setPALevel(RF24_PA_MAX);
 	_radio->setDataRate(RF24_1MBPS);
 
 

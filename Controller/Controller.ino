@@ -11,7 +11,11 @@
 #include <esk8Lib.h>
 // #include <EncoderBasicModule.h>
 // #include <Rotary.h>
-#include <Encoderi2cModulev1Lib.h>
+
+// #include <Encoderi2cModulev1Lib.h>
+#include "Wire.h"
+#define JOY_ADDR 0x52
+
 #include <OnlineStatusLib.h>
 
 // #include "TFT_eSPI.h"
@@ -21,8 +25,9 @@
 
 
 
+#define READ_JOYSTICK_INTERVAL		150
 #define SEND_TO_BOARD_INTERVAL_MS 	200
-#define BOARD_OFFLINE_PERIOD		500
+#define BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE	3
 
 #define ENCODER_MIN 	-20 	// decceleration (ie -20 divides 0-127 into 20)
 #define ENCODER_MAX 	15 	// acceleration (ie 15 divides 127-255 into 15)
@@ -48,42 +53,87 @@
 #define ONLINE_STATUS	1 << 5
 #define TIMING			1 << 6
 
+
+
 debugHelper debug;
 
 esk8Lib esk8;
 
 /*****************************************************/
 
-void encoderChangedEventCallback(int newThrottleValue);
-void encoderPressedEventCallback();
-bool getEncoderCanAccelerateCallback();
+// void encoderChangedEventCallback(int newThrottleValue);
+// void encoderPressedEventCallback();
+// bool getEncoderCanAccelerateCallback();
 
-Encoderi2cModulev1Lib throttleDevice(
-		encoderChangedEventCallback,
-		encoderPressedEventCallback,
-		getEncoderCanAccelerateCallback,
-		ENCODER_MIN, 
-		ENCODER_MAX);
+// Encoderi2cModulev1Lib throttleDevice(
+// 		encoderChangedEventCallback,
+// 		encoderPressedEventCallback,
+// 		getEncoderCanAccelerateCallback,
+// 		ENCODER_MIN, 
+// 		ENCODER_MAX);
 
-void encoderChangedEventCallback(int newThrottleValue) {
-	esk8.controllerPacket.throttle = newThrottleValue;
-	debug.print(HARDWARE, "Encoder changed: %d \n", newThrottleValue);
+// void encoderChangedEventCallback(int newThrottleValue) {
+// 	esk8.controllerPacket.throttle = newThrottleValue;
+// 	debug.print(HARDWARE, "Encoder changed: %d \n", newThrottleValue);
+// }
+
+bool updateBoardImmediately = false;
+
+// void encoderPressedEventCallback() {
+// 	debug.print(HARDWARE, "Encoder Pressed! \n");
+// 	// reset encoder/throttle back to 0 (127)
+// 	esk8.controllerPacket.throttle = 127;
+// 	updateBoardImmediately = true;
+// 	throttleDevice.setEncoderCount(0);
+// }
+
+// bool getEncoderCanAccelerateCallback() {
+// 	bool deadmanPressed = digitalRead(DEADMAN_SWITCH);
+// 	debug.print(HARDWARE, "Deadman pressed: %d \n", deadmanPressed);
+// 	return deadmanPressed;
+// }
+
+// raw min-max values (not something to configure)
+int joystickDeadZone = 3;
+int joystickMin = 11;
+int joystickMiddle = 127;
+int joystickMax = 246;		
+
+// use these to limit power
+int throttleMin = 60;	// 0
+int throttleMax = 200;	// 255
+
+/**************************************************************/
+int setupJoystick() {
+	Wire.begin(21, 22, 400000);
+
+	if ( getRawValuesFromJoystick() == -1 ) {
+		debug.print(STARTUP, "WARNING: encoder device is not connected!");
+		return -1;
+	}
+
+	setRawJoystickValues(/*min*/ 11, /*middle*/ 127, /*max*/ 246, /*deadZoneSize*/ 7);
+	setThrottleMinsMaxs(/*min*/throttleMin, /*max*/throttleMax);
+	return 1;
 }
 
-bool throttleChanged = false;
+volatile uint8_t x_data;
+volatile uint8_t y_data;
+volatile uint8_t button_data;
 
-void encoderPressedEventCallback() {
-	debug.print(HARDWARE, "Encoder Pressed! \n");
-	// reset encoder/throttle back to 0 (127)
-	esk8.controllerPacket.throttle = 127;
-	throttleChanged = true;
-	throttleDevice.setEncoderCount(0);
-}
+int getRawValuesFromJoystick() {
 
-bool getEncoderCanAccelerateCallback() {
-	bool deadmanPressed = digitalRead(DEADMAN_SWITCH);
-	debug.print(HARDWARE, "Deadman pressed: %d \n", deadmanPressed);
-	return deadmanPressed;
+	Wire.requestFrom(JOY_ADDR, 3);
+	if ( Wire.available() ) {
+		x_data = Wire.read();
+		y_data = Wire.read();
+		button_data = Wire.read();
+		// debug.print(HARDWARE, "x:%d y:%d button:%d\n", x_data, y_data, button_data);
+	}
+	else {
+		return -1;	// ERROR condition
+	}
+	return y_data;
 }
 
 /*****************************************************/
@@ -177,15 +227,18 @@ void packetAvailableCallback( uint16_t from ) {
 }
 
 //--------------------------------------------------------------
+
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
-	bool sentOK = 	esk8.sendPacketToBoard();
+
+	bool sentOK = esk8.sendPacketToBoard();
+
     taskEXIT_CRITICAL(&mmux);
 
     if ( sentOK ) {
     	lastAckFromBoard = millis();
-		throttleChanged = false;
+		updateBoardImmediately = false;
     }
     else {
         debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
@@ -209,7 +262,7 @@ void boardOnlineCallback() {
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
 }
 
-OnlineStatusLib boardStatus(boardOfflineCallback, boardOnlineCallback, /*debug*/ true);
+OnlineStatusLib boardStatus(boardOfflineCallback, boardOnlineCallback, /*offline allowance*/ 10, /*debug*/ true);
 
 //--------------------------------------------------------------
 
@@ -228,8 +281,13 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	// debug.addOption(TIMING, "TIMING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | DEBUG | COMMUNICATION );
+	debug.setFilter( STARTUP );	// | DEBUG | COMMUNICATION | HARDWARE );
 	//debug.setFilter( STARTUP );
+
+	// disable speaker noise
+	dacWrite(25, 0);
+
+
 
 	// tft.begin();
 
@@ -253,16 +311,18 @@ void setup() {
     pixels.begin();
     ledsUpdate(pixels.Color(0, 150, 0));
 	
-	throttleChanged = true;	// initialise
+	updateBoardImmediately = true;	// initialise
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
 	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
 
-	if ( throttleDevice.isConnected() == false ) {
-		debug.print(STARTUP, "WARNING: encoder device is not connected!");
+	if ( setupJoystick() == -1 ) {
+		// error condition (joystick not connected)
 	}
+	
+	// if ( throttleDevice.isConnected() == false ) {
 
 	// img.pushSprite(200, 100); delay(500);	
 
@@ -288,20 +348,25 @@ void setup() {
 /**************************************************************
 					LOOP
 **************************************************************/
+long now = 0;
 
 void loop() {
 
-	bool connected = millis() - lastAckFromBoard < BOARD_OFFLINE_PERIOD;
+	bool connected = millis() - lastAckFromBoard < SEND_TO_BOARD_INTERVAL_MS;
 	boardStatus.serviceState(connected);
 
 	runner.execute();
 
 	esk8.service();
 
-	throttleDevice.update();
+	if ( readJoystickOk() == false ) {
+		// joystick not connected
+		updateBoardImmediately = true;
+		esk8.controllerPacket.throttle = 127;
+	}
 
-	if ( throttleChanged ) {
-		throttleChanged = false;
+	if ( updateBoardImmediately ) {
+		updateBoardImmediately = false;
 		tSendControllerValues.restart();
 	}
 
@@ -324,6 +389,82 @@ void codeForEncoderTask( void *parameter ) {
 	vTaskDelete(NULL);
 }
 //**************************************************************
+
+bool readJoystickOk() {
+	
+	if (millis() - now > READ_JOYSTICK_INTERVAL) {
+		now = millis();
+		byte result = getRawValuesFromJoystick();
+		// check ERROR condition
+		if ( result == -1 ) {
+			debug.print(STARTUP, "WARNING: encoder device is not connected!");
+			return false;
+		}
+
+		byte mappedThrottle = mapJoystickToThrottle(result);
+		debug.print(HARDWARE, "Mapped throttle: %d \n", mappedThrottle);
+		if ( mappedThrottle != esk8.controllerPacket.throttle ) {
+			updateBoardImmediately = true;
+			esk8.controllerPacket.throttle = mappedThrottle;
+		}
+		return true;
+	}
+	return true;
+}
+//--------------------------------------------------------------
+void setRawJoystickValues(int min, int middle, int max, int deadZoneSize) {
+
+	joystickMin = min;
+	joystickMax = max;		
+	joystickMiddle = middle;
+	joystickDeadZone = 3;
+}
+
+void setThrottleMinsMaxs(int min, int max) {
+
+	if (max < 127) {
+		throttleMax = 127;
+	} 
+	else if (max > 255) {
+		throttleMax = 255;
+	}
+	else {
+		throttleMax = max;
+	}
+
+	if (min > 127) {
+		throttleMin = 127;
+	}
+	else if (min < 0) {
+		throttleMin = 0;
+	}
+	else {
+		throttleMin = min;	// mapped min value
+	}
+}
+//--------------------------------------------------------------
+byte mapJoystickToThrottle(byte joystickValue) {
+
+	if ( joystickValue > joystickMiddle + joystickDeadZone ) {
+		// acelerate
+		return map(joystickValue, 
+			/*r-mid*/ joystickMiddle + joystickDeadZone, 
+			/*r-max*/ joystickMax, 
+			/*mid*/ 127+joystickDeadZone, 
+			/*max*/ throttleMax);
+	}
+	else if ( joystickValue < joystickMiddle - joystickDeadZone ) {
+		// braking
+		return map(joystickValue, 
+			/*r-min*/ joystickMin, 
+			/*r-mid*/ joystickMiddle - joystickDeadZone, 
+			/*min*/ throttleMin, 
+			/*max*/ 127-joystickDeadZone);
+	}
+	return 127;
+}
+
+//--------------------------------------------------------------
 
 void updateDisplay(int mode, int backlight) {
 	// #define LINE_1 20
