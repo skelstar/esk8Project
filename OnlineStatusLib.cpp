@@ -15,10 +15,10 @@ OnlineStatusLib::OnlineStatusLib(
 	state = ST_ONLINE;
 }
 
-bool OnlineStatusLib::serviceState(bool online) {
+bool OnlineStatusLib::serviceState(bool gotResponse) {
 	switch (state) {
 		case TN_ONLINE:
-			if (online) {
+			if (gotResponse) {
 				state = ST_ONLINE;
 				debug( "TN_ONLINE > ST_ONLINE \n" );
 				_isOnlineCb();
@@ -29,20 +29,14 @@ bool OnlineStatusLib::serviceState(bool online) {
 			}
 			break;
 		case ST_ONLINE:
-			if ( online == false ) {
-				_offlineConsecutiveTimesCount++;
-				if ( _offlineConsecutiveTimesCount >= _offlineNumConsecutiveTimesAllowance) {
-					state = TN_OFFLINE;
-					debug( "ST_ONLINE > TN_OFFLINE \n" );
-					_offlineConsecutiveTimesCount = 0;
-				}
-				else {
-					Serial.printf("Offline %d consecutive times\n", _offlineConsecutiveTimesCount);
-				}
+
+			if ( shouldGoOffline(gotResponse) ) {
+				state = TN_OFFLINE;
+				debug( "ST_ONLINE > TN_OFFLINE \n" );
 			}
 			break;
 		case TN_OFFLINE:
-			if (online) {
+			if (gotResponse) {
 				state = TN_ONLINE;
 				debug( "TN_OFFLINE > TN_ONLINE \n" );
 			}
@@ -53,25 +47,45 @@ bool OnlineStatusLib::serviceState(bool online) {
 			}
 			break;
 		case ST_OFFLINE:
-			if (online) {
+			if (gotResponse) {
 				state = TN_ONLINE;
 				debug( "ST_OFFLINE > TN_ONLINE \n" );
 			}
 			break;
 		default:
-			state = online ? TN_ONLINE : TN_OFFLINE;
+			state = gotResponse ? TN_ONLINE : TN_OFFLINE;
 			break;
 	}
 	bool stateChanged = oldstate != state;
 	oldstate = state;
 	return stateChanged;
 }
-
+//-------------------------------------------------------
 void OnlineStatusLib::debug(char *output) {
 	if ( _debugOutput ) {
 		Serial.printf("%s", output);
 	}
 }
-
+//-------------------------------------------------------
 bool OnlineStatusLib::getState() { return state; }
+//-------------------------------------------------------
 bool OnlineStatusLib::isOnline() { return state == ST_ONLINE; }
+//-------------------------------------------------------
+bool OnlineStatusLib::shouldGoOffline(bool gotResponse) {
+	if ( gotResponse == false ) {
+		_offlineConsecutiveTimesCount++;
+		if ( _offlineConsecutiveTimesCount >= _offlineNumConsecutiveTimesAllowance) {
+			_offlineConsecutiveTimesCount = 0;
+			return true;	// should go offline
+		}
+		else {
+			Serial.printf("Offline %d consecutive times\n", _offlineConsecutiveTimesCount);
+			return false;	// not offline yet
+		}
+	}
+	else {
+		_offlineConsecutiveTimesCount = 0;
+		return false;
+	}
+	return false;
+}

@@ -23,6 +23,7 @@ class OnlineStatusLib
 		bool _debugOutput;
 
 		void debug(char *output);
+		bool shouldGoOffline(bool gotResponse);
 
 	public:
 
