@@ -5,21 +5,20 @@
 #include <Adafruit_NeoPixel.h>
 #include <TaskScheduler.h>
 
+#include <M5Stack.h>
+
 #include <myPushButton.h>
 #include <debugHelper.h>
 
 #include <esk8Lib.h>
-// #include <EncoderBasicModule.h>
-// #include <Rotary.h>
 
-// #include <Encoderi2cModulev1Lib.h>
 #include "Wire.h"
 #define JOY_ADDR 0x52
 
 #include <OnlineStatusLib.h>
 
 /* Display */
-#include "TFT_eSPI.h"
+// #include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
 //--------------------------------------------------------------------------------
 
@@ -27,7 +26,7 @@
 
 #define READ_JOYSTICK_INTERVAL		150
 #define SEND_TO_BOARD_INTERVAL_MS 	200
-#define BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE	3
+#define BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE	4
 
 #define ENCODER_MIN 	-20 	// decceleration (ie -20 divides 0-127 into 20)
 #define ENCODER_MAX 	15 	// acceleration (ie 15 divides 127-255 into 15)
@@ -35,14 +34,14 @@
 #define ENCODER_PIN_A		26
 #define ENCODER_PIN_B 		36
 
-#define	PIXEL_PIN			16	// was 5
+#define	M5STACK_FIRE_PIXEL_PIN			15	// was 5
 
 // can't use pins: 17, 16, 35
 #define DEADMAN_SWITCH		2
 
-#define M5_BUTTON_A			39
-#define M5_BUTTON_B			38
-#define M5_BUTTON_C			37
+// #define M5_BUTTON_A			39
+// #define M5_BUTTON_B			38
+// #define M5_BUTTON_C			37
 
 //--------------------------------------------------------------
 
@@ -128,7 +127,7 @@ RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
 #define NUMPIXELS 10
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(/*numpixels*/ NUMPIXELS, /*pin*/ 15, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 //--------------------------------------------------------------------------------
 
@@ -219,23 +218,25 @@ Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendContro
 
 //--------------------------------------------------------------
 void boardOfflineCallback() {
-    uint16_t red = pixels.Color(255, 0, 0);
-	ledsUpdate(255, 0, 0);
-	//debug.print(ONLINE_STATUS, "offlineCallback();\n");
+    uint32_t red = pixels.Color(255, 0, 0);
+	ledsUpdate(red);
 	// tFlashLeds.enable();
-	// offlineCount++;
-	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
+	M5.Speaker.tone(330, 100);	// tone 330, 200ms
 }
 
 void boardOnlineCallback() {
-    uint16_t green = pixels.Color(0, 255, 0);
-	ledsUpdate(0, 255, 0);
+    uint32_t green = pixels.Color(0, 255, 0);
+	ledsUpdate(green);
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
 }
 
-OnlineStatusLib boardStatus(boardOfflineCallback, boardOnlineCallback, /*offline allowance*/ 10, /*debug*/ true);
+OnlineStatusLib boardStatus(
+	boardOfflineCallback, 
+	boardOnlineCallback, 
+	BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE, 
+	/*debug*/ true);
 
 //--------------------------------------------------------------
 
@@ -260,7 +261,7 @@ void setup() {
 	// disable speaker noise
 	dacWrite(25, 0);
 
-
+	M5.begin();
 
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
  //    btStop();   // turn bluetooth module off
@@ -269,7 +270,7 @@ void setup() {
 	debug.print(STARTUP, "%s\n", compile_date);
 	
     pixels.begin();
-    ledsUpdate(0, 150, 0);
+    ledsUpdate(pixels.Color(0, 120, 0));
 	
 	updateBoardImmediately = true;	// initialise
 
@@ -329,6 +330,11 @@ void loop() {
 		updateBoardImmediately = false;
 		tSendControllerValues.restart();
 	}
+	
+	M5.update();
+	if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
+		powerDown();
+	}
 
 	vTaskDelay( 10 );
 }
@@ -341,8 +347,6 @@ void codeForEncoderTask( void *parameter ) {
 	long nowMs = 0;
 	
 	for (;;) {
-
-
 		vTaskDelay( 10 );
 	}
 
@@ -471,11 +475,23 @@ void updateDisplay(int mode, int backlight) {
 	// }
 }
 //--------------------------------------------------------------
-void ledsUpdate(int r, int g, int b) {
+void ledsUpdate(uint32_t color) {
 	for (int i = 0; i < NUMPIXELS; i++){
-		pixels.setPixelColor(i, pixels.Color(r, g, b));
+		pixels.setPixelColor(i, color);
 		vTaskDelay( 1 );
 	}
 	pixels.show();
 }
 //--------------------------------------------------------------
+void powerDown() {
+	img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
+	// radio
+	radio.stopListening();
+	radio.powerDown();
+	// leds
+	ledsUpdate(pixels.Color(0, 0, 0));
+	// message
+	img.pushSprite(0, 0);
+	delay(300);
+    M5.powerOFF();
+}
