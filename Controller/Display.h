@@ -175,18 +175,21 @@ void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, bool wa
 	#define TFT_GREY 0xC618
 
 	int spacing = 5;
-    int width = strlen(number) * pixelSize * 3;	// + (spacing*(strlen(number)-1));
+	int paddingLeft = 20;
+    int width = strlen(number) * pixelSize * 3 + paddingLeft;
     int height = 5 * pixelSize;
 
-	int startX = 10;
+	int startX = paddingLeft;
 	int startY = 20;
 
-    tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, TFT_BLACK, spacing, pixelSize );
+	uint16_t bgColour = warning ? TFT_RED : TFT_BLACK;
+    spr->fillRect(0, 0, spr->width(), spr->height(), bgColour);
+    tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, pixelSize );
 
 	int labelsX = 320-(320-width);
 	spr->setTextDatum(TL_DATUM);
     spr->drawString("%", labelsX, startY);
-	spr->setTextColor(TFT_GREY, TFT_BLACK);
+	spr->setTextColor(TFT_GREY, bgColour);
 	spr->setTextDatum(ML_DATUM);
 	spr->drawString("FAIL", labelsX, spr->height()/2);
 	spr->setTextDatum(BL_DATUM);

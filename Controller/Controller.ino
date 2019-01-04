@@ -500,10 +500,12 @@ void setupDisplay() {
 void updateDisplay() {
 	// commsStats
 	char stats[5];	// xx.x\0
+	bool warning = false;
 
 	if (commsStats.packetFailureCount != commsStats.totalPacketsSent) {
 		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
 		dtostrf(ratio*100, 4, 1, stats);
+		warning = ratio > 0.1;
 	}
 	else {
 		strcpy(stats, "00.0");
@@ -520,8 +522,8 @@ void updateDisplay() {
 
 	// populateWidget( &img_topRight, WIDGET_SMALL, topRight);
 	// img_topRight.pushSprite(320-(img_topRight.width()), 0);
-	
-	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats);
+
+	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats, /*warning*/ warning);
 	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	
 	// populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
