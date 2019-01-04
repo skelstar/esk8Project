@@ -71,7 +71,7 @@ int joystickMax = 246;
 
 // use these to limit power
 int throttleMin = 60;	// 0
-int throttleMax = 200;	// 255
+int throttleMax = 220;	// 255
 
 /**************************************************************/
 int setupJoystick() {
@@ -126,8 +126,20 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
+
 #define NUMPIXELS 10
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 100, 0);
+const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
+
+struct commsStatsStruct {
+	int totalPacketsSent;
+	int packetFailureCount;
+	int timesOfflineCount;
+};
+
+volatile commsStatsStruct commsStats;
 
 //--------------------------------------------------------------------------------
 
@@ -197,36 +209,15 @@ void packetAvailableCallback( uint16_t from ) {
 }
 
 //--------------------------------------------------------------
-
-void tSendControllerValues_callback() {
-
-	taskENTER_CRITICAL(&mmux);
-
-	bool sentOK = esk8.sendPacketToBoard();
-
-    taskEXIT_CRITICAL(&mmux);
-
-    if ( sentOK ) {
-    	lastAckFromBoard = millis();
-		updateBoardImmediately = false;
-    }
-    else {
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
-    }
-}
-Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
-
-//--------------------------------------------------------------
 void boardOfflineCallback() {
-    uint32_t red = pixels.Color(255, 0, 0);
-	ledsUpdate(red);
+	ledsUpdate( COLOUR_BRIGHT_RED );
 	// tFlashLeds.enable();
-	M5.Speaker.tone(330, 100);	// tone 330, 200ms
+	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
 }
 
 void boardOnlineCallback() {
-    uint32_t green = pixels.Color(0, 255, 0);
-	ledsUpdate(green);
+	ledsUpdate( COLOUR_LIGHT_GREEN );
+	commsStats.timesOfflineCount++;
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
@@ -237,6 +228,31 @@ OnlineStatusLib boardStatus(
 	boardOnlineCallback, 
 	BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE, 
 	/*debug*/ true);
+
+//--------------------------------------------------------------
+
+void tSendControllerValues_callback() {
+
+	taskENTER_CRITICAL(&mmux);
+
+	bool sentOK = esk8.sendPacketToBoard();
+
+    taskEXIT_CRITICAL(&mmux);
+
+    commsStats.totalPacketsSent++;
+
+    if ( sentOK ) {
+    	lastAckFromBoard = millis();
+		boardStatus.serviceState( true );
+		updateBoardImmediately = false;
+    }
+    else {
+    	commsStats.packetFailureCount++;
+		boardStatus.serviceState( false );
+        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+    }
+}
+Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
 //--------------------------------------------------------------
 
@@ -276,6 +292,9 @@ void setup() {
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
+	commsStats.totalPacketsSent = 0;
+	commsStats.packetFailureCount = 0;
+	commsStats.timesOfflineCount = 0;
 	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
 
@@ -283,16 +302,12 @@ void setup() {
 		// error condition (joystick not connected)
 	}
 	
-	// if ( throttleDevice.isConnected() == false ) {
-
 	setupDisplay();
 
 	runner.startNow();
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
-
-	boardStatus.serviceState(/*online*/ false);
 
 	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
 
@@ -310,11 +325,9 @@ void setup() {
 					LOOP
 **************************************************************/
 long timeLastReadJoystick = 0;
+long nowMs = 0;
 
 void loop() {
-
-	bool connected = millis() - lastAckFromBoard < SEND_TO_BOARD_INTERVAL_MS;
-	boardStatus.serviceState(connected);
 
 	runner.execute();
 
@@ -336,6 +349,12 @@ void loop() {
 		powerDown();
 	}
 
+	if ( millis() - nowMs > 1000 ) {
+		nowMs = millis();
+		updateDisplay();
+	}
+
+
 	vTaskDelay( 10 );
 }
 /**************************************************************
@@ -344,10 +363,10 @@ void loop() {
 void codeForEncoderTask( void *parameter ) {
 
 	#define TX_INTERVAL 200
-	long nowMs = 0;
 	
 	for (;;) {
 		vTaskDelay( 10 );
+
 	}
 
 	vTaskDelete(NULL);
@@ -379,9 +398,9 @@ bool readJoystickOk() {
 void setRawJoystickValues(int min, int middle, int max, int deadZoneSize) {
 
 	joystickMin = min;
-	joystickMax = max;		
 	joystickMiddle = middle;
-	joystickDeadZone = 3;
+	joystickMax = max;		
+	joystickDeadZone = deadZoneSize;
 }
 
 void setThrottleMinsMaxs(int min, int max) {
@@ -447,32 +466,29 @@ void setupDisplay() {
 	img.pushSprite(0, 0);
 }
 
-void updateDisplay(int mode, int backlight) {
-	// #define LINE_1 20
-	// #define LINE_2 45
-	// #define LINE_3 70
-	// #define LINE_4 95
+//--------------------------------------------------------------
 
-	// if ( backlight == false ) {
-	// 	digitalWrite(TFT_BL, LOW);
-	// 	return;
-	// }
+void updateDisplay() {
+	// commsStats
+	char stats[6];	// xxx.x\0
 
-	// switch (mode) {
-	// 	case 0:
-	// 		break;
-	// 	case 1:
-	// 	  	img.setTextDatum(MC_DATUM);
-	// 		img.setTextSize(1);
-	// 		img.fillScreen(TFT_DARKGREEN);
-	// 		img.setTextColor(TFT_YELLOW, TFT_BLACK);
-	// 		img.drawNumber( esk8.controllerPacket.throttle,  10, 10);		
-	// 		img.pushSprite(20, 20); delay(0);	
+	if (commsStats.packetFailureCount > 0 && commsStats.totalPacketsSent > 0) {
+		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
+		dtostrf(ratio*100, 6, 1, stats);
 
-	// 		digitalWrite(TFT_BL, HIGH);	// turn backlight off?
+		// Serial.printf("%d %d %f \n", 
+		// 	commsStats.packetFailureCount, 
+		// 	commsStats.totalPacketsSent,
+		// 	ratio
+		// 	);
 
-	// 		break;
-	// }
+		// String failRatio = String((float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent);
+		// char *result = failRatio.c_str();
+		// sprintf(stats, "Fail Rate: %s", result);
+
+		img.drawString(stats, /*x*/ 320/2, /*y*/240/2, /*font*/4);
+		img.pushSprite(0, 0);
+	}
 }
 //--------------------------------------------------------------
 void ledsUpdate(uint32_t color) {
