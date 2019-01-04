@@ -20,6 +20,7 @@
 /* Display */
 // #include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
+// #include "Org_01.h"
 //--------------------------------------------------------------------------------
 
 
@@ -109,10 +110,19 @@ int getRawValuesFromJoystick() {
 /*****************************************************/
 
 TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite img = TFT_eSprite(&tft);
 
-#define IWIDTH	320
-#define IHEIGHT	240
+TFT_eSprite img_topLeft = TFT_eSprite(&tft);
+TFT_eSprite img_topRight = TFT_eSprite(&tft);
+TFT_eSprite img_middle = TFT_eSprite(&tft);
+TFT_eSprite img_bottomLeft = TFT_eSprite(&tft);
+TFT_eSprite img_bottomRight = TFT_eSprite(&tft);
+
+#define SPRITE_SMALL_WIDTH	320/2
+#define SPRITE_SMALL_HEIGHT	240/4
+#define SPRITE_MED_WIDTH	320
+#define SPRITE_MED_HEIGHT	240/2
+
+#include "Display.h"
 
 //--------------------------------------------------------------
 
@@ -130,7 +140,7 @@ RF24Network network(radio);
 #define NUMPIXELS 10
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 100, 0);
+const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
 const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
 
 struct commsStatsStruct {
@@ -456,39 +466,76 @@ void setupDisplay() {
   	tft.setRotation(1); // 0 is portrait
 	tft.fillScreen(TFT_BLACK);            // Clear screen
 
-	img.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
-	img.createSprite(IWIDTH, IHEIGHT);
-	// img.fillSprite(TFT_BLUE);
-	img.setFreeFont(FF18);                 // Select the font
-  	img.setTextDatum(MC_DATUM);
-	img.setTextColor(TFT_YELLOW, TFT_BLACK);
-	img.drawString("READY!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
-	img.pushSprite(0, 0);
+	img_topLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_topLeft.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
+
+	img_topRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_topRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
+
+	img_middle.setColorDepth(16); // Optionally set depth to 8 to halve RAM use
+	img_middle.setFreeFont(FF22);                 // Select the font
+	img_middle.createSprite(SPRITE_MED_WIDTH, SPRITE_MED_HEIGHT);
+
+	img_bottomLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_bottomLeft.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
+
+	img_bottomRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_bottomRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
+
+	// img.setFreeFont(FF18);                 // Select the font
+ 	// img.setTextDatum(MC_DATUM);
+	// img.setTextColor(TFT_YELLOW, TFT_BLACK);
+	updateDisplay();
 }
 
 //--------------------------------------------------------------
+// #define WIDGET_SMALL    6
+// #define WIDGET_MEDIUM   12
+// #define WIDGET_POS_TOP_LEFT 1
+// #define WIDGET_POS_TOP_RIGHT 2
+// #define WIDGET_POS_MIDDLE 3
+// #define WIDGET_POS_BOTTOM_LEFT 4
+// #define WIDGET_POS_BOTTOM_RIGHT 5
 
 void updateDisplay() {
 	// commsStats
-	char stats[6];	// xxx.x\0
+	char stats[5];	// xx.x\0
+	bool warning = false;
 
-	if (commsStats.packetFailureCount > 0 && commsStats.totalPacketsSent > 0) {
+	if (commsStats.packetFailureCount != commsStats.totalPacketsSent) {
 		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
-		dtostrf(ratio*100, 6, 1, stats);
-
-		// Serial.printf("%d %d %f \n", 
-		// 	commsStats.packetFailureCount, 
-		// 	commsStats.totalPacketsSent,
-		// 	ratio
-		// 	);
-
-		// String failRatio = String((float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent);
-		// char *result = failRatio.c_str();
-		// sprintf(stats, "Fail Rate: %s", result);
-
-		img.drawString(stats, /*x*/ 320/2, /*y*/240/2, /*font*/4);
-		img.pushSprite(0, 0);
+		dtostrf(ratio*100, 4, 1, stats);
+		warning = ratio > 0.1;
 	}
+	else {
+		strcpy(stats, "00.0");
+	}
+	// Serial.printf("%s\n", stats);
+
+	char topleft[] = "123";
+	char topRight[] = "456";
+	char bottomleft[] = "789";
+	char bottomright[] = "012";
+
+	// populateWidget( &img_topLeft, WIDGET_SMALL, topleft);
+	// img_topLeft.pushSprite(0, 0);
+
+	// populateWidget( &img_topRight, WIDGET_SMALL, topRight);
+	// img_topRight.pushSprite(320-(img_topRight.width()), 0);
+
+	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats, /*warning*/ warning);
+	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
+	
+	// populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
+	// img_bottomLeft.pushSprite(0, 240-img_bottomLeft.height());
+	
+	// populateWidget( &img_bottomRight, WIDGET_SMALL, bottomright);
+	// img_bottomRight.pushSprite(320-(img_topRight.width()), 240-img_bottomLeft.height());
+	
+	// img.fillSprite(TFT_BLUE);
+	// img_topLeft.setFreeFont(FF18);                 // Select the font
+ //  	img_topLeft.setTextDatum(MC_DATUM);
+	// img_topLeft.setTextColor(TFT_YELLOW, TFT_BLACK);
 }
 //--------------------------------------------------------------
 void ledsUpdate(uint32_t color) {
@@ -500,14 +547,18 @@ void ledsUpdate(uint32_t color) {
 }
 //--------------------------------------------------------------
 void powerDown() {
-	img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
+	// M5.Speaker.tone(1000, 300);	// tone 330, 200ms
+	// delay(200);
+	// M5.Speaker.tone(330, 300);	// tone 330, 200ms
+	//img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
 	// radio
 	radio.stopListening();
 	radio.powerDown();
 	// leds
 	ledsUpdate(pixels.Color(0, 0, 0));
 	// message
-	img.pushSprite(0, 0);
+	// img.pushSprite(0, 0);
 	delay(300);
     M5.powerOFF();
 }
+//--------------------------------------------------------------
