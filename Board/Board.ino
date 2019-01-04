@@ -24,8 +24,6 @@ const char file_name[] = __FILE__;
 
 bool controllerStatusChanged = true;
 bool vescStatusChanged = true;
-int currentThrottle = 127;
-int currentEncoderButton = 0;
 volatile long lastRxFromController = 0;
 //--------------------------------------------------------------------------------
 // TTGO-TQ

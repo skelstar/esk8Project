@@ -20,7 +20,7 @@
 /* Display */
 // #include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
-#include "Org_01.h"
+// #include "Org_01.h"
 //--------------------------------------------------------------------------------
 
 
@@ -110,13 +110,19 @@ int getRawValuesFromJoystick() {
 /*****************************************************/
 
 TFT_eSPI tft = TFT_eSPI();
-TFT_eSprite img = TFT_eSprite(&tft);
 
-#define IWIDTH	320
-#define IHEIGHT	240
+TFT_eSprite img_topLeft = TFT_eSprite(&tft);
+TFT_eSprite img_topRight = TFT_eSprite(&tft);
+TFT_eSprite img_middle = TFT_eSprite(&tft);
+TFT_eSprite img_bottomLeft = TFT_eSprite(&tft);
+TFT_eSprite img_bottomRight = TFT_eSprite(&tft);
+
+#define SPRITE_SMALL_WIDTH	320/2
+#define SPRITE_SMALL_HEIGHT	240/4
+#define SPRITE_MED_WIDTH	320
+#define SPRITE_MED_HEIGHT	240/2
 
 #include "Display.h"
-
 
 //--------------------------------------------------------------
 
@@ -460,16 +466,24 @@ void setupDisplay() {
   	tft.setRotation(1); // 0 is portrait
 	tft.fillScreen(TFT_BLACK);            // Clear screen
 
-	img.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
-	img.createSprite(IWIDTH, IHEIGHT);
-	// img.fillSprite(TFT_BLUE);
-	tft.setFont(&Org_01);
-	//img.setFreeFont(FF18);                 // Select the font
-  	img.setTextDatum(MC_DATUM);
-	img.setTextColor(TFT_YELLOW, TFT_BLACK);
+	img_topLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_topLeft.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
 
-	img.pushSprite(0, 0);
+	img_topRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_topRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
 
+	img_middle.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_middle.createSprite(SPRITE_MED_WIDTH, SPRITE_MED_HEIGHT);
+
+	img_bottomLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_bottomLeft.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
+
+	img_bottomRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_bottomRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
+
+	// img.setFreeFont(FF18);                 // Select the font
+ 	// img.setTextDatum(MC_DATUM);
+	// img.setTextColor(TFT_YELLOW, TFT_BLACK);
 	updateDisplay();
 }
 
@@ -486,24 +500,35 @@ void updateDisplay() {
 	// commsStats
 	char stats[7];	// %xxx.x\0
 
-	//if (commsStats.packetFailureCount > 0 && commsStats.totalPacketsSent > 0) {
-		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
-		dtostrf(ratio*100, 6, 1, stats);
-		sprintf( stats, "%s%%", stats );
-		// Serial.printf("%s\n", stats);
+	float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
+	dtostrf(ratio*100, 6, 1, stats);
+	sprintf( stats, "%s%%", stats );
+	// Serial.printf("%s\n", stats);
 
-		char topleft[] = "123";
-		char topRight[] = "456";
-		char bottomleft[] = "789";
-		char bottomright[] = "012";
+	char topleft[] = "123";
+	char topRight[] = "456";
+	char bottomleft[] = "789";
+	char bottomright[] = "012";
 
-		// drawWidget( WIDGET_SMALL, WIDGET_POS_TOP_LEFT, topleft);
-		// drawWidget( WIDGET_SMALL, WIDGET_POS_TOP_RIGHT, topRight);
-		// drawWidget( WIDGET_SMALL, WIDGET_POS_BOTTOM_LEFT, bottomleft);
-		// drawWidget( WIDGET_SMALL, WIDGET_POS_BOTTOM_RIGHT, bottomright);
-		drawWidget( WIDGET_MEDIUM, WIDGET_POS_MIDDLE, stats );
-		img.pushSprite(0, 0);
-	//}
+	populateWidget( &img_topLeft, WIDGET_SMALL, topleft);
+	img_topLeft.pushSprite(0, 0);
+
+	populateWidget( &img_topRight, WIDGET_SMALL, topRight);
+	img_topRight.pushSprite(320-(img_topRight.width()), 0);
+	
+	populateWidget( &img_middle, WIDGET_MEDIUM, stats);
+	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
+	
+	populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
+	img_bottomLeft.pushSprite(0, 240-img_bottomLeft.height());
+	
+	populateWidget( &img_bottomRight, WIDGET_SMALL, bottomright);
+	img_bottomRight.pushSprite(320-(img_topRight.width()), 240-img_bottomLeft.height());
+	
+	// img.fillSprite(TFT_BLUE);
+	// img_topLeft.setFreeFont(FF18);                 // Select the font
+ //  	img_topLeft.setTextDatum(MC_DATUM);
+	// img_topLeft.setTextColor(TFT_YELLOW, TFT_BLACK);
 }
 //--------------------------------------------------------------
 void ledsUpdate(uint32_t color) {
@@ -518,14 +543,14 @@ void powerDown() {
 	// M5.Speaker.tone(1000, 300);	// tone 330, 200ms
 	// delay(200);
 	// M5.Speaker.tone(330, 300);	// tone 330, 200ms
-	img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
+	//img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
 	// radio
 	radio.stopListening();
 	radio.powerDown();
 	// leds
 	ledsUpdate(pixels.Color(0, 0, 0));
 	// message
-	img.pushSprite(0, 0);
+	// img.pushSprite(0, 0);
 	delay(300);
     M5.powerOFF();
 }

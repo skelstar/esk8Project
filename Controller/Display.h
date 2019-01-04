@@ -100,7 +100,7 @@ void tft_util_draw_digit(
 }
 
 void tft_util_draw_number(
-        TFT_eSprite* tft, 
+        TFT_eSprite* spr, 
         char *number, 
         uint8_t x, 
         uint8_t y,
@@ -112,26 +112,26 @@ void tft_util_draw_number(
     int cursor_x = x;
     int number_len = strlen(number);
 
-    tft->fillRect(cursor_x, y, pixelSize * 3 * number_len + (spacing*number_len-1), pixelSize * 5, bg_color);
+    spr->fillRect(cursor_x, y, pixelSize * 3 * number_len + (spacing*number_len-1), pixelSize * 5, bg_color);
 
     for (int i=0; i < number_len; i++) {
         char ch = number[i];
         if (ch >= '0' and ch <= '9') {
-            tft_util_draw_digit(tft, ch - '0', cursor_x, y, fg_color, bg_color, pixelSize);
+            tft_util_draw_digit(spr, ch - '0', cursor_x, y, fg_color, bg_color, pixelSize);
             cursor_x += 3 * pixelSize + spacing;
         } else if (ch == '.') {
-            // tft->fillRect(cursor_x, y, pixelSize * 3, pixelSize * 5, bg_color);
-            tft->fillRect(cursor_x, y + 4 * pixelSize, pixelSize, pixelSize, fg_color);
+            // spr->fillRect(cursor_x, y, pixelSize * 3, pixelSize * 5, bg_color);
+            spr->fillRect(cursor_x, y + 4 * pixelSize, pixelSize, pixelSize, fg_color);
             cursor_x += pixelSize + spacing;
         } else if (ch == '-') {
-            // tft->fillRect(cursor_x, y, 3 * pixelSize, 5 * pixelSize, bg_color);
-            tft->fillRect(cursor_x + (pixelSize/4), y + 2 * pixelSize, (pixelSize*3)-((pixelSize/4)*2), pixelSize, fg_color);
+            // spr->fillRect(cursor_x, y, 3 * pixelSize, 5 * pixelSize, bg_color);
+            spr->fillRect(cursor_x + (pixelSize/4), y + 2 * pixelSize, (pixelSize*3)-((pixelSize/4)*2), pixelSize, fg_color);
             cursor_x += 3 * pixelSize + spacing;
         } else if (ch == ' ') {
-            // tft->fillRect(cursor_x, y, 3 * pixelSize, 5 * pixelSize, bg_color);
+            // spr->fillRect(cursor_x, y, 3 * pixelSize, 5 * pixelSize, bg_color);
             cursor_x += 3 * pixelSize + spacing;
         } else if (ch == '%') {
-            tft_util_draw_digit(tft, 9 + 1 , cursor_x, y, fg_color, bg_color, pixelSize);
+            tft_util_draw_digit(spr, 9 + 1 , cursor_x, y, fg_color, bg_color, pixelSize);
             cursor_x += 3 * pixelSize + spacing;
         }
     }
@@ -150,31 +150,26 @@ int getNumberWidth(int numDigits, int pixelSize, int spacing) {
 #define WIDGET_POS_BOTTOM_RIGHT 5
 
 
-void drawWidget(int widget, int pos, char *number) {
-	int spacing = widget / 4;
+void populateWidget(TFT_eSprite* spr, int pixelSize, char *number) {
+	
+	int spacing = pixelSize / 4;
     int x;
     int y;
-    int width = strlen(number) * widget * 3 + (spacing*(strlen(number)-1));
-    int height = 5 * widget;
+    int width = strlen(number) * pixelSize * 3;	// + (spacing*(strlen(number)-1));
+    int height = 5 * pixelSize;
 
-    switch (pos) {
-        case WIDGET_POS_TOP_LEFT:
-			x = 0; y = 0;
-			break;
-        case WIDGET_POS_TOP_RIGHT:
-			x = 320 - width; y = 0;
-			break;
-        case WIDGET_POS_MIDDLE:
-			x = (320/2) - getNumberWidth(5, widget, 5)/2; 
-			y = (240/2) - (height/2);
-			break;
-        case WIDGET_POS_BOTTOM_LEFT:
-			x = 0; y = 240-(5*widget);
-			break;
-        case WIDGET_POS_BOTTOM_RIGHT:
-			x = 320 - width; y = 240-(5*widget);
+    switch (pixelSize) {
+    	case WIDGET_SMALL:
+    		x = 5;
+    		y = 5;
+    		break;
+		case WIDGET_MEDIUM:
+    		x = 20;
+    		y = 10;
 			break;
     }
 
-    tft_util_draw_number( &img, number, x, y, TFT_WHITE, TFT_BLACK, spacing, /*textSize = 1*/ widget );
+    tft_util_draw_number( spr, number, x, y, TFT_WHITE, TFT_BLACK, spacing, /*textSize = 1*/ pixelSize );
+
+	spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
 }
