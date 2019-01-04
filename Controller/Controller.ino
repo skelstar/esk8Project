@@ -309,8 +309,6 @@ void setup() {
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
 
-	// boardStatus.serviceState(/*online*/ false);
-
 	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
 
 	xTaskCreatePinnedToCore (
