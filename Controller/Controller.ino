@@ -126,8 +126,12 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
+
 #define NUMPIXELS 10
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 100, 0);
+const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
 
 struct commsStatsStruct {
 	int totalPacketsSent;
@@ -205,6 +209,27 @@ void packetAvailableCallback( uint16_t from ) {
 }
 
 //--------------------------------------------------------------
+void boardOfflineCallback() {
+	ledsUpdate( COLOUR_BRIGHT_RED );
+	// tFlashLeds.enable();
+	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
+}
+
+void boardOnlineCallback() {
+	ledsUpdate( COLOUR_LIGHT_GREEN );
+	commsStats.timesOfflineCount++;
+	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
+	// tFlashLeds.disable();
+	// updateDisplay(/* mode */ 1, /* backlight */ 1);
+}
+
+OnlineStatusLib boardStatus(
+	boardOfflineCallback, 
+	boardOnlineCallback, 
+	BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE, 
+	/*debug*/ true);
+
+//--------------------------------------------------------------
 
 void tSendControllerValues_callback() {
 
@@ -218,37 +243,16 @@ void tSendControllerValues_callback() {
 
     if ( sentOK ) {
     	lastAckFromBoard = millis();
+		boardStatus.serviceState( true );
 		updateBoardImmediately = false;
     }
     else {
     	commsStats.packetFailureCount++;
+		boardStatus.serviceState( false );
         debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
 }
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
-
-//--------------------------------------------------------------
-void boardOfflineCallback() {
-    uint32_t red = pixels.Color(255, 0, 0);
-	ledsUpdate(red);
-	// tFlashLeds.enable();
-	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
-}
-
-void boardOnlineCallback() {
-    uint32_t green = pixels.Color(0, 255, 0);
-	ledsUpdate(green);
-	commsStats.timesOfflineCount++;
-	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
-	// tFlashLeds.disable();
-	// updateDisplay(/* mode */ 1, /* backlight */ 1);
-}
-
-OnlineStatusLib boardStatus(
-	boardOfflineCallback, 
-	boardOnlineCallback, 
-	BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE, 
-	/*debug*/ true);
 
 //--------------------------------------------------------------
 
@@ -305,7 +309,7 @@ void setup() {
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
 
-	boardStatus.serviceState(/*online*/ false);
+	// boardStatus.serviceState(/*online*/ false);
 
 	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
 
@@ -326,9 +330,6 @@ long timeLastReadJoystick = 0;
 long nowMs = 0;
 
 void loop() {
-
-	bool connected = millis() - lastAckFromBoard < (SEND_TO_BOARD_INTERVAL_MS + 100);
-	boardStatus.serviceState(connected);
 
 	runner.execute();
 
@@ -399,9 +400,9 @@ bool readJoystickOk() {
 void setRawJoystickValues(int min, int middle, int max, int deadZoneSize) {
 
 	joystickMin = min;
-	joystickMax = max;		
 	joystickMiddle = middle;
-	joystickDeadZone = 3;
+	joystickMax = max;		
+	joystickDeadZone = deadZoneSize;
 }
 
 void setThrottleMinsMaxs(int min, int max) {
@@ -477,11 +478,11 @@ void updateDisplay() {
 		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
 		dtostrf(ratio*100, 6, 1, stats);
 
-		Serial.printf("%d %d %f \n", 
-			commsStats.packetFailureCount, 
-			commsStats.totalPacketsSent,
-			ratio
-			);
+		// Serial.printf("%d %d %f \n", 
+		// 	commsStats.packetFailureCount, 
+		// 	commsStats.totalPacketsSent,
+		// 	ratio
+		// 	);
 
 		// String failRatio = String((float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent);
 		// char *result = failRatio.c_str();
