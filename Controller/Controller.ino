@@ -472,7 +472,8 @@ void setupDisplay() {
 	img_topRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
 	img_topRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
 
-	img_middle.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
+	img_middle.setColorDepth(16); // Optionally set depth to 8 to halve RAM use
+	img_middle.setFreeFont(FF22);                 // Select the font
 	img_middle.createSprite(SPRITE_MED_WIDTH, SPRITE_MED_HEIGHT);
 
 	img_bottomLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
@@ -498,11 +499,15 @@ void setupDisplay() {
 
 void updateDisplay() {
 	// commsStats
-	char stats[7];	// %xxx.x\0
+	char stats[5];	// xx.x\0
 
-	float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
-	dtostrf(ratio*100, 6, 1, stats);
-	sprintf( stats, "%s%%", stats );
+	if (commsStats.packetFailureCount != commsStats.totalPacketsSent) {
+		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
+		dtostrf(ratio*100, 4, 1, stats);
+	}
+	else {
+		strcpy(stats, "00.0");
+	}
 	// Serial.printf("%s\n", stats);
 
 	char topleft[] = "123";
@@ -510,20 +515,20 @@ void updateDisplay() {
 	char bottomleft[] = "789";
 	char bottomright[] = "012";
 
-	populateWidget( &img_topLeft, WIDGET_SMALL, topleft);
-	img_topLeft.pushSprite(0, 0);
+	// populateWidget( &img_topLeft, WIDGET_SMALL, topleft);
+	// img_topLeft.pushSprite(0, 0);
 
-	populateWidget( &img_topRight, WIDGET_SMALL, topRight);
-	img_topRight.pushSprite(320-(img_topRight.width()), 0);
+	// populateWidget( &img_topRight, WIDGET_SMALL, topRight);
+	// img_topRight.pushSprite(320-(img_topRight.width()), 0);
 	
-	populateWidget( &img_middle, WIDGET_MEDIUM, stats);
+	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats);
 	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	
-	populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
-	img_bottomLeft.pushSprite(0, 240-img_bottomLeft.height());
+	// populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
+	// img_bottomLeft.pushSprite(0, 240-img_bottomLeft.height());
 	
-	populateWidget( &img_bottomRight, WIDGET_SMALL, bottomright);
-	img_bottomRight.pushSprite(320-(img_topRight.width()), 240-img_bottomLeft.height());
+	// populateWidget( &img_bottomRight, WIDGET_SMALL, bottomright);
+	// img_bottomRight.pushSprite(320-(img_topRight.width()), 240-img_bottomLeft.height());
 	
 	// img.fillSprite(TFT_BLUE);
 	// img_topLeft.setFreeFont(FF18);                 // Select the font
