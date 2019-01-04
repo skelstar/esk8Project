@@ -20,6 +20,7 @@
 /* Display */
 // #include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
+#include "Org_01.h"
 //--------------------------------------------------------------------------------
 
 
@@ -114,6 +115,9 @@ TFT_eSprite img = TFT_eSprite(&tft);
 #define IWIDTH	320
 #define IHEIGHT	240
 
+#include "Display.h"
+
+
 //--------------------------------------------------------------
 
 portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
@@ -130,7 +134,7 @@ RF24Network network(radio);
 #define NUMPIXELS 10
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 100, 0);
+const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
 const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
 
 struct commsStatsStruct {
@@ -459,36 +463,47 @@ void setupDisplay() {
 	img.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
 	img.createSprite(IWIDTH, IHEIGHT);
 	// img.fillSprite(TFT_BLUE);
-	img.setFreeFont(FF18);                 // Select the font
+	tft.setFont(&Org_01);
+	//img.setFreeFont(FF18);                 // Select the font
   	img.setTextDatum(MC_DATUM);
 	img.setTextColor(TFT_YELLOW, TFT_BLACK);
-	img.drawString("READY!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
+
 	img.pushSprite(0, 0);
+
+	updateDisplay();
 }
 
 //--------------------------------------------------------------
+// #define WIDGET_SMALL    6
+// #define WIDGET_MEDIUM   12
+// #define WIDGET_POS_TOP_LEFT 1
+// #define WIDGET_POS_TOP_RIGHT 2
+// #define WIDGET_POS_MIDDLE 3
+// #define WIDGET_POS_BOTTOM_LEFT 4
+// #define WIDGET_POS_BOTTOM_RIGHT 5
 
 void updateDisplay() {
 	// commsStats
-	char stats[6];	// xxx.x\0
+	char stats[7];	// %xxx.x\0
 
-	if (commsStats.packetFailureCount > 0 && commsStats.totalPacketsSent > 0) {
+	//if (commsStats.packetFailureCount > 0 && commsStats.totalPacketsSent > 0) {
 		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
 		dtostrf(ratio*100, 6, 1, stats);
+		sprintf( stats, "%s%%", stats );
+		// Serial.printf("%s\n", stats);
 
-		// Serial.printf("%d %d %f \n", 
-		// 	commsStats.packetFailureCount, 
-		// 	commsStats.totalPacketsSent,
-		// 	ratio
-		// 	);
+		char topleft[] = "123";
+		char topRight[] = "456";
+		char bottomleft[] = "789";
+		char bottomright[] = "012";
 
-		// String failRatio = String((float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent);
-		// char *result = failRatio.c_str();
-		// sprintf(stats, "Fail Rate: %s", result);
-
-		img.drawString(stats, /*x*/ 320/2, /*y*/240/2, /*font*/4);
+		// drawWidget( WIDGET_SMALL, WIDGET_POS_TOP_LEFT, topleft);
+		// drawWidget( WIDGET_SMALL, WIDGET_POS_TOP_RIGHT, topRight);
+		// drawWidget( WIDGET_SMALL, WIDGET_POS_BOTTOM_LEFT, bottomleft);
+		// drawWidget( WIDGET_SMALL, WIDGET_POS_BOTTOM_RIGHT, bottomright);
+		drawWidget( WIDGET_MEDIUM, WIDGET_POS_MIDDLE, stats );
 		img.pushSprite(0, 0);
-	}
+	//}
 }
 //--------------------------------------------------------------
 void ledsUpdate(uint32_t color) {
@@ -500,6 +515,9 @@ void ledsUpdate(uint32_t color) {
 }
 //--------------------------------------------------------------
 void powerDown() {
+	// M5.Speaker.tone(1000, 300);	// tone 330, 200ms
+	// delay(200);
+	// M5.Speaker.tone(330, 300);	// tone 330, 200ms
 	img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
 	// radio
 	radio.stopListening();
@@ -511,3 +529,4 @@ void powerDown() {
 	delay(300);
     M5.powerOFF();
 }
+//--------------------------------------------------------------
