@@ -57,8 +57,8 @@ void mpu9250_test() {
 #define NUMPIXELS 2
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ YELLOW_PORT_PIN, NEO_GRB + NEO_KHZ800);
 
-const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
-const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
+const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 10, 0);
+const uint32_t COLOUR_LIGHT_RED = pixels.Color(10, 0, 0);
 
 
 
@@ -93,8 +93,8 @@ void setup() {
 	Serial.println("ESPNow/Basic/Slave Example");
 
     pixels.begin();
-	pixels.setPixelColor(0, COLOUR_BRIGHT_RED);
-	pixels.setPixelColor(1, COLOUR_BRIGHT_RED);
+	pixels.setPixelColor(0, COLOUR_LIGHT_RED);
+	pixels.setPixelColor(1, COLOUR_LIGHT_RED);
 	pixels.show();
 
 	//Set device in AP mode to begin with
@@ -120,8 +120,9 @@ void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
 		hud.data.boardLedState,
 		hud.data.vescLedState);
 
-	pixels.setPixelColor(0, mapStateToColour(hud.data.controllerLedState));
-	pixels.setPixelColor(1, mapStateToColour(hud.data.boardLedState));
+	pixels.setPixelColor(1, mapStateToColour(hud.data.controllerLedState));
+	delay(1);
+	pixels.setPixelColor(0, mapStateToColour(hud.data.boardLedState));
 	// pixels.setPixelColor(0, mapStateToColour(hud.data.controllerLedState));
 	pixels.show();
 }
@@ -138,20 +139,14 @@ void loop() {
 //--------------------------------------------------
 uint32_t mapStateToColour(byte state) {
 	switch (state) {
-		case 4:
-			return pixels.Color(120, 0, 0);
+		case hud.FlashingError:
+			return pixels.Color(0, 0, 10);
 			break;
-		case 3:
-			return pixels.Color(255, 0, 0);
+		case hud.Error:
+			return COLOUR_LIGHT_RED;
 			break;
-		case 2:
-			return pixels.Color(0, 100, 100);
-			break;
-		case 1:
-			return pixels.Color(100, 50, 0);
-			break;
-		case 0:
-			return pixels.Color(0, 0, 255);
+		case hud.Ok:
+			return COLOUR_LIGHT_GREEN;
 			break;
 	}
 }

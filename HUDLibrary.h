@@ -16,7 +16,7 @@ class HUDLib
 	public:
 
 		enum LedState {
-			Ok,
+			Ok = 0,	
 			Error,
 			FlashingError
 		};

@@ -1,27 +1,24 @@
-
 #include <esp_now.h>
 #include <WiFi.h>
 #include <HUDLibrary.h>
 
-// Global copy of slave
-#define NUMSLAVES 20
 esp_now_peer_info_t slave;
-int slaveCount = 0;
 
 #define CHANNEL 3
 #define PRINTSCANRESULTS 0
 
-
 HUDLib hud(/*debug*/ true);
+
+int slaveCount = 0;
 
 // Init ESP Now with fallback
 void InitESPNow() {
 	WiFi.disconnect();
 	if (esp_now_init() == ESP_OK) {
-		Serial.println("ESPNow Init Success");
+		debug.print(STARTUP, "ESPNow Init Success \n");
 	}
 	else {
-		Serial.println("ESPNow Init Failed");
+		debug.print(STARTUP, "ESPNow Init Failed \n");
 		ESP.restart();
 	}
 }
@@ -33,9 +30,9 @@ bool ScanForSlave() {
 	slaveCount = 0;
 
 	if (scanResults == 0) {
-		Serial.println("No WiFi devices in AP Mode found");
+		debug.print(DEBUG, "No WiFi devices in AP Mode found\n");
 	} else {
-		Serial.print("Found "); Serial.print(scanResults); Serial.println(" devices ");
+		debug.print(DEBUG, "Found %d devices!\n", scanResults);
 		for (int i = 0; i < scanResults; ++i) {
 			// Print SSID and RSSI for each device found
 			String SSID = WiFi.SSID(i);
@@ -45,7 +42,7 @@ bool ScanForSlave() {
 			delay(10);
 			// Check if the current device starts with `HUD_SSID`
 			if ( SSID.indexOf("HUD_SSID") == 0 ) {
-				Serial.printf("%d: %s [%s] (RSSI: %d) \n", i+1, SSID.c_str(), BSSIDstr.c_str(), RSSI);
+				debug.print(DEBUG, "%d: %s [%s] (RSSI: %d) \n", i+1, SSID.c_str(), BSSIDstr.c_str(), RSSI);
 				int mac[6];
 
 				if ( 6 == sscanf(BSSIDstr.c_str(), "%x:%x:%x:%x:%x:%x%c",  &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5] ) ) {
@@ -80,26 +77,26 @@ bool manageSlave() {
 			addStatus = esp_now_add_peer(peer);
 			if (addStatus == ESP_OK) {
 				// Pair success
-				Serial.println("Pair success");
+				debug.print(DEBUG, "Pair success\n");
 			} else if (addStatus == ESP_ERR_ESPNOW_NOT_INIT) {
 				// How did we get so far!!
-				Serial.println("ESPNOW Not Init");
+				debug.print(DEBUG, "ESPNOW Not Init\n");
 			} else if (addStatus == ESP_ERR_ESPNOW_ARG) {
-				Serial.println("Add Peer - Invalid Argument");	
+				debug.print(DEBUG, "Add Peer - Invalid Argument\n");	
 			} else if (addStatus == ESP_ERR_ESPNOW_FULL) {
-				Serial.println("Peer list full");
+				debug.print(DEBUG, "Peer list full\n");
 			} else if (addStatus == ESP_ERR_ESPNOW_NO_MEM) {
-				Serial.println("Out of memory");
+				debug.print(DEBUG, "Out of memory\n");
 			} else if (addStatus == ESP_ERR_ESPNOW_EXIST) {
-				Serial.println("Peer Exists");
+				debug.print(DEBUG, "Peer Exists\n");
 			} else {
-				Serial.println("Not sure what happened");
+				debug.print(DEBUG, "Not sure what happened\n");
 			}
 			delay(100);
 		}
 	} else {
 		// No slave found to process
-		Serial.println("No Slave found to process");
+		debug.print(DEBUG, "No Slave found to process\n");
 	}
 	return addStatus == ESP_OK;
 }
@@ -109,12 +106,11 @@ bool sendDataOk() {
 	long m = millis();
 
 	hud.data.id++;
-	hud.data.controllerLedState = hud.Ok;
-	hud.data.boardLedState = hud.Error;
+	hud.data.controllerLedState = m/1000 % 3 == 0 ? hud.Error : hud.FlashingError;
+	hud.data.boardLedState = m/1000 % 2 == 0 ? hud.Error : hud.Ok;
 	hud.data.vescLedState = hud.FlashingError;
 
 	const uint8_t *peer_addr = slave.peer_addr;
-	Serial.printf("Sending: %d\n", hud.data.id);
 	
 	uint8_t bs[sizeof(hud.data)];
 	memcpy(bs, &hud.data, sizeof(hud.data));
@@ -128,19 +124,16 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 	char macStr[18];
 	snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
 	       mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-	Serial.printf("Last Packet Send Status: %s\n", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+	// Serial.printf("Last Packet Send Status: %s\n", status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
-
 //--------------------------------------------------
+void setupEspNow() {
 
-void setup() {
-
-	Serial.begin(9600);
 	//Set device in STA mode to begin with
 	WiFi.mode(WIFI_STA);
-	Serial.println("ESPNow/Multi-Slave/Master Example");
+
 	// This is the mac address of the Master in Station Mode
-	Serial.print("STA MAC: "); Serial.println(WiFi.macAddress());
+	debug.print(STARTUP, "STA MAC: %s \n", WiFi.macAddress());
 
 	hud.data.id = 0;
 
@@ -149,18 +142,6 @@ void setup() {
 
 	esp_now_register_send_cb(OnDataSent);
 
-	while (slaveCount == 0) {
-		ScanForSlave();
-		manageSlave();
-	}
-}
-
-void loop() {
-
-	if ( sendDataOk() ) {
-
-	}
-
-	// wait for 3seconds to run the logic again
-	delay(1000);
+	ScanForSlave();
+	manageSlave();
 }

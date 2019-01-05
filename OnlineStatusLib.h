@@ -27,7 +27,11 @@ class OnlineStatusLib
 
 	public:
 
-		OnlineStatusLib(StatusCallback isOfflineCb, StatusCallback isOnlineCb, int offlineNumConsecutiveTimes, bool debug);
+		OnlineStatusLib(
+			StatusCallback isOfflineCb, 
+			StatusCallback isOnlineCb, 
+			int offlineNumConsecutiveTimes, 
+			bool debug);
 
 		bool serviceState(bool online);
 		bool getState();

@@ -2,6 +2,7 @@
 #include <SPI.h>
 #include <RF24Network.h> 
 #include <RF24.h> 
+
 #include <esk8Lib.h>
 #include <OnlineStatusLib.h>
 
@@ -14,6 +15,7 @@
 #include <esp_int_wdt.h>
 #include <esp_task_wdt.h>
 #include <TaskScheduler.h>
+
 
 /*--------------------------------------------------------------------------------*/
 
@@ -48,6 +50,7 @@ VescUart UART;
 #define 	CONTROLLER_TIMEOUT		300
 #define 	SEND_TO_VESC_INTERVAL	200
 
+
 //--------------------------------------------------------------------------------
 #define	STARTUP 			1 << 0	// 1
 #define WARNING 			1 << 1	// 2
@@ -62,6 +65,10 @@ debugHelper debug;
 volatile long lastControllerPacketTime = 0;
 volatile float packetData = 0.1;
 long lastSentToController = 0;
+
+//--------------------------------------------------------------
+
+#include "Esk8EspNow.h"
 
 //--------------------------------------------------------------------------------
 #define 	VESC_UART_RX		16		// orange - VESC 5
@@ -116,8 +123,8 @@ void vescOnlineCallback() {
 	debug.print(STATUS, "vescOnlineCallback();\n");
 }
 
-OnlineStatusLib controllerStatus(controllerOfflineCallback, controllerOnlineCallback, /*debug*/ false);
-OnlineStatusLib vescStatus(vescOfflineCallback, vescOnlineCallback, /*debug*/ false);
+OnlineStatusLib controllerStatus(controllerOfflineCallback, controllerOnlineCallback, /*offlineNumConsecutiveTimesAllowance*/ 3, /*debug*/ false);
+OnlineStatusLib vescStatus(vescOfflineCallback, vescOnlineCallback, /*offlineNumConsecutiveTimesAllowance*/ 1, /*debug*/ false);
 
 /**************************************************************/
 
@@ -181,6 +188,8 @@ void setup()
 
 //*************************************************************
 
+long lastTalkedToHud = 0;
+
 void loop() {
 
 	esk8.service();
@@ -201,11 +210,18 @@ void codeForRF24CommsRxTask( void *parameter ) {
 
 	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
 
+	setupEspNow();
+
 	for (;;) {
 
 		bool controllerOnline = millis() - lastRxFromController < CONTROLLER_TIMEOUT;
 
 		controllerStatusChanged = controllerStatus.serviceState(controllerOnline);
+
+		if ( millis() - lastTalkedToHud > 1000 && sendDataOk() ) {
+			lastTalkedToHud = millis();
+			debug.print(STATUS, "sendDataOK() %s\n");
+		}
 
 		vTaskDelay( 10 );
 	}
