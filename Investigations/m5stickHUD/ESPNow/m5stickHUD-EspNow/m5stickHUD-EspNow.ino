@@ -10,15 +10,54 @@
 
 #include <HUDLibrary.h>
 
-#include <Adafruit_NeoPixel.h>
+#include "FastLED.h"
 
 #define LedPin 19
 #define IrPin 17
 #define BuzzerPin 26
 
 #define YELLOW_PORT_PIN	13
-#define WHITE_PORT_PIN 	25
+// #define WHITE_PORT_PIN 	25
+#define NEOPIXEL_PIN 	25
 #define BUTTON_PIN		35
+
+//---------------------------------------------------------------------
+
+#define LED_TYPE    WS2811
+#define COLOR_ORDER GRB
+#define NUMPIXELS 8
+
+
+CRGB pixels[NUMPIXELS];
+
+#define BRIGHTNESS          60
+
+// -- The core to run FastLED.show()
+#define FASTLED_SHOW_CORE 0
+
+// -- Task handles for use in the notifications
+static TaskHandle_t FastLEDshowTaskHandle = 0;
+static TaskHandle_t userTaskHandle = 0;
+
+/** show() for ESP32
+ *  Call this function instead of FastLED.show(). It signals core 0 to issue a show, 
+ *  then waits for a notification that it is done.
+ */
+void FastLEDshowESP32()
+{
+    if (userTaskHandle == 0) {
+        // -- Store the handle of the current task, so that the show task can notify it when it's done
+        userTaskHandle = xTaskGetCurrentTaskHandle();
+
+        // -- Trigger the show task
+        xTaskNotifyGive(FastLEDshowTaskHandle);
+
+        // -- Wait to be notified that it's done
+        const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 200 );
+        ulTaskNotifyTake(pdTRUE, xMaxBlockTime);
+        userTaskHandle = 0;
+    }
+}
 
 //---------------------------------------------------------------------
 
@@ -52,14 +91,11 @@ void mpu9250_test() {
 #include <esp_now.h>
 #include <WiFi.h>
 
-#define CHANNEL 1
+// Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, WHITE_PORT_PIN, NEO_GRB + NEO_KHZ800);
 
-#define NUMPIXELS 8
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, WHITE_PORT_PIN, NEO_GRB + NEO_KHZ800);
-
-const uint32_t COLOUR_OFF = pixels.Color(0, 0, 0);
-const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 10, 0);
-const uint32_t COLOUR_LIGHT_RED = pixels.Color(10, 0, 0);
+// const uint32_t COLOUR_OFF = pixels.Color(0, 0, 0);
+// const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 10, 0);
+// const uint32_t COLOUR_LIGHT_RED = pixels.Color(10, 0, 0);
 
 
 
@@ -77,6 +113,8 @@ void InitESPNow() {
 
 // config AP SSID
 void configDeviceAP() {
+	#define CHANNEL 1
+
 	String Prefix = "HUD_SSID";
 	String Mac = WiFi.macAddress();
 	String SSID = Prefix + Mac;
@@ -91,9 +129,14 @@ void configDeviceAP() {
 
 TaskHandle_t NeopixelsTask;
 
+//--------------------------------------------------
+//--------------------------------------------------
 void setup() {
+
 	Serial.begin(9600);
 	Serial.println("ESPNow/Basic/Slave Example");
+
+	FastLED.addLeds<LED_TYPE,NEOPIXEL_PIN,COLOR_ORDER>(pixels, NUMPIXELS).setCorrection(TypicalLEDStrip);
 
 	//Set device in AP mode to begin with
 	WiFi.mode(WIFI_AP);
@@ -106,15 +149,66 @@ void setup() {
 
 	// esp_now_register_recv_cb(OnDataRecv);
 
-	xTaskCreatePinnedToCore (
-		codeForNeopixels,	// function
-		"Neopixels",		// name
-		10000,			// stack
-		NULL,			// parameter
-		1,				// priority
-		&NeopixelsTask,	// handle
-		0);				// port	
-	vTaskDelay(100);
+
+	int core = xPortGetCoreID();
+    Serial.printf("Main code running on core %d, FastLED running on %d\n", core, FASTLED_SHOW_CORE);
+
+    // -- Create the FastLED show task
+    xTaskCreatePinnedToCore(
+      /*function*/FastLEDshowTask, 
+      /*name*/"FastLEDshowTask", 
+      /*stack*/2048, 
+      /*parameter*/NULL, 
+      /*priority*/2, 
+      /*handle*/&FastLEDshowTaskHandle, 
+      /*core*/FASTLED_SHOW_CORE);
+}
+//--------------------------------------------------
+//--------------------------------------------------
+long now = 0;
+
+void loop() {
+
+	if (millis() - now > 1000) {
+		now = millis();
+		pixels[0] = mapStateToColour( now/1000 % 2 );
+		pixels[1] = mapStateToColour( now/1000 % 3 );
+		pixels[2] = mapStateToColour( now/1000 % 4 );
+		FastLEDshowESP32();
+	}
+
+	vTaskDelay( 10 );
+}
+
+/* Show Task. This function runs on core 0 and just waits for requests to call FastLED.show() */
+void FastLEDshowTask(void *pvParameters)
+{
+	// -- Run forever...
+	for(;;) {
+		// -- Wait for the trigger
+		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+		// -- Do the show (synchronously)
+		FastLED.show();
+
+		// -- Notify the calling task
+		xTaskNotifyGive(userTaskHandle);
+	}
+}
+//--------------------------------------------------
+//--------------------------------------------------
+CRGB mapStateToColour(byte state) {
+	switch (state) {
+		case hud.FlashingError:
+			return CRGB::Red;
+			break;
+		case hud.Error:
+			return CRGB::Blue;
+			break;
+		case hud.Ok:
+			return CRGB::White;
+			break;
+	}
 }
 
 // callback when data is recv from Master
@@ -129,61 +223,12 @@ void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
 		hud.data.vescLedState);
 
 	for (int i=0; i<NUMPIXELS; i++) {
-		pixels.setPixelColor(i, COLOUR_OFF);
+		pixels[i] = CRGB::Black;
 	}
 
-	pixels.setPixelColor(0, mapStateToColour(hud.data.boardLedState));
-	pixels.setPixelColor(1, mapStateToColour(hud.data.controllerLedState));
-	pixels.show();
-}
-//--------------------------------------------------
-//--------------------------------------------------
-long now = 0;
-
-void loop() {
-	vTaskDelay( 10 );
-}
-//--------------------------------------------------
-void codeForNeopixels( void *parameter ) {
-
-
-	pixels.begin();
-	pixels.show();
-
-	// debug.print(STARTUP, "codeForNeopixels() core: %d \n", xPortGetCoreID());
-
-	for (;;) {
-
-		if (millis() - now > 1000) {
-		 	now = millis();
-		 	// mpu9250_test();
-			for (int i=0; i<NUMPIXELS; i++) {
-				pixels.setPixelColor(i, COLOUR_OFF);
-			}
-
-			pixels.setPixelColor(0, mapStateToColour(millis()/1000 % 2));
-			pixels.setPixelColor(1, mapStateToColour(millis()/1000 % 3));
-			pixels.show();
-		}
-
-		vTaskDelay( 10 );
-	}
-	vTaskDelete(NULL);
-}
-
-//--------------------------------------------------
-uint32_t mapStateToColour(byte state) {
-	switch (state) {
-		case hud.FlashingError:
-			return pixels.Color(0, 0, 10);
-			break;
-		case hud.Error:
-			return COLOUR_LIGHT_RED;
-			break;
-		case hud.Ok:
-			return COLOUR_LIGHT_GREEN;
-			break;
-	}
+	// pixels.setPixelColor(0, mapStateToColour(hud.data.boardLedState));
+	// pixels.setPixelColor(1, mapStateToColour(hud.data.controllerLedState));
+	// pixels.show();
 }
 
 
