@@ -54,9 +54,10 @@ void mpu9250_test() {
 
 #define CHANNEL 1
 
-#define NUMPIXELS 2
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ YELLOW_PORT_PIN, NEO_GRB + NEO_KHZ800);
+#define NUMPIXELS 8
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, WHITE_PORT_PIN, NEO_GRB + NEO_KHZ800);
 
+const uint32_t COLOUR_OFF = pixels.Color(0, 0, 0);
 const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 10, 0);
 const uint32_t COLOUR_LIGHT_RED = pixels.Color(10, 0, 0);
 
@@ -88,25 +89,32 @@ void configDeviceAP() {
 	}
 }
 
+TaskHandle_t NeopixelsTask;
+
 void setup() {
 	Serial.begin(9600);
 	Serial.println("ESPNow/Basic/Slave Example");
 
-    pixels.begin();
-	pixels.setPixelColor(0, COLOUR_LIGHT_RED);
-	pixels.setPixelColor(1, COLOUR_LIGHT_RED);
-	pixels.show();
-
 	//Set device in AP mode to begin with
 	WiFi.mode(WIFI_AP);
-	// configure device AP mode
+	// // configure device AP mode
 	configDeviceAP();
-	// This is the mac address of the Slave in AP Mode
-	Serial.printf("AP MAC: %s\n", WiFi.softAPmacAddress());
-	// Init ESPNow with a fallback logic
-	InitESPNow();
+	// // This is the mac address of the Slave in AP Mode
+	// Serial.printf("AP MAC: %s\n", WiFi.softAPmacAddress());
+	// // Init ESPNow with a fallback logic
+	// InitESPNow();
 
-	esp_now_register_recv_cb(OnDataRecv);
+	// esp_now_register_recv_cb(OnDataRecv);
+
+	xTaskCreatePinnedToCore (
+		codeForNeopixels,	// function
+		"Neopixels",		// name
+		10000,			// stack
+		NULL,			// parameter
+		1,				// priority
+		&NeopixelsTask,	// handle
+		0);				// port	
+	vTaskDelay(100);
 }
 
 // callback when data is recv from Master
@@ -120,22 +128,49 @@ void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
 		hud.data.boardLedState,
 		hud.data.vescLedState);
 
-	pixels.setPixelColor(1, mapStateToColour(hud.data.controllerLedState));
-	delay(1);
+	for (int i=0; i<NUMPIXELS; i++) {
+		pixels.setPixelColor(i, COLOUR_OFF);
+	}
+
 	pixels.setPixelColor(0, mapStateToColour(hud.data.boardLedState));
-	// pixels.setPixelColor(0, mapStateToColour(hud.data.controllerLedState));
+	pixels.setPixelColor(1, mapStateToColour(hud.data.controllerLedState));
 	pixels.show();
 }
-
+//--------------------------------------------------
+//--------------------------------------------------
 long now = 0;
 
 void loop() {
-
-	// if (millis() - now > 1000) {
-	// 	now = millis();
-	// 	// mpu9250_test();
-	// }
+	vTaskDelay( 10 );
 }
+//--------------------------------------------------
+void codeForNeopixels( void *parameter ) {
+
+
+	pixels.begin();
+	pixels.show();
+
+	// debug.print(STARTUP, "codeForNeopixels() core: %d \n", xPortGetCoreID());
+
+	for (;;) {
+
+		if (millis() - now > 1000) {
+		 	now = millis();
+		 	// mpu9250_test();
+			for (int i=0; i<NUMPIXELS; i++) {
+				pixels.setPixelColor(i, COLOUR_OFF);
+			}
+
+			pixels.setPixelColor(0, mapStateToColour(millis()/1000 % 2));
+			pixels.setPixelColor(1, mapStateToColour(millis()/1000 % 3));
+			pixels.show();
+		}
+
+		vTaskDelay( 10 );
+	}
+	vTaskDelete(NULL);
+}
+
 //--------------------------------------------------
 uint32_t mapStateToColour(byte state) {
 	switch (state) {
