@@ -30,7 +30,9 @@
 
 CRGB pixels[NUMPIXELS];
 
-#define BRIGHTNESS          60
+#define BRIGHTNESS_DIM 3
+#define BRIGHTNESS_MED 60
+#define BRIGHTNESS_HIGH 255
 
 // -- The core to run FastLED.show()
 #define FASTLED_SHOW_CORE 0
@@ -91,14 +93,6 @@ void mpu9250_test() {
 #include <esp_now.h>
 #include <WiFi.h>
 
-// Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, WHITE_PORT_PIN, NEO_GRB + NEO_KHZ800);
-
-// const uint32_t COLOUR_OFF = pixels.Color(0, 0, 0);
-// const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 10, 0);
-// const uint32_t COLOUR_LIGHT_RED = pixels.Color(10, 0, 0);
-
-
-
 // Init ESP Now with fallback
 void InitESPNow() {
 	WiFi.disconnect();
@@ -137,6 +131,7 @@ void setup() {
 	Serial.println("ESPNow/Basic/Slave Example");
 
 	FastLED.addLeds<LED_TYPE,NEOPIXEL_PIN,COLOR_ORDER>(pixels, NUMPIXELS).setCorrection(TypicalLEDStrip);
+	FastLED.setBrightness(BRIGHTNESS_DIM);
 
 	//Set device in AP mode to begin with
 	WiFi.mode(WIFI_AP);
