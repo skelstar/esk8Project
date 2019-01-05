@@ -145,10 +145,9 @@ void setup() {
 	// // This is the mac address of the Slave in AP Mode
 	// Serial.printf("AP MAC: %s\n", WiFi.softAPmacAddress());
 	// // Init ESPNow with a fallback logic
-	// InitESPNow();
+	InitESPNow();
 
-	// esp_now_register_recv_cb(OnDataRecv);
-
+	esp_now_register_recv_cb(OnDataRecv);
 
 	int core = xPortGetCoreID();
     Serial.printf("Main code running on core %d, FastLED running on %d\n", core, FASTLED_SHOW_CORE);
@@ -169,13 +168,13 @@ long now = 0;
 
 void loop() {
 
-	if (millis() - now > 1000) {
-		now = millis();
-		pixels[0] = mapStateToColour( now/1000 % 2 );
-		pixels[1] = mapStateToColour( now/1000 % 3 );
-		pixels[2] = mapStateToColour( now/1000 % 4 );
-		FastLEDshowESP32();
-	}
+	// if (millis() - now > 1000) {
+	// 	now = millis();
+	// 	pixels[0] = mapStateToColour( now/1000 % 2 );
+	// 	pixels[1] = mapStateToColour( now/1000 % 3 );
+	// 	pixels[2] = mapStateToColour( now/1000 % 4 );
+	// 	FastLEDshowESP32();
+	// }
 
 	vTaskDelay( 10 );
 }
@@ -226,9 +225,10 @@ void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
 		pixels[i] = CRGB::Black;
 	}
 
-	// pixels.setPixelColor(0, mapStateToColour(hud.data.boardLedState));
-	// pixels.setPixelColor(1, mapStateToColour(hud.data.controllerLedState));
-	// pixels.show();
+	pixels[0] = mapStateToColour( hud.data.controllerLedState );
+	pixels[1] = mapStateToColour( hud.data.boardLedState );
+	pixels[2] = mapStateToColour( hud.data.vescLedState );
+	FastLEDshowESP32();
 }
 
 
