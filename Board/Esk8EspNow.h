@@ -39,7 +39,7 @@ bool ScanForSlave() {
 			int32_t RSSI = WiFi.RSSI(i);
 			String BSSIDstr = WiFi.BSSIDstr(i);
 
-			delay(10);
+			vTaskDelay( 10 );
 			// Check if the current device starts with `HUD_SSID`
 			if ( SSID.indexOf("HUD_SSID") == 0 ) {
 				debug.print(DEBUG, "%d: %s [%s] (RSSI: %d) \n", i+1, SSID.c_str(), BSSIDstr.c_str(), RSSI);
@@ -92,7 +92,7 @@ bool manageSlave() {
 			} else {
 				debug.print(DEBUG, "Not sure what happened\n");
 			}
-			delay(100);
+			vTaskDelay( 100 );
 		}
 	} else {
 		// No slave found to process
