@@ -101,7 +101,7 @@ bool manageSlave() {
 	return addStatus == ESP_OK;
 }
 //--------------------------------------------------
-bool sendDataOk() {
+bool sendDataToHUD_Ok() {
 
 	long m = millis();
 

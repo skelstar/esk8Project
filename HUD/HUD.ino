@@ -12,6 +12,7 @@
 #include <HUDLibrary.h>
 #include <myPushButton.h>
 #include <debugHelper.h>
+#include <TaskScheduler.h>
 
 #include "FastLED.h"
 
@@ -20,9 +21,10 @@
 #define BuzzerPin 26
 
 #define YELLOW_PORT_PIN	13
-// #define WHITE_PORT_PIN 	25
-#define NEOPIXEL_PIN 	25
+#define WHITE_PORT_PIN 	25
+#define NEOPIXEL_PIN 	WHITE_PORT_PIN
 #define BUTTON_PIN		35
+#define LED_BUTTON		YELLOW_PORT_PIN
 
 //---------------------------------------------------------------------
 
@@ -38,15 +40,21 @@ debugHelper debug;
 
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
-#define NUMPIXELS 8
+#define NUMPIXELS 1
 
 
 CRGB pixels[NUMPIXELS];
 
-#define BRIGHTNESS_DIM 3
-#define BRIGHTNESS_MED 60
+CRGB currentColour = CRGB::Black;
+
+#define BRIGHTNESS_DIM 5
+#define BRIGHTNESS_MED 20
 #define BRIGHTNESS_HIGH 255
 int currentBrightness = BRIGHTNESS_DIM;
+
+#define PIXEL_CONTROLLER	0
+#define PIXEL_BOARD			6
+#define PIXEL_VESC			5
 
 // -- The core to run FastLED.show()
 #define FASTLED_SHOW_CORE 0
@@ -86,7 +94,7 @@ U8X8_SH1107_64X128_4W_HW_SPI u8x8(14, /* dc=*/ 27, /* reset=*/ 33);
 #define PULLUP		true
 #define OFFSTATE	LOW
 void buttonCallback(int eventCode, int eventPin, int eventParam);
-myPushButton button(BUTTON_PIN, PULLUP, /* offstate*/ HIGH, buttonCallback);
+myPushButton button(LED_BUTTON, PULLUP, /* offstate*/ HIGH, buttonCallback);
 void buttonCallback(int eventCode, int eventPin, int eventParam) {
     
 	switch (eventCode) {
@@ -110,6 +118,47 @@ void buttonCallback(int eventCode, int eventPin, int eventParam) {
 
 
 /*************************************************************/
+
+
+//--------------------------------------------------------------
+
+Scheduler runner;
+
+bool tFlashLed_onEnable();
+void tFlashLed_onDisable();
+void tFlashLedOn_callback();
+void tFlashLedOff_callback();
+
+Task tFlashLed(500, TASK_FOREVER, &tFlashLedOff_callback);
+
+bool tFlashLed_onEnable() {
+	pixels[0] = currentColour;
+	FastLEDshowESP32();
+	tFlashLed.enable();
+    return true;
+}
+void tFlashLed_onDisable() {
+	// currentBrightness
+	// pixels[0] = currentColour;
+	// FastLEDshowESP32();
+	tFlashLed.disable();
+}
+void tFlashLedOn_callback() {
+	tFlashLed.setCallback(&tFlashLedOff_callback);
+	pixels[0] = currentColour;
+	FastLEDshowESP32();
+	debug.print(HARDWARE, "tFlashLedOn_callback\n");
+	return;
+}
+void tFlashLedOff_callback() {
+	tFlashLed.setCallback(&tFlashLedOn_callback);
+	pixels[0] = CRGB::Black;
+	FastLEDshowESP32();
+	debug.print(HARDWARE, "tFlashLedOff_callback\n");
+	return;
+}
+
+
 
 #include <esp_now.h>
 #include <WiFi.h>
@@ -147,6 +196,9 @@ void setup() {
 
 	esp_now_register_recv_cb(OnDataRecv);
 
+	runner.startNow();
+	runner.addTask(tFlashLed);
+
 	int core = xPortGetCoreID();
     debug.print(STARTUP, "Main code running on core %d, FastLED running on %d\n", core, FASTLED_SHOW_CORE);
 
@@ -165,6 +217,8 @@ void setup() {
 long now = 0;
 
 void loop() {
+
+	runner.execute();
 
 	button.serviceEvents();
 
@@ -190,7 +244,7 @@ CRGB mapStateToColour(byte state) {
 	switch (state) {
 		case hud.FlashingError: return CRGB::Red;
 		case hud.Error:			return CRGB::Blue;
-		case hud.Ok:			return CRGB::White;
+		case hud.Ok:			return CRGB::Green;
 	}
 }
 
@@ -205,14 +259,26 @@ void OnDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
 		hud.data.boardLedState,
 		hud.data.vescLedState);
 
-	for (int i=0; i<NUMPIXELS; i++) {
-		pixels[i] = CRGB::Black;
+	if (hud.data.boardLedState == hud.Ok) {
+		CRGB okColour = mapStateToColour( hud.data.boardLedState );
+		solidColour( okColour );
 	}
-
-	pixels[0] = mapStateToColour( hud.data.controllerLedState );
-	pixels[1] = mapStateToColour( hud.data.boardLedState );
-	pixels[2] = mapStateToColour( hud.data.vescLedState );
+	else {
+		flashColour( CRGB::Red, 100 );
+	}
+}
+//--------------------------------------------------------------
+void solidColour(CRGB colour) {
+	tFlashLed.disable();
+	currentColour = colour;
+	pixels[PIXEL_CONTROLLER] = currentColour;
 	FastLEDshowESP32();
+}
+//--------------------------------------------------------------
+void flashColour(CRGB colour, long interval) {
+	currentColour = colour;
+	tFlashLed.setInterval(interval);
+	tFlashLed.enable();
 }
 //--------------------------------------------------------------
 void setupDisplay() {
@@ -275,9 +341,9 @@ void powerDown() {
 	WiFi.mode(WIFI_OFF);
 	btStop();
 
-	esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN , LOW);
+	// esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_PIN , LOW);
 
-	while(digitalRead(BUTTON_PIN) == LOW) {
+	while(digitalRead(LED_BUTTON) == LOW) {
 		delay(10);
 	}
 	esp_deep_sleep_start();}

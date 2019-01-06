@@ -218,9 +218,9 @@ void codeForRF24CommsRxTask( void *parameter ) {
 
 		controllerStatusChanged = controllerStatus.serviceState(controllerOnline);
 
-		if ( millis() - lastTalkedToHud > 1000 && sendDataOk() ) {
+		if ( millis() - lastTalkedToHud > 3000 && sendDataToHUD_Ok() ) {
 			lastTalkedToHud = millis();
-			debug.print(STATUS, "sendDataOK() %s\n");
+			debug.print(STATUS, "sendDataToHUD_Ok() %s\n");
 		}
 
 		vTaskDelay( 10 );
