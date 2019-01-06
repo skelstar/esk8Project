@@ -51,7 +51,7 @@
 #define COMMUNICATION 	1 << 2
 #define HARDWARE		1 << 3
 #define ONLINE_STATUS	1 << 5
-#define TIMING			1 << 6
+#define LOGGING			1 << 6
 
 
 
@@ -143,13 +143,7 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PI
 const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
 const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
 
-struct commsStatsStruct {
-	int totalPacketsSent;
-	int packetFailureCount;
-	int timesOfflineCount;
-};
-
-volatile commsStatsStruct commsStats;
+volatile int timesOfflineCount;
 
 //--------------------------------------------------------------------------------
 
@@ -215,7 +209,9 @@ int txCharsLength = 0;
 
 void packetAvailableCallback( uint16_t from ) {
 	lastAckFromBoard = millis();
-	debug.print(COMMUNICATION, "Rx from Board: batt voltage %.1f \n", esk8.boardPacket.batteryVoltage);
+	debug.print(COMMUNICATION, "Rx from Board: batt voltage %.1f, vescOnline: %d \n", 
+		esk8.boardPacket.batteryVoltage, 
+		esk8.boardPacket.vescOnline);
 }
 
 //--------------------------------------------------------------
@@ -227,7 +223,7 @@ void boardOfflineCallback() {
 
 void boardOnlineCallback() {
 	ledsUpdate( COLOUR_LIGHT_GREEN );
-	commsStats.timesOfflineCount++;
+	timesOfflineCount++;
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
@@ -241,26 +237,66 @@ OnlineStatusLib boardStatus(
 
 //--------------------------------------------------------------
 
+#define PACKET_LOG_SIZE		50 	// 5/sec *10 minutes
+#define BLANK_LOG_ENTRY		255
+volatile byte packetLog[PACKET_LOG_SIZE];
+volatile int packetLogPtr = 0;
+volatile float currentFailRatio = 0.0;
+
+void initPacketLog() {
+	for (int i=0; i<PACKET_LOG_SIZE; i++) {
+		packetLog[i] = BLANK_LOG_ENTRY;
+	}
+	packetLogPtr = 0;
+}
+
+void logPacket(bool failed) {
+	packetLog[packetLogPtr] = failed == false;
+	debug.print(LOGGING, "logged: %d (%d)\n", packetLog[packetLogPtr], packetLogPtr);
+	packetLogPtr = packetLogPtr < PACKET_LOG_SIZE - 1 
+		? packetLogPtr + 1 
+		: 0;
+}
+
+float calculatePacketRatio() {
+	int packetSum = 0;
+	int failSum = 0;
+	long start = micros();
+	for (int i=0; i<PACKET_LOG_SIZE; i++) {
+		if (packetLog[i] != BLANK_LOG_ENTRY) {
+			packetSum++;
+			if (packetLog[i] == 1) {
+				failSum++;
+			}
+		}
+	}
+	char stats[5];
+	currentFailRatio = (float)failSum / (float)packetSum;
+	dtostrf(currentFailRatio*100, 4, 1, stats);
+
+	debug.print(LOGGING, "ratio: %s and took %ulus\n", stats, micros() - start);
+}
+
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
 
 	bool sentOK = esk8.sendPacketToBoard();
+	debug.print(COMMUNICATION, "Sending: %d \n", esk8.controllerPacket.throttle);
 
     taskEXIT_CRITICAL(&mmux);
 
-    commsStats.totalPacketsSent++;
+    logPacket( sentOK );
+    calculatePacketRatio();
 
     if ( sentOK ) {
     	lastAckFromBoard = millis();
-		boardStatus.serviceState( true );
 		updateBoardImmediately = false;
     }
     else {
-    	commsStats.packetFailureCount++;
-		boardStatus.serviceState( false );
         debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
+	boardStatus.serviceState( sentOK );
 }
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
@@ -279,15 +315,17 @@ void setup() {
 	debug.addOption(HARDWARE, "HARDWARE");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
-	// debug.addOption(TIMING, "TIMING");
+	debug.addOption(LOGGING, "LOGGING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP );	// | DEBUG | COMMUNICATION | HARDWARE );
+	debug.setFilter( STARTUP | DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
 	//debug.setFilter( STARTUP );
 
 	// disable speaker noise
 	dacWrite(25, 0);
 
 	M5.begin();
+
+	initPacketLog();
 
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
  //    btStop();   // turn bluetooth module off
@@ -302,9 +340,8 @@ void setup() {
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
-	commsStats.totalPacketsSent = 0;
-	commsStats.packetFailureCount = 0;
-	commsStats.timesOfflineCount = 0;
+	
+	timesOfflineCount = 0;
 	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
 
@@ -502,15 +539,14 @@ void updateDisplay() {
 	char stats[5];	// xx.x\0
 	bool warning = false;
 
-	if (commsStats.packetFailureCount != commsStats.totalPacketsSent) {
-		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
-		dtostrf(ratio*100, 4, 1, stats);
-		warning = ratio > 0.1;
+	if (currentFailRatio > 0) {
+		dtostrf(currentFailRatio * 100, 4, 1, stats);
+		warning = currentFailRatio > 0.1;
 	}
 	else {
 		strcpy(stats, "00.0");
 	}
-	// Serial.printf("%s\n", stats);
+	Serial.printf("%s\n", stats);
 
 	char topleft[] = "123";
 	char topRight[] = "456";
