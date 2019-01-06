@@ -324,11 +324,21 @@ void setup() {
 	dacWrite(25, 0);
 
 	M5.begin();
+	M5.setWakeupButton(BUTTON_A_PIN);
+
+	m5.update();
+	if (m5.BtnC.isPressed() == false) {
+		powerDown();
+	}
+
+	while ( m5.BtnC.wasReleased() == false ){
+		m5.update();
+	}
 
 	initPacketLog();
 
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
- //    btStop();   // turn bluetooth module off
+	// btStop();   // turn bluetooth module off
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -592,6 +602,8 @@ void powerDown() {
 	radio.powerDown();
 	// leds
 	ledsUpdate(pixels.Color(0, 0, 0));
+	dacWrite(25, 0);
+
 	// message
 	// img.pushSprite(0, 0);
 	delay(300);
