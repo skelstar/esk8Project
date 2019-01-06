@@ -68,7 +68,7 @@ long lastSentToController = 0;
 
 //--------------------------------------------------------------
 
-#include "Esk8EspNow.h"
+// #include "Esk8EspNow.h"
 
 //--------------------------------------------------------------------------------
 #define 	VESC_UART_RX		16		// orange - VESC 5
@@ -112,15 +112,23 @@ void controllerPacketAvailableCallback( uint16_t from ) {
 void controllerOfflineCallback() {
 	esk8.controllerPacket.throttle = 127;
 	debug.print(STATUS, "controllerOfflineCallback(); (%d)\n", millis() - lastRxFromController);
+	// hud.data.controllerLedState = hud.Error;
+	// sendDataToHUD_Ok();
 }
 void controllerOnlineCallback() {
 	debug.print(STATUS, "controllerOnlineCallback();\n");
+	// hud.data.controllerLedState = hud.Ok;
+	// sendDataToHUD_Ok();
 }
 void vescOfflineCallback() {
 	debug.print(STATUS, "vescOfflineCallback();\n");
+	// hud.data.controllerLedState = hud.FlashingError;
+	// sendDataToHUD_Ok();
 }
 void vescOnlineCallback() {
 	debug.print(STATUS, "vescOnlineCallback();\n");
+	// hud.data.controllerLedState = hud.Ok;
+	// sendDataToHUD_Ok();
 }
 
 OnlineStatusLib controllerStatus(controllerOfflineCallback, controllerOnlineCallback, /*offlineNumConsecutiveTimesAllowance*/ 3, /*debug*/ false);
@@ -147,7 +155,7 @@ void setup()
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
 	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | STATUS );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -210,18 +218,30 @@ void codeForRF24CommsRxTask( void *parameter ) {
 
 	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
 
-	setupEspNow();
+	// setupEspNow();
+
+	// hud.data.controllerLedState = hud.Ok;
+	// sendDataToHUD_Ok();
 
 	for (;;) {
+
+		// if ( millis() - nowms > 2000 ) {
+		// 	nowms = millis();
+		// 	if ( hud.data.controllerLedState == hud.Ok ) {
+		// 		hud.data.controllerLedState = hud.FlashingError;
+		// 	}
+		// 	else {
+		// 		hud.data.controllerLedState = hud.Ok;	
+		// 	}
+		// 	debug.print(STATUS, "hud: %d\n", hud.data.controllerLedState);
+		// 	if ( false == sendDataToHUD_Ok() ) {
+		// 		debug.print(STATUS, "hud comms failed\n");
+		// 	}
+		// }
 
 		bool controllerOnline = millis() - lastRxFromController < CONTROLLER_TIMEOUT;
 
 		controllerStatusChanged = controllerStatus.serviceState(controllerOnline);
-
-		if ( millis() - lastTalkedToHud > 3000 && sendDataToHUD_Ok() ) {
-			lastTalkedToHud = millis();
-			debug.print(STATUS, "sendDataToHUD_Ok() %s\n");
-		}
 
 		vTaskDelay( 10 );
 	}
