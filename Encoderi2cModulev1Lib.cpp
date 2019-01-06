@@ -2,6 +2,7 @@
 #include "i2cEncoderLib.h"
 #include "Encoderi2cModulev1Lib.h"
 
+// https://www.tindie.com/products/Saimon/i2c-encoder-connect-rotary-encoders-on-i2c-bus/
 
 i2cEncoderLib encoder(0x30); 
 
