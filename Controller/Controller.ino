@@ -317,7 +317,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(LOGGING, "LOGGING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
+	debug.setFilter( STARTUP );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
 	//debug.setFilter( STARTUP );
 
 	// disable speaker noise

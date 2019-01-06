@@ -155,7 +155,7 @@ void setup()
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
 	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS | VESC_COMMS );
+	debug.setFilter( STARTUP );	//| STATUS | CONTROLLER_COMMS | VESC_COMMS );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
