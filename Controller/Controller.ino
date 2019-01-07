@@ -299,15 +299,6 @@ void setup() {
 	M5.begin();
 	M5.setWakeupButton(BUTTON_A_PIN);
 
-	m5.update();
-	if (m5.BtnC.isPressed() == false) {
-		powerDown();
-	}
-
-	while ( m5.BtnC.wasReleased() == false ){
-		m5.update();
-	}
-
 	initPacketLog();
 
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
@@ -333,6 +324,19 @@ void setup() {
 	}
 	
 	setupDisplay();
+
+	m5.update();
+	if (m5.BtnC.isPressed() == false) {
+		powerDown();
+	}
+
+	img_middle.setTextDatum(MC_DATUM);
+	img_middle.drawString("Ready!", 320/2, img_middle.height()/2);
+	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
+
+	while ( m5.BtnC.wasReleased() == false ){
+		m5.update();
+	}
 
 	runner.startNow();
 	runner.addTask(tFlashLeds);
@@ -505,7 +509,7 @@ void setupDisplay() {
 	// img.setFreeFont(FF18);                 // Select the font
  	// img.setTextDatum(MC_DATUM);
 	// img.setTextColor(TFT_YELLOW, TFT_BLACK);
-	updateDisplay();
+	// updateDisplay();
 }
 
 //--------------------------------------------------------------
