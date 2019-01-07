@@ -37,7 +37,7 @@
 #define	M5STACK_FIRE_PIXEL_PIN			15	// was 5
 
 // can't use pins: 17, 16, 35
-#define DEADMAN_SWITCH		2
+// #define DEADMAN_SWITCH		2
 
 /*****************************************************/
 
@@ -330,9 +330,7 @@ void setup() {
 		powerDown();
 	}
 
-	img_middle.setTextDatum(MC_DATUM);
-	img_middle.drawString("Ready!", 320/2, img_middle.height()/2);
-	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
+	pushTextToMiddleOfSprite(&img_middle, "Ready!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
 
 	while ( m5.BtnC.wasReleased() == false ){
 		m5.update();
@@ -342,8 +340,6 @@ void setup() {
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
-
-	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -387,7 +383,6 @@ void loop() {
 		nowMs = millis();
 		updateDisplay();
 	}
-
 
 	vTaskDelay( 10 );
 }
@@ -536,7 +531,7 @@ void updateDisplay() {
 
 	int decimalRatio = currentFailRatio*100;
 	sprintf( stats, "%d", decimalRatio);
-	Serial.printf("%s\n", stats);
+	// Serial.printf("%s\n", stats);
 
 	char topleft[] = "123";
 	char topRight[] = "456";

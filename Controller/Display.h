@@ -79,7 +79,7 @@ const bool FONT_DIGITS_3x5[11][5][3] = {
                 {1, 0, 1},
         }        
 };
-
+//-----------------------------------------------------
 void tft_util_draw_digit(
         TFT_eSprite * tft, 
         uint8_t digit, 
@@ -98,7 +98,7 @@ void tft_util_draw_digit(
         }
     }
 }
-
+//-----------------------------------------------------
 void tft_util_draw_number(
         TFT_eSprite* spr, 
         char *number, 
@@ -133,11 +133,7 @@ void tft_util_draw_number(
         }
     }
 }
-
-int getNumberWidth(int numDigits, int pixelSize, int spacing) {
-    return numDigits * 5 * pixelSize;
-}
-
+//-----------------------------------------------------
 #define WIDGET_SMALL    6
 #define WIDGET_MEDIUM   16
 #define WIDGET_POS_TOP_LEFT 1
@@ -145,7 +141,7 @@ int getNumberWidth(int numDigits, int pixelSize, int spacing) {
 #define WIDGET_POS_MIDDLE 3
 #define WIDGET_POS_BOTTOM_LEFT 4
 #define WIDGET_POS_BOTTOM_RIGHT 5
-
+//-----------------------------------------------------
 
 void populateSmallWidget(TFT_eSprite* spr, int pixelSize, char *number) {
 	
@@ -170,21 +166,17 @@ void populateSmallWidget(TFT_eSprite* spr, int pixelSize, char *number) {
 
 	spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
 }
-
+//-----------------------------------------------------
 void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, bool warning) {
 	#define TFT_GREY 0xC618
 
 	int spacing = 5;
-	//int paddingLeft = 20;
     int width = strlen(number) * pixelSize * 3; // + paddingLeft;
     int height = 5 * pixelSize;
 
     int middleX = 320-100;
-    //spr->drawLine(320-100, 0, 0, spr->height, TFT_RED);
-
 	int startX = middleX - width - 5;// paddingLeft;
 	int startY = 20;
-    Serial.printf("startX: %d and number: '%s'\n", startX, number);
 
 	uint16_t bgColour = warning ? TFT_RED : TFT_BLACK;
     spr->fillRect(0, 0, spr->width(), spr->height(), bgColour);
@@ -198,6 +190,12 @@ void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, bool wa
 	spr->drawString("FAIL", labelsX, spr->height()/2);
 	spr->setTextDatum(BL_DATUM);
 	spr->drawString("RATIO", labelsX, startY + height + 5);
-
 	// spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
 }
+//-----------------------------------------------------
+void pushTextToMiddleOfSprite(TFT_eSprite *spr, char* text, int x, int y) {
+    spr->setTextDatum(MC_DATUM);
+    spr->drawString("Ready!", spr->width()/2, spr->height()/2);
+    spr->pushSprite(x, y);
+}
+//-----------------------------------------------------
