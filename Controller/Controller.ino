@@ -523,7 +523,7 @@ void updateDisplay() {
 
 	// if (currentFailRatio > 0) {
 	// 	dtostrf(currentFailRatio * 100, 4, 1, stats);
-	// 	warning = currentFailRatio > 0.1;
+	warning = currentFailRatio > 0.1;
 	// }
 	// else {
 	// 	strcpy(stats, "00.0");
