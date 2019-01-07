@@ -21,9 +21,8 @@
 // #include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
 // #include "Org_01.h"
+
 //--------------------------------------------------------------------------------
-
-
 
 #define READ_JOYSTICK_INTERVAL		150
 #define SEND_TO_BOARD_INTERVAL_MS 	200
@@ -40,11 +39,7 @@
 // can't use pins: 17, 16, 35
 #define DEADMAN_SWITCH		2
 
-// #define M5_BUTTON_A			39
-// #define M5_BUTTON_B			38
-// #define M5_BUTTON_C			37
-
-//--------------------------------------------------------------
+/*****************************************************/
 
 #define	STARTUP 		1 << 0
 #define DEBUG 			1 << 1
@@ -53,9 +48,9 @@
 #define ONLINE_STATUS	1 << 5
 #define LOGGING			1 << 6
 
-
-
 debugHelper debug;
+
+/*****************************************************/
 
 esk8Lib esk8;
 
@@ -152,28 +147,6 @@ const char file_name[] = __FILE__;
 
 //--------------------------------------------------------------
 
-//--------------------------------------------------------------
-
-// #define PULLUP		true
-// #define OFFSTATE	LOW
-// void m5ButtonACallback(int eventCode, int eventPin, int eventParam);
-// myPushButton m5ButtonA(M5_BUTTON_A, PULLUP, /* offstate*/ HIGH, m5ButtonACallback);
-// void m5ButtonACallback(int eventCode, int eventPin, int eventParam) {
-    
-// 	switch (eventCode) {
-// 		case m5ButtonA.EV_BUTTON_PRESSED:
-// 			break;
-// 		// case m5ButtonA.EV_RELEASED:
-// 		// 	break;
-// 		// case m5ButtonA.EV_DOUBLETAP:
-// 		// 	break;
-// 		// case m5ButtonA.EV_HELD_SECONDS:
-// 		// 	break;
-//     }
-// }
-
-//--------------------------------------------------------------
-
 Scheduler runner;
 
 bool tFlashLeds_onEnable();
@@ -241,7 +214,7 @@ OnlineStatusLib boardStatus(
 #define BLANK_LOG_ENTRY		255
 volatile byte packetLog[PACKET_LOG_SIZE];
 volatile int packetLogPtr = 0;
-volatile float currentFailRatio = 0.0;
+volatile float currentFailRatio = 0;
 
 void initPacketLog() {
 	for (int i=0; i<PACKET_LOG_SIZE; i++) {
@@ -549,13 +522,16 @@ void updateDisplay() {
 	char stats[5];	// xx.x\0
 	bool warning = false;
 
-	if (currentFailRatio > 0) {
-		dtostrf(currentFailRatio * 100, 4, 1, stats);
-		warning = currentFailRatio > 0.1;
-	}
-	else {
-		strcpy(stats, "00.0");
-	}
+	// if (currentFailRatio > 0) {
+	// 	dtostrf(currentFailRatio * 100, 4, 1, stats);
+	// 	warning = currentFailRatio > 0.1;
+	// }
+	// else {
+	// 	strcpy(stats, "00.0");
+	// }
+
+	int decimalRatio = currentFailRatio*100;
+	sprintf( stats, "%d", decimalRatio);
 	Serial.printf("%s\n", stats);
 
 	char topleft[] = "123";

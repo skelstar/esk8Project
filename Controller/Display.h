@@ -175,18 +175,22 @@ void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, bool wa
 	#define TFT_GREY 0xC618
 
 	int spacing = 5;
-	int paddingLeft = 20;
-    int width = strlen(number) * pixelSize * 3 + paddingLeft;
+	//int paddingLeft = 20;
+    int width = strlen(number) * pixelSize * 3; // + paddingLeft;
     int height = 5 * pixelSize;
 
-	int startX = paddingLeft;
+    int middleX = 320-100;
+    //spr->drawLine(320-100, 0, 0, spr->height, TFT_RED);
+
+	int startX = middleX - width - 5;// paddingLeft;
 	int startY = 20;
+    Serial.printf("startX: %d and number: '%s'\n", startX, number);
 
 	uint16_t bgColour = warning ? TFT_RED : TFT_BLACK;
     spr->fillRect(0, 0, spr->width(), spr->height(), bgColour);
     tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, pixelSize );
 
-	int labelsX = 320-(320-width);
+	int labelsX = middleX + 5;
 	spr->setTextDatum(TL_DATUM);
     spr->drawString("%", labelsX, startY);
 	spr->setTextColor(TFT_GREY, bgColour);
