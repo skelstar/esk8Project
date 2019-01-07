@@ -264,6 +264,18 @@ void sendToController() {
 }
 //--------------------------------------------------------------
 bool getVescValues() {
+	/*
+	struct dataPackage {
+		float avgMotorCurrent;
+		float avgInputCurrent;
+		float dutyCycleNow;
+		long rpm;
+		float inpVoltage;
+		float ampHours;
+		float ampHoursCharged;
+		long tachometer;
+		long tachometerAbs;
+	}; */
 
     bool success = UART.getVescValues();
     // UART.setDebugPort(&Serial);
