@@ -5,7 +5,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <TaskScheduler.h>
 
-#include <M5Stack.h>
+// #include <M5Stack.h>
 
 #include <myPushButton.h>
 #include <debugHelper.h>
@@ -18,7 +18,7 @@
 #include <OnlineStatusLib.h>
 
 /* Display */
-// #include "TFT_eSPI.h"
+#include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
 // #include "Org_01.h"
 
@@ -33,6 +33,10 @@
 
 #define ENCODER_PIN_A		26
 #define ENCODER_PIN_B 		36
+
+#define BUTTON_A_PIN 39
+#define BUTTON_B_PIN 38
+#define BUTTON_C_PIN 37
 
 #define	M5STACK_FIRE_PIXEL_PIN			15	// was 5
 
@@ -82,11 +86,11 @@ int setupJoystick() {
 	setThrottleMinsMaxs(/*min*/throttleMin, /*max*/throttleMax);
 	return 1;
 }
-
+//--------------------------------------------------------------
 volatile uint8_t x_data;
 volatile uint8_t y_data;
 volatile uint8_t button_data;
-
+//--------------------------------------------------------------
 int getRawValuesFromJoystick() {
 
 	Wire.requestFrom(JOY_ADDR, 3);
@@ -267,7 +271,7 @@ void tSendControllerValues_callback() {
 		updateBoardImmediately = false;
     }
     else {
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
 	boardStatus.serviceState( sentOK );
 }
@@ -290,14 +294,14 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(LOGGING, "LOGGING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
+	debug.setFilter( STARTUP | COMMUNICATION );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
 	//debug.setFilter( STARTUP );
 
 	// disable speaker noise
 	dacWrite(25, 0);
 
-	M5.begin();
-	M5.setWakeupButton(BUTTON_A_PIN);
+	// M5.begin();
+	// M5.setWakeupButton(BUTTON_A_PIN);
 
 	initPacketLog();
 
@@ -325,16 +329,22 @@ void setup() {
 	
 	setupDisplay();
 
-	m5.update();
-	if (m5.BtnC.isPressed() == false) {
+	pinMode(BUTTON_A_PIN, INPUT_PULLUP);
+	pinMode(BUTTON_C_PIN, INPUT_PULLUP);
+	byte btnC = digitalRead(BUTTON_C_PIN);
+	if (btnC == 1) {
 		powerDown();
 	}
+	// m5.update();
+	// if (m5.BtnC.isPressed() == false) {
+	// 	powerDown();
+	// }
 
 	pushTextToMiddleOfSprite(&img_middle, "Ready!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
 
-	while ( m5.BtnC.wasReleased() == false ){
-		m5.update();
-	}
+	// while ( m5.BtnC.wasReleased() == false ){
+	// 	m5.update();
+	// }
 
 	runner.startNow();
 	runner.addTask(tFlashLeds);
@@ -350,6 +360,8 @@ void setup() {
 		NULL,	// handle
 		0
 	);				// port	
+
+	debug.print(STARTUP, "End of setup(); \n");
 }
 /**************************************************************
 					LOOP
@@ -373,16 +385,20 @@ void loop() {
 		updateBoardImmediately = false;
 		tSendControllerValues.restart();
 	}
-	
-	M5.update();
-	if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
+
+	if ( digitalRead(BUTTON_A_PIN) == 0 && digitalRead(BUTTON_C_PIN) == 0 ) {
 		powerDown();
 	}
+	
+	// M5.update();
+	// if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
+	// 	powerDown();
+	// }
 
-	if ( millis() - nowMs > 1000 ) {
-		nowMs = millis();
-		updateDisplay();
-	}
+	// if ( millis() - nowMs > 1000 ) {
+	// 	nowMs = millis();
+	// 	updateDisplay();
+	// }
 
 	vTaskDelay( 10 );
 }
@@ -568,11 +584,10 @@ void ledsUpdate(uint32_t color) {
 }
 //--------------------------------------------------------------
 void powerDown() {
-	// M5.Speaker.tone(1000, 300);	// tone 330, 200ms
-	// delay(200);
-	// M5.Speaker.tone(330, 300);	// tone 330, 200ms
 	//img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
 	// radio
+	debug.print(STARTUP, "Powering down!\n");
+
 	radio.stopListening();
 	radio.powerDown();
 	// leds
@@ -582,6 +597,13 @@ void powerDown() {
 	// message
 	// img.pushSprite(0, 0);
 	delay(300);
-    M5.powerOFF();
+
+	esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_A_PIN , LOW);
+
+	while(digitalRead(BUTTON_A_PIN) == LOW) {
+		delay(10);
+	}
+	esp_deep_sleep_start();
+    // M5.powerOFF();
 }
 //--------------------------------------------------------------
