@@ -2,7 +2,7 @@
 Credit to https://github.com/SolidGeek/VescUart for VESC-related code.
 
 ### Todos:
-- FastLED with task on Controller
+- [FastLED](https://github.com/FastLED/FastLED) with task on Controller
 - Get rpm from VESC and evaluate some 'isMoving' boolean on the Board which is returned to Controller
 - Get ampHours (are they current/live?)
 - Logging to uSD card
