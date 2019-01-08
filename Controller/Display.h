@@ -167,7 +167,7 @@ void populateSmallWidget(TFT_eSprite* spr, int pixelSize, char *number) {
 	spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
 }
 //-----------------------------------------------------
-void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, bool warning) {
+void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, char *label, bool warning) {
 	#define TFT_GREY 0xC618
 
 	int spacing = 5;
@@ -183,13 +183,13 @@ void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, bool wa
     tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, pixelSize );
 
 	int labelsX = middleX + 5;
-	spr->setTextDatum(TL_DATUM);
-    spr->drawString("%", labelsX, startY);
-	spr->setTextColor(TFT_GREY, bgColour);
-	spr->setTextDatum(ML_DATUM);
-	spr->drawString("FAIL", labelsX, spr->height()/2);
+	// spr->setTextDatum(TL_DATUM);
+ //    spr->drawString("%", labelsX, startY);
+	// spr->setTextColor(TFT_GREY, bgColour);
+	// spr->setTextDatum(ML_DATUM);
+	// spr->drawString("FAIL", labelsX, spr->height()/2);
 	spr->setTextDatum(BL_DATUM);
-	spr->drawString("RATIO", labelsX, startY + height + 5);
+	spr->drawString(label, labelsX, startY + height + 5);
 	// spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
 }
 //-----------------------------------------------------

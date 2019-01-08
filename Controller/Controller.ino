@@ -5,7 +5,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <TaskScheduler.h>
 
-// #include <M5Stack.h>
+#include <M5Stack.h>
 
 #include <myPushButton.h>
 #include <debugHelper.h>
@@ -18,7 +18,7 @@
 #include <OnlineStatusLib.h>
 
 /* Display */
-#include "TFT_eSPI.h"
+// #include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
 // #include "Org_01.h"
 
@@ -300,8 +300,8 @@ void setup() {
 	// disable speaker noise
 	dacWrite(25, 0);
 
-	// M5.begin();
-	// M5.setWakeupButton(BUTTON_A_PIN);
+	M5.begin();
+	M5.setWakeupButton(BUTTON_A_PIN);
 
 	initPacketLog();
 
@@ -329,26 +329,26 @@ void setup() {
 	
 	setupDisplay();
 
-	pinMode(BUTTON_A_PIN, INPUT_PULLUP);
-	pinMode(BUTTON_C_PIN, INPUT_PULLUP);
-	byte btnC = digitalRead(BUTTON_C_PIN);
-	if (btnC == 1) {
-		powerDown();
-	}
-	// m5.update();
-	// if (m5.BtnC.isPressed() == false) {
+	// pinMode(BUTTON_A_PIN, INPUT_PULLUP);
+	// pinMode(BUTTON_C_PIN, INPUT_PULLUP);
+	// byte btnC = digitalRead(BUTTON_C_PIN);
+	// if (btnC == 1) {
 	// 	powerDown();
 	// }
+	m5.update();
+	if (m5.BtnC.isPressed() == false) {
+		powerDown();
+	}
 
 	pushTextToMiddleOfSprite(&img_middle, "Ready!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
 
 
-	while ( digitalRead(BUTTON_C_PIN) == 0 ) {
-		vTaskDelay( 10 );
-	}
-	// while ( m5.BtnC.wasReleased() == false ){
-	// 	m5.update();
+	// while ( digitalRead(BUTTON_C_PIN) == 0 ) {
+	// 	vTaskDelay( 10 );
 	// }
+	while ( m5.BtnC.wasReleased() == false ){
+		m5.update();
+	}
 
 	runner.startNow();
 	runner.addTask(tFlashLeds);
@@ -388,14 +388,14 @@ void loop() {
 		tSendControllerValues.restart();
 	}
 
-	if ( digitalRead(BUTTON_A_PIN) == 0 && digitalRead(BUTTON_C_PIN) == 0 ) {
-		powerDown();
-	}
-	
-	// M5.update();
-	// if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
+	// if ( digitalRead(BUTTON_A_PIN) == 0 && digitalRead(BUTTON_C_PIN) == 0 ) {
 	// 	powerDown();
 	// }
+	
+	M5.update();
+	if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
+		powerDown();
+	}
 
 	if ( millis() - nowMs > 1000 ) {
 		nowMs = millis();
@@ -562,7 +562,7 @@ void updateDisplay() {
 	// populateWidget( &img_topRight, WIDGET_SMALL, topRight);
 	// img_topRight.pushSprite(320-(img_topRight.width()), 0);
 
-	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats, /*warning*/ warning);
+	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats, "% FAIL", /*warning*/ warning);
 	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	
 	// populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
@@ -600,12 +600,12 @@ void powerDown() {
 	// img.pushSprite(0, 0);
 	delay(300);
 
-	esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_A_PIN , LOW);
+	// esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_A_PIN , LOW);
 
-	while(digitalRead(BUTTON_A_PIN) == LOW) {
-		delay(10);
-	}
-	esp_deep_sleep_start();
-    // M5.powerOFF();
+	// while(digitalRead(BUTTON_A_PIN) == LOW) {
+	// 	delay(10);
+	// }
+	// esp_deep_sleep_start();
+    M5.powerOFF();
 }
 //--------------------------------------------------------------
