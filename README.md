@@ -2,7 +2,7 @@
 Credit to https://github.com/SolidGeek/VescUart for VESC-related code.
 
 ### Todos:
-- [FastLED](https://github.com/FastLED/FastLED) with task on Controller
+- [FastLED](https://github.com/FastLED/FastLED) with task on Controller ([here](https://github.com/skelstar/esk8Project/blob/feature/m5stick-HUD/Investigations/m5stickHUD/ESPNow/m5stickHUD-EspNow/m5stickHUD-EspNow.ino)). Perhaps have second core run two task threads?
 - Get rpm from VESC and evaluate some 'isMoving' boolean on the Board which is returned to Controller
 - Get ampHours (are they current/live?)
 - Logging to uSD card
