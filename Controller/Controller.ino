@@ -342,6 +342,10 @@ void setup() {
 
 	pushTextToMiddleOfSprite(&img_middle, "Ready!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
 
+
+	while ( digitalRead(BUTTON_C_PIN) == 0 ) {
+		vTaskDelay( 10 );
+	}
 	// while ( m5.BtnC.wasReleased() == false ){
 	// 	m5.update();
 	// }
@@ -360,8 +364,6 @@ void setup() {
 		NULL,	// handle
 		0
 	);				// port	
-
-	debug.print(STARTUP, "End of setup(); \n");
 }
 /**************************************************************
 					LOOP
@@ -395,10 +397,10 @@ void loop() {
 	// 	powerDown();
 	// }
 
-	// if ( millis() - nowMs > 1000 ) {
-	// 	nowMs = millis();
-	// 	updateDisplay();
-	// }
+	if ( millis() - nowMs > 1000 ) {
+		nowMs = millis();
+		updateDisplay();
+	}
 
 	vTaskDelay( 10 );
 }
