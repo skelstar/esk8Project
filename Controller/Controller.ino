@@ -78,7 +78,7 @@ int setupJoystick() {
 	Wire.begin(21, 22, 400000);
 
 	if ( getRawValuesFromJoystick() == -1 ) {
-		debug.print(STARTUP, "WARNING: encoder device is not connected!");
+		debug.print(STARTUP, "WARNING: jopystick is not connected!");
 		return -1;
 	}
 
@@ -294,7 +294,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(LOGGING, "LOGGING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | COMMUNICATION );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
+	debug.setFilter( STARTUP );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
 	//debug.setFilter( STARTUP );
 
 	// disable speaker noise
@@ -427,7 +427,7 @@ bool readJoystickOk() {
 		byte result = getRawValuesFromJoystick();
 		// check ERROR condition
 		if ( result == -1 ) {
-			debug.print(STARTUP, "WARNING: encoder device is not connected!");
+			debug.print(STARTUP, "WARNING: control device is not connected!");
 			return false;
 		}
 
