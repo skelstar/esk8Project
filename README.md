@@ -3,7 +3,7 @@ Credit to https://github.com/SolidGeek/VescUart for VESC-related code.
 
 ### Todos:
 - ~Make sure than when startup: the throttle is ignored until it has returned to 0 (127-ish)~
-- [FastLED](https://github.com/FastLED/FastLED) with task on Controller ([here](https://github.com/skelstar/esk8Project/blob/feature/m5stick-HUD/Investigations/m5stickHUD/ESPNow/m5stickHUD-EspNow/m5stickHUD-EspNow.ino)). Perhaps have second core run two task threads?
+- ~[FastLED](https://github.com/FastLED/FastLED) with task on Controller ([here](https://github.com/skelstar/esk8Project/blob/feature/m5stick-HUD/Investigations/m5stickHUD/ESPNow/m5stickHUD-EspNow/m5stickHUD-EspNow.ino)). Perhaps have second core run two task threads?~ (actually using Adafruit pixel library still)
 - Display battery voltage?
   - maybe when not moving?
   - on startup?
