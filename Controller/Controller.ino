@@ -342,10 +342,18 @@ void setup() {
 
 	pushTextToMiddleOfSprite(&img_middle, "Ready!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
 
+	int deadzone = 5;
+	bool displayedMessage = false;
+	while ( readJoystickOk() == false || esk8.controllerPacket.throttle > 127+deadzone || esk8.controllerPacket.throttle < 127-deadzone ) {
+		if ( !displayedMessage ) {
+			pushTextToMiddleOfSprite(&img_middle, "Zero throttle!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+			debug.print(STARTUP, "Displayed message\n");
+			displayedMessage = true;
+		}
+		vTaskDelay( 500 );
+	}
+	debug.print(STARTUP, "esk8.controllerPacket.throttle == %d\n", esk8.controllerPacket.throttle);
 
-	// while ( digitalRead(BUTTON_C_PIN) == 0 ) {
-	// 	vTaskDelay( 10 );
-	// }
 	while ( m5.BtnC.wasReleased() == false ){
 		m5.update();
 	}

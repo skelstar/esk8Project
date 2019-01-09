@@ -195,7 +195,7 @@ void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, char *l
 //-----------------------------------------------------
 void pushTextToMiddleOfSprite(TFT_eSprite *spr, char* text, int x, int y) {
     spr->setTextDatum(MC_DATUM);
-    spr->drawString("Ready!", spr->width()/2, spr->height()/2);
+    spr->drawString(text, spr->width()/2, spr->height()/2);
     spr->pushSprite(x, y);
 }
 //-----------------------------------------------------
