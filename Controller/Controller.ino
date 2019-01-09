@@ -361,7 +361,7 @@ void setup() {
 		powerDown();
 	}
 
-	pushTextToMiddleOfSprite(&img_middle, "Ready!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+	pushTextToMiddleOfSprite(&img_middle, "READY!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
 
 	int deadzone = 5;
 	bool displayedMessage = false;
@@ -551,7 +551,7 @@ void setupDisplay() {
 	img_topRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
 
 	img_middle.setColorDepth(16); // Optionally set depth to 8 to halve RAM use
-	img_middle.setFreeFont(FF22);                 // Select the font
+	img_middle.setFreeFont(FF21);                 // Select the font
 	img_middle.createSprite(SPRITE_MED_WIDTH, SPRITE_MED_HEIGHT);
 
 	img_bottomLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
@@ -559,11 +559,6 @@ void setupDisplay() {
 
 	img_bottomRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
 	img_bottomRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
-
-	// img.setFreeFont(FF18);                 // Select the font
- 	// img.setTextDatum(MC_DATUM);
-	// img.setTextColor(TFT_YELLOW, TFT_BLACK);
-	// updateDisplay();
 }
 
 //--------------------------------------------------------------
@@ -577,14 +572,7 @@ void setupDisplay() {
 
 void updateDisplay() {
 	// commsStats
-	char stats[5];	// xx.x\0
-	bool warning = false;
-
-	warning = currentFailRatio > 0.1;
-
-	int decimalRatio = currentFailRatio*100;
-	sprintf( stats, "%d", decimalRatio);
-	// Serial.printf("%s\n", stats);
+	char value[5];	// xx.x\0
 
 	char topleft[] = "123";
 	char topRight[] = "456";
@@ -597,8 +585,23 @@ void updateDisplay() {
 	// populateWidget( &img_topRight, WIDGET_SMALL, topRight);
 	// img_topRight.pushSprite(320-(img_topRight.width()), 0);
 
-	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats, "% FAIL", /*warning*/ warning);
+	if ( millis()/1000 % 2 == 0 ) {
+		bool warning = currentFailRatio > 0.1;
+		int decimalRatio = currentFailRatio*100;
+		sprintf( value, "%d", decimalRatio);
+		// Serial.printf("%s\n", stats);
+		populateMediumWidget( &img_middle, WIDGET_MEDIUM, value, "FAIL RATIO (%)", /*warning*/ warning);
+	}
+	else {
+	// else if ( esk8.boardPacket.vescOnline ) {
+		sprintf( value, "%.1f", esk8.boardPacket.batteryVoltage );
+		populateMediumWidget( &img_middle, WIDGET_MEDIUM, value, "BATTERY VOLTS", /*warning*/ false);
+	}
+	// else {
+	// 	pushTextToMiddleOfSprite(&img_middle, "VESC Offline!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+	// }
 	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
+
 	
 	// populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
 	// img_bottomLeft.pushSprite(0, 240-img_bottomLeft.height());
@@ -621,7 +624,8 @@ void ledsUpdate(uint32_t color) {
 }
 //--------------------------------------------------------------
 void powerDown() {
-	//img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
+	pushTextToMiddleOfSprite(&img_middle, "POWERING DOWN!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	// radio
 	debug.print(STARTUP, "Powering down!\n");
 
@@ -631,16 +635,7 @@ void powerDown() {
 	ledsUpdate(pixels.Color(0, 0, 0));
 	dacWrite(25, 0);
 
-	// message
-	// img.pushSprite(0, 0);
-	delay(300);
-
-	// esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_A_PIN , LOW);
-
-	// while(digitalRead(BUTTON_A_PIN) == LOW) {
-	// 	delay(10);
-	// }
-	// esp_deep_sleep_start();
+	delay(800);
     M5.powerOFF();
 }
 //--------------------------------------------------------------

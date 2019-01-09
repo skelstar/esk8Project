@@ -175,25 +175,22 @@ void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, char *l
     int height = 5 * pixelSize;
 
     int middleX = 320-100;
-	int startX = middleX - width - 5;// paddingLeft;
-	int startY = 20;
+	int startX = middleX - width;// paddingLeft;
+	int startY = 10;
 
 	uint16_t bgColour = warning ? TFT_RED : TFT_BLACK;
     spr->fillRect(0, 0, spr->width(), spr->height(), bgColour);
     tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, pixelSize );
 
-	int labelsX = middleX + 5;
-	// spr->setTextDatum(TL_DATUM);
- //    spr->drawString("%", labelsX, startY);
-	// spr->setTextColor(TFT_GREY, bgColour);
-	// spr->setTextDatum(ML_DATUM);
-	// spr->drawString("FAIL", labelsX, spr->height()/2);
-	spr->setTextDatum(BL_DATUM);
-	spr->drawString(label, labelsX, startY + height + 5);
+	int labelsX = middleX;
+	spr->setTextColor(TFT_GREY, bgColour);
+	spr->setTextDatum(BR_DATUM);
+	spr->drawString(label, labelsX, spr->height() - 4);
 	// spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
-}
+}//-----------------------------------------------------
 //-----------------------------------------------------
 void pushTextToMiddleOfSprite(TFT_eSprite *spr, char* text, int x, int y) {
+    spr->fillRect(0, 0, spr->width(), spr->height(), TFT_BLACK);
     spr->setTextDatum(MC_DATUM);
     spr->drawString(text, spr->width()/2, spr->height()/2);
     spr->pushSprite(x, y);
