@@ -21,9 +21,8 @@
 // #include "TFT_eSPI.h"
 #include "Free_Fonts.h" 
 // #include "Org_01.h"
+
 //--------------------------------------------------------------------------------
-
-
 
 #define READ_JOYSTICK_INTERVAL		150
 #define SEND_TO_BOARD_INTERVAL_MS 	200
@@ -35,27 +34,27 @@
 #define ENCODER_PIN_A		26
 #define ENCODER_PIN_B 		36
 
+#define BUTTON_A_PIN 39
+#define BUTTON_B_PIN 38
+#define BUTTON_C_PIN 37
+
 #define	M5STACK_FIRE_PIXEL_PIN			15	// was 5
 
 // can't use pins: 17, 16, 35
-#define DEADMAN_SWITCH		2
+// #define DEADMAN_SWITCH		2
 
-// #define M5_BUTTON_A			39
-// #define M5_BUTTON_B			38
-// #define M5_BUTTON_C			37
-
-//--------------------------------------------------------------
+/*****************************************************/
 
 #define	STARTUP 		1 << 0
 #define DEBUG 			1 << 1
 #define COMMUNICATION 	1 << 2
 #define HARDWARE		1 << 3
 #define ONLINE_STATUS	1 << 5
-#define TIMING			1 << 6
-
-
+#define LOGGING			1 << 6
 
 debugHelper debug;
+
+/*****************************************************/
 
 esk8Lib esk8;
 
@@ -79,7 +78,7 @@ int setupJoystick() {
 	Wire.begin(21, 22, 400000);
 
 	if ( getRawValuesFromJoystick() == -1 ) {
-		debug.print(STARTUP, "WARNING: encoder device is not connected!");
+		debug.print(STARTUP, "WARNING: jopystick is not connected!");
 		return -1;
 	}
 
@@ -87,11 +86,11 @@ int setupJoystick() {
 	setThrottleMinsMaxs(/*min*/throttleMin, /*max*/throttleMax);
 	return 1;
 }
-
+//--------------------------------------------------------------
 volatile uint8_t x_data;
 volatile uint8_t y_data;
 volatile uint8_t button_data;
-
+//--------------------------------------------------------------
 int getRawValuesFromJoystick() {
 
 	Wire.requestFrom(JOY_ADDR, 3);
@@ -143,40 +142,12 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PI
 const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
 const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
 
-struct commsStatsStruct {
-	int totalPacketsSent;
-	int packetFailureCount;
-	int timesOfflineCount;
-};
-
-volatile commsStatsStruct commsStats;
+volatile int timesOfflineCount;
 
 //--------------------------------------------------------------------------------
 
 const char compile_date[] = __DATE__ " " __TIME__;
 const char file_name[] = __FILE__;
-
-//--------------------------------------------------------------
-
-//--------------------------------------------------------------
-
-// #define PULLUP		true
-// #define OFFSTATE	LOW
-// void m5ButtonACallback(int eventCode, int eventPin, int eventParam);
-// myPushButton m5ButtonA(M5_BUTTON_A, PULLUP, /* offstate*/ HIGH, m5ButtonACallback);
-// void m5ButtonACallback(int eventCode, int eventPin, int eventParam) {
-    
-// 	switch (eventCode) {
-// 		case m5ButtonA.EV_BUTTON_PRESSED:
-// 			break;
-// 		// case m5ButtonA.EV_RELEASED:
-// 		// 	break;
-// 		// case m5ButtonA.EV_DOUBLETAP:
-// 		// 	break;
-// 		// case m5ButtonA.EV_HELD_SECONDS:
-// 		// 	break;
-//     }
-// }
 
 //--------------------------------------------------------------
 
@@ -215,7 +186,9 @@ int txCharsLength = 0;
 
 void packetAvailableCallback( uint16_t from ) {
 	lastAckFromBoard = millis();
-	debug.print(COMMUNICATION, "Rx from Board: batt voltage %.1f \n", esk8.boardPacket.batteryVoltage);
+	debug.print(COMMUNICATION, "Rx from Board: batt voltage %.1f, vescOnline: %d \n", 
+		esk8.boardPacket.batteryVoltage, 
+		esk8.boardPacket.vescOnline);
 }
 
 //--------------------------------------------------------------
@@ -227,7 +200,7 @@ void boardOfflineCallback() {
 
 void boardOnlineCallback() {
 	ledsUpdate( COLOUR_LIGHT_GREEN );
-	commsStats.timesOfflineCount++;
+	timesOfflineCount++;
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
@@ -241,26 +214,66 @@ OnlineStatusLib boardStatus(
 
 //--------------------------------------------------------------
 
+#define PACKET_LOG_SIZE		50 	// 5/sec *10 minutes
+#define BLANK_LOG_ENTRY		255
+volatile byte packetLog[PACKET_LOG_SIZE];
+volatile int packetLogPtr = 0;
+volatile float currentFailRatio = 0;
+
+void initPacketLog() {
+	for (int i=0; i<PACKET_LOG_SIZE; i++) {
+		packetLog[i] = BLANK_LOG_ENTRY;
+	}
+	packetLogPtr = 0;
+}
+
+void logPacket(bool failed) {
+	packetLog[packetLogPtr] = failed == false;
+	debug.print(LOGGING, "logged: %d (%d)\n", packetLog[packetLogPtr], packetLogPtr);
+	packetLogPtr = packetLogPtr < PACKET_LOG_SIZE - 1 
+		? packetLogPtr + 1 
+		: 0;
+}
+
+float calculatePacketRatio() {
+	int packetSum = 0;
+	int failSum = 0;
+	long start = micros();
+	for (int i=0; i<PACKET_LOG_SIZE; i++) {
+		if (packetLog[i] != BLANK_LOG_ENTRY) {
+			packetSum++;
+			if (packetLog[i] == 1) {
+				failSum++;
+			}
+		}
+	}
+	char stats[5];
+	currentFailRatio = (float)failSum / (float)packetSum;
+	dtostrf(currentFailRatio*100, 4, 1, stats);
+
+	debug.print(LOGGING, "ratio: %s and took %ulus\n", stats, micros() - start);
+}
+
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
 
 	bool sentOK = esk8.sendPacketToBoard();
+	debug.print(COMMUNICATION, "Sending: %d \n", esk8.controllerPacket.throttle);
 
     taskEXIT_CRITICAL(&mmux);
 
-    commsStats.totalPacketsSent++;
+    logPacket( sentOK );
+    calculatePacketRatio();
 
     if ( sentOK ) {
     	lastAckFromBoard = millis();
-		boardStatus.serviceState( true );
 		updateBoardImmediately = false;
     }
     else {
-    	commsStats.packetFailureCount++;
-		boardStatus.serviceState( false );
-        debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
     }
+	boardStatus.serviceState( sentOK );
 }
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 
@@ -279,18 +292,21 @@ void setup() {
 	debug.addOption(HARDWARE, "HARDWARE");
 	debug.addOption(COMMUNICATION, "COMMUNICATION");
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
-	// debug.addOption(TIMING, "TIMING");
+	debug.addOption(LOGGING, "LOGGING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP );	// | DEBUG | COMMUNICATION | HARDWARE );
+	debug.setFilter( STARTUP );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
 	//debug.setFilter( STARTUP );
 
 	// disable speaker noise
 	dacWrite(25, 0);
 
 	M5.begin();
+	M5.setWakeupButton(BUTTON_A_PIN);
+
+	initPacketLog();
 
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
- //    btStop();   // turn bluetooth module off
+	// btStop();   // turn bluetooth module off
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -302,9 +318,8 @@ void setup() {
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
-	commsStats.totalPacketsSent = 0;
-	commsStats.packetFailureCount = 0;
-	commsStats.timesOfflineCount = 0;
+	
+	timesOfflineCount = 0;
 	radio.setAutoAck(true);
 	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
 
@@ -314,12 +329,39 @@ void setup() {
 	
 	setupDisplay();
 
+	// pinMode(BUTTON_A_PIN, INPUT_PULLUP);
+	// pinMode(BUTTON_C_PIN, INPUT_PULLUP);
+	// byte btnC = digitalRead(BUTTON_C_PIN);
+	// if (btnC == 1) {
+	// 	powerDown();
+	// }
+	m5.update();
+	if (m5.BtnC.isPressed() == false) {
+		powerDown();
+	}
+
+	pushTextToMiddleOfSprite(&img_middle, "Ready!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+
+	int deadzone = 5;
+	bool displayedMessage = false;
+	while ( readJoystickOk() == false || esk8.controllerPacket.throttle > 127+deadzone || esk8.controllerPacket.throttle < 127-deadzone ) {
+		if ( !displayedMessage ) {
+			pushTextToMiddleOfSprite(&img_middle, "Zero throttle!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+			debug.print(STARTUP, "Displayed message\n");
+			displayedMessage = true;
+		}
+		vTaskDelay( 500 );
+	}
+	debug.print(STARTUP, "esk8.controllerPacket.throttle == %d\n", esk8.controllerPacket.throttle);
+
+	while ( m5.BtnC.wasReleased() == false ){
+		m5.update();
+	}
+
 	runner.startNow();
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
-
-	pinMode(DEADMAN_SWITCH, INPUT_PULLUP);
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
@@ -353,6 +395,10 @@ void loop() {
 		updateBoardImmediately = false;
 		tSendControllerValues.restart();
 	}
+
+	// if ( digitalRead(BUTTON_A_PIN) == 0 && digitalRead(BUTTON_C_PIN) == 0 ) {
+	// 	powerDown();
+	// }
 	
 	M5.update();
 	if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
@@ -363,7 +409,6 @@ void loop() {
 		nowMs = millis();
 		updateDisplay();
 	}
-
 
 	vTaskDelay( 10 );
 }
@@ -390,7 +435,7 @@ bool readJoystickOk() {
 		byte result = getRawValuesFromJoystick();
 		// check ERROR condition
 		if ( result == -1 ) {
-			debug.print(STARTUP, "WARNING: encoder device is not connected!");
+			debug.print(STARTUP, "WARNING: control device is not connected!");
 			return false;
 		}
 
@@ -485,7 +530,7 @@ void setupDisplay() {
 	// img.setFreeFont(FF18);                 // Select the font
  	// img.setTextDatum(MC_DATUM);
 	// img.setTextColor(TFT_YELLOW, TFT_BLACK);
-	updateDisplay();
+	// updateDisplay();
 }
 
 //--------------------------------------------------------------
@@ -502,14 +547,16 @@ void updateDisplay() {
 	char stats[5];	// xx.x\0
 	bool warning = false;
 
-	if (commsStats.packetFailureCount != commsStats.totalPacketsSent) {
-		float ratio = (float)commsStats.packetFailureCount / (float)commsStats.totalPacketsSent;
-		dtostrf(ratio*100, 4, 1, stats);
-		warning = ratio > 0.1;
-	}
-	else {
-		strcpy(stats, "00.0");
-	}
+	// if (currentFailRatio > 0) {
+	// 	dtostrf(currentFailRatio * 100, 4, 1, stats);
+	warning = currentFailRatio > 0.1;
+	// }
+	// else {
+	// 	strcpy(stats, "00.0");
+	// }
+
+	int decimalRatio = currentFailRatio*100;
+	sprintf( stats, "%d", decimalRatio);
 	// Serial.printf("%s\n", stats);
 
 	char topleft[] = "123";
@@ -523,7 +570,7 @@ void updateDisplay() {
 	// populateWidget( &img_topRight, WIDGET_SMALL, topRight);
 	// img_topRight.pushSprite(320-(img_topRight.width()), 0);
 
-	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats, /*warning*/ warning);
+	populateMediumWidget( &img_middle, WIDGET_MEDIUM, stats, "% FAIL", /*warning*/ warning);
 	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	
 	// populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
@@ -547,18 +594,26 @@ void ledsUpdate(uint32_t color) {
 }
 //--------------------------------------------------------------
 void powerDown() {
-	// M5.Speaker.tone(1000, 300);	// tone 330, 200ms
-	// delay(200);
-	// M5.Speaker.tone(330, 300);	// tone 330, 200ms
 	//img.drawString("POWER DOWN!", /*x*/ 320/2, /*y*/240/2, /*font*/2);
 	// radio
+	debug.print(STARTUP, "Powering down!\n");
+
 	radio.stopListening();
 	radio.powerDown();
 	// leds
 	ledsUpdate(pixels.Color(0, 0, 0));
+	dacWrite(25, 0);
+
 	// message
 	// img.pushSprite(0, 0);
 	delay(300);
+
+	// esp_sleep_enable_ext0_wakeup((gpio_num_t)BUTTON_A_PIN , LOW);
+
+	// while(digitalRead(BUTTON_A_PIN) == LOW) {
+	// 	delay(10);
+	// }
+	// esp_deep_sleep_start();
     M5.powerOFF();
 }
 //--------------------------------------------------------------
