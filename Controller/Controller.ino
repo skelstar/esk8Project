@@ -135,9 +135,31 @@ portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
+//--------------------------------------------------------------
+
+// -- Task handles for use in the notifications
+static TaskHandle_t FastLEDshowTaskHandle = 0;
+static TaskHandle_t userTaskHandle = 0;
 
 #define NUMPIXELS 10
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+void NeoPixelsShowESP32() {
+	if ( userTaskHandle == 0 ) {
+       // -- Store the handle of the current task, so that the show task can notify it when it's done
+        userTaskHandle = xTaskGetCurrentTaskHandle();
+		// make sure is not null otherwise will fail
+		if ( FastLEDshowTaskHandle != NULL ) {
+        // -- Trigger the show task
+			xTaskNotifyGive(FastLEDshowTaskHandle);
+			// -- Wait to be notified that it's done
+			const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 200 );
+			ulTaskNotifyTake(pdTRUE, xMaxBlockTime);
+			userTaskHandle = 0;	
+		}
+	}
+}
+
 
 const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
 const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
@@ -312,7 +334,6 @@ void setup() {
 	debug.print(STARTUP, "%s\n", compile_date);
 	
     pixels.begin();
-    ledsUpdate(pixels.Color(0, 120, 0));
 	
 	updateBoardImmediately = true;	// initialise
 
@@ -362,16 +383,21 @@ void setup() {
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
 	tSendControllerValues.enable();
+	
+	int core = xPortGetCoreID();
 
 	xTaskCreatePinnedToCore (
 		codeForEncoderTask,	// function
 		"Task_Encoder",		// name
 		10000,			// stack
 		NULL,			// parameter
-		1,				// priority
-		NULL,	// handle
+		2,				// priority
+		&FastLEDshowTaskHandle,	// handle
 		0
 	);				// port	
+
+	// has to be here after creating the above task
+	ledsUpdate(pixels.Color(0, 120, 0));
 }
 /**************************************************************
 					LOOP
@@ -420,7 +446,14 @@ void codeForEncoderTask( void *parameter ) {
 	#define TX_INTERVAL 200
 	
 	for (;;) {
-		vTaskDelay( 10 );
+		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+		// -- Do the show (synchronously)
+		pixels.show();
+
+		// -- Notify the calling task
+		xTaskNotifyGive(userTaskHandle);
+		//vTaskDelay( 10 );
 
 	}
 
@@ -547,13 +580,7 @@ void updateDisplay() {
 	char stats[5];	// xx.x\0
 	bool warning = false;
 
-	// if (currentFailRatio > 0) {
-	// 	dtostrf(currentFailRatio * 100, 4, 1, stats);
 	warning = currentFailRatio > 0.1;
-	// }
-	// else {
-	// 	strcpy(stats, "00.0");
-	// }
 
 	int decimalRatio = currentFailRatio*100;
 	sprintf( stats, "%d", decimalRatio);
@@ -590,7 +617,7 @@ void ledsUpdate(uint32_t color) {
 		pixels.setPixelColor(i, color);
 		vTaskDelay( 1 );
 	}
-	pixels.show();
+	NeoPixelsShowESP32();
 }
 //--------------------------------------------------------------
 void powerDown() {
