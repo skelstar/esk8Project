@@ -2,6 +2,7 @@
 Credit to https://github.com/SolidGeek/VescUart for VESC-related code.
 
 ### Todos:
+- Make sure than when startup: the throttle is ignored until it has returned to 0 (127-ish)
 - Display battery voltage?
   - maybe when not moving?
   - on startup?
