@@ -13,7 +13,16 @@ Credit to https://github.com/SolidGeek/VescUart for VESC-related code.
 - 'Trip meter' - maybe store ampHours "collected/consumed" on the ride at powerdown
 - Store total amps used for odometer, and reset the total when battery voltage is much higher than last ride
   - perhaps prompt when Controller thinks time to reset odometer? [Yes] [No] [Ignore]
-
+- 2 button mode?
+  - maintain speed button (blue) / brake button (red)
+  - would maintain rpm
+  - configurable braking power
+  - blue button-off: free-ride... allow to get faster
+- gesture/accelerometre mode?
+  - is it gyro?
+  - aquire/deadman button
+    - when held down initally marks "middle point"
+    - when released then steady brake... maybe "deadman" brake?
 
 ```
 struct dataPackage {
