@@ -46,9 +46,10 @@ esk8Lib esk8;
 
 VescUart UART;
 
+#define 	CONTROLLER_TIMEOUT							500
+#define 	CONTROLLER_CONSECUTIVE_TIMEOUTS_ALLOWANCE	1
 #define 	GET_VESC_DATA_AND_SEND_TO_CONTROLLER_INTERVAL	1000
-#define 	CONTROLLER_TIMEOUT		300
-#define 	SEND_TO_VESC_INTERVAL	200
+#define 	SEND_TO_VESC_INTERVAL						200
 
 
 //--------------------------------------------------------------------------------
@@ -131,8 +132,16 @@ void vescOnlineCallback() {
 	// sendDataToHUD_Ok();
 }
 
-OnlineStatusLib controllerStatus(controllerOfflineCallback, controllerOnlineCallback, /*offlineNumConsecutiveTimesAllowance*/ 3, /*debug*/ false);
-OnlineStatusLib vescStatus(vescOfflineCallback, vescOnlineCallback, /*offlineNumConsecutiveTimesAllowance*/ 1, /*debug*/ false);
+OnlineStatusLib controllerStatus(
+	controllerOfflineCallback, 
+	controllerOnlineCallback, 
+	/*offlineNumConsecutiveTimesAllowance*/ CONTROLLER_CONSECUTIVE_TIMEOUTS_ALLOWANCE, 
+	/*debug*/ false);
+OnlineStatusLib vescStatus(
+	vescOfflineCallback, 
+	vescOnlineCallback, 
+	/*offlineNumConsecutiveTimesAllowance*/ 1, 
+	/*debug*/ false);
 
 /**************************************************************/
 
@@ -155,7 +164,7 @@ void setup()
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
 	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP );	//| STATUS | CONTROLLER_COMMS | VESC_COMMS );
+	debug.setFilter( STARTUP | STATUS );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -257,7 +266,7 @@ void sendToController() {
 		lastSentToController = millis();
 		// update controller
 		bool vescOnline = getVescValues();
-		esk8.sendPacketToController();
+		bool ackknowledged = esk8.sendPacketToController();
 
 		bool vescStatusChanged = vescStatus.serviceState(vescOnline);
 	}
@@ -281,8 +290,13 @@ bool getVescValues() {
     // UART.setDebugPort(&Serial);
     // UART.printVescValues();
 	esk8.boardPacket.vescOnline = success;
-	esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-	debug.print(VESC_COMMS, "vescOnline = %d, esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.vescOnline, esk8.boardPacket.batteryVoltage);
+	if ( success ) {
+		esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
+		debug.print(VESC_COMMS, "vescOnline = true, esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.vescOnline, esk8.boardPacket.batteryVoltage);
+	}
+	else {
+		debug.print(VESC_COMMS, "vescOnline = false\n");	
+	}
     return success;
 }
 //--------------------------------------------------------------

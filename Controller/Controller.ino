@@ -58,6 +58,10 @@ debugHelper debug;
 
 esk8Lib esk8;
 
+
+volatile int packetLogPtr = 0;
+volatile float currentFailRatio = 0;
+
 /*****************************************************/
 
 bool updateBoardImmediately = false;
@@ -138,27 +142,47 @@ RF24Network network(radio);
 //--------------------------------------------------------------
 
 // -- Task handles for use in the notifications
-static TaskHandle_t FastLEDshowTaskHandle = 0;
-static TaskHandle_t userTaskHandle = 0;
+static TaskHandle_t core0LedsTaskHandle = 0;
+static TaskHandle_t core0LedsUserTaskHandle = 0;
 
 #define NUMPIXELS 10
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel( NUMPIXELS, /*pin*/ M5STACK_FIRE_PIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
 void NeoPixelsShowESP32() {
-	if ( userTaskHandle == 0 ) {
-       // -- Store the handle of the current task, so that the show task can notify it when it's done
-        userTaskHandle = xTaskGetCurrentTaskHandle();
+	if ( core0LedsUserTaskHandle == 0 ) {
+        core0LedsUserTaskHandle = xTaskGetCurrentTaskHandle();
 		// make sure is not null otherwise will fail
-		if ( FastLEDshowTaskHandle != NULL ) {
-        // -- Trigger the show task
-			xTaskNotifyGive(FastLEDshowTaskHandle);
+		if ( core0LedsTaskHandle != NULL ) {
+			xTaskNotifyGive(core0LedsTaskHandle);
 			// -- Wait to be notified that it's done
 			const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 200 );
 			ulTaskNotifyTake(pdTRUE, xMaxBlockTime);
-			userTaskHandle = 0;	
+			core0LedsUserTaskHandle = 0;	
 		}
 	}
 }
+
+// static TaskHandle_t core0DisplayTaskHandle = 0;
+// static TaskHandle_t core0DisplayUserTaskHandle = 0;
+
+// BaseType_t xHigherPriorityTaskWoken;
+
+// void UpdateDisplayTask() {
+// 	if ( core0DisplayUserTaskHandle == 0 ) {
+//         core0DisplayUserTaskHandle = xTaskGetCurrentTaskHandle();
+// 		// make sure is not null otherwise will fail
+// 		if ( core0DisplayTaskHandle != NULL ) {
+// 			xTaskNotifyFromISR( core0DisplayTaskHandle, 0, eNoAction,
+//                         &xHigherPriorityTaskWoken );
+// 			// xTaskNotifyGive(core0DisplayTaskHandle);
+// 			// // -- Wait to be notified that it's done
+// 			// const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 200 );
+// 			// ulTaskNotifyTake(pdTRUE, xMaxBlockTime);
+// 			core0DisplayUserTaskHandle = 0;	
+// 			portYIELD_FROM_ISR( );
+// 		}
+// 	}
+// }
 
 
 const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
@@ -211,13 +235,14 @@ void packetAvailableCallback( uint16_t from ) {
 	debug.print(COMMUNICATION, "Rx from Board: batt voltage %.1f, vescOnline: %d \n", 
 		esk8.boardPacket.batteryVoltage, 
 		esk8.boardPacket.vescOnline);
+	updateDisplay();
 }
-
 //--------------------------------------------------------------
 void boardOfflineCallback() {
 	ledsUpdate( COLOUR_BRIGHT_RED );
 	// tFlashLeds.enable();
 	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
+	updateDisplay();
 }
 
 void boardOnlineCallback() {
@@ -239,8 +264,6 @@ OnlineStatusLib boardStatus(
 #define PACKET_LOG_SIZE		50 	// 5/sec *10 minutes
 #define BLANK_LOG_ENTRY		255
 volatile byte packetLog[PACKET_LOG_SIZE];
-volatile int packetLogPtr = 0;
-volatile float currentFailRatio = 0;
 
 void initPacketLog() {
 	for (int i=0; i<PACKET_LOG_SIZE; i++) {
@@ -275,15 +298,19 @@ float calculatePacketRatio() {
 
 	debug.print(LOGGING, "ratio: %s and took %ulus\n", stats, micros() - start);
 }
+//--------------------------------------------------------------
+unsigned long lastSentToBoard = 0;
 
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
 
 	bool sentOK = esk8.sendPacketToBoard();
-	debug.print(COMMUNICATION, "Sending: %d \n", esk8.controllerPacket.throttle);
 
     taskEXIT_CRITICAL(&mmux);
+
+	debug.print(COMMUNICATION, "Sending: %d %u \n", esk8.controllerPacket.throttle, millis() - lastSentToBoard);
+    lastSentToBoard = millis();
 
     logPacket( sentOK );
     calculatePacketRatio();
@@ -361,13 +388,13 @@ void setup() {
 		powerDown();
 	}
 
-	pushTextToMiddleOfSprite(&img_middle, "READY!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+	pushTextToMiddleOfSprite(&img_middle, "READY!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_BLACK);
 
 	int deadzone = 5;
 	bool displayedMessage = false;
 	while ( readJoystickOk() == false || esk8.controllerPacket.throttle > 127+deadzone || esk8.controllerPacket.throttle < 127-deadzone ) {
 		if ( !displayedMessage ) {
-			pushTextToMiddleOfSprite(&img_middle, "Zero throttle!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+			pushTextToMiddleOfSprite(&img_middle, "Zero throttle!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_BLACK);
 			debug.print(STARTUP, "Displayed message\n");
 			displayedMessage = true;
 		}
@@ -387,14 +414,24 @@ void setup() {
 	int core = xPortGetCoreID();
 
 	xTaskCreatePinnedToCore (
-		codeForEncoderTask,	// function
-		"Task_Encoder",		// name
+		core0LedsTask,	// function
+		"Core 0 Leds Task",		// name
 		10000,			// stack
 		NULL,			// parameter
 		2,				// priority
-		&FastLEDshowTaskHandle,	// handle
+		&core0LedsTaskHandle,	// handle
 		0
 	);				// port	
+
+	// xTaskCreatePinnedToCore (
+	// 	core0DisplayTask,	// function
+	// 	"Core 0 Display Task",		// name
+	// 	10000,			// stack
+	// 	NULL,			// parameter
+	// 	10,				// priority
+	// 	&core0DisplayTaskHandle,	// handle
+	// 	0
+	// );				// port	
 
 	// has to be here after creating the above task
 	ledsUpdate(pixels.Color(0, 120, 0));
@@ -431,34 +468,52 @@ void loop() {
 		powerDown();
 	}
 
-	if ( millis() - nowMs > 1000 ) {
-		nowMs = millis();
-		updateDisplay();
-	}
-
 	vTaskDelay( 10 );
 }
 /**************************************************************
 					TASK 0
 **************************************************************/
-void codeForEncoderTask( void *parameter ) {
+void core0LedsTask( void *parameter ) {
 
-	#define TX_INTERVAL 200
-	
 	for (;;) {
 		ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-		// -- Do the show (synchronously)
 		pixels.show();
 
-		// -- Notify the calling task
-		xTaskNotifyGive(userTaskHandle);
-		//vTaskDelay( 10 );
-
+		xTaskNotifyGive(core0LedsUserTaskHandle);
+		
+		vTaskDelay( 10 );
 	}
 
 	vTaskDelete(NULL);
 }
+//--------------------------------------------------------------
+// void core0DisplayTask( void *parameter ) {
+
+// 	BaseType_t xResult;
+// 	const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 10000 );
+// 	uint32_t ulNotifiedValue;
+
+// 	setupDisplay();
+
+// 	for (;;) {
+// 		// ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+// 		xResult = xTaskNotifyWait( pdFALSE,    /* Don't clear bits on entry. */
+// 		                   ULONG_MAX,        /* Clear all bits on exit. */
+// 		                   &ulNotifiedValue, /* Stores the notified value. */
+// 		                   xMaxBlockTime );
+
+// 		if( xResult == pdPASS )
+// 		{
+// 			Serial.printf("Handling task B\n");
+// 			updateDisplay();
+// 		}
+// 		vTaskDelay( 1 );
+// 	}
+
+// 	vTaskDelete(NULL);
+// }
+
 //**************************************************************
 
 bool readJoystickOk() {
@@ -535,85 +590,7 @@ byte mapJoystickToThrottle(byte joystickValue) {
 	return 127;
 }
 
-//--------------------------------------------------------------
 
-void setupDisplay() {
-
-	tft.begin();
-
-  	tft.setRotation(1); // 0 is portrait
-	tft.fillScreen(TFT_BLACK);            // Clear screen
-
-	img_topLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
-	img_topLeft.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
-
-	img_topRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
-	img_topRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
-
-	img_middle.setColorDepth(16); // Optionally set depth to 8 to halve RAM use
-	img_middle.setFreeFont(FF21);                 // Select the font
-	img_middle.createSprite(SPRITE_MED_WIDTH, SPRITE_MED_HEIGHT);
-
-	img_bottomLeft.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
-	img_bottomLeft.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
-
-	img_bottomRight.setColorDepth(8); // Optionally set depth to 8 to halve RAM use
-	img_bottomRight.createSprite(SPRITE_SMALL_WIDTH, SPRITE_SMALL_HEIGHT);
-}
-
-//--------------------------------------------------------------
-// #define WIDGET_SMALL    6
-// #define WIDGET_MEDIUM   12
-// #define WIDGET_POS_TOP_LEFT 1
-// #define WIDGET_POS_TOP_RIGHT 2
-// #define WIDGET_POS_MIDDLE 3
-// #define WIDGET_POS_BOTTOM_LEFT 4
-// #define WIDGET_POS_BOTTOM_RIGHT 5
-
-void updateDisplay() {
-	// commsStats
-	char value[5];	// xx.x\0
-
-	char topleft[] = "123";
-	char topRight[] = "456";
-	char bottomleft[] = "789";
-	char bottomright[] = "012";
-
-	// populateWidget( &img_topLeft, WIDGET_SMALL, topleft);
-	// img_topLeft.pushSprite(0, 0);
-
-	// populateWidget( &img_topRight, WIDGET_SMALL, topRight);
-	// img_topRight.pushSprite(320-(img_topRight.width()), 0);
-
-	if ( millis()/1000 % 2 == 0 ) {
-		bool warning = currentFailRatio > 0.1;
-		int decimalRatio = currentFailRatio*100;
-		sprintf( value, "%d", decimalRatio);
-		// Serial.printf("%s\n", stats);
-		populateMediumWidget( &img_middle, WIDGET_MEDIUM, value, "FAIL RATIO (%)", /*warning*/ warning);
-	}
-	else {
-	// else if ( esk8.boardPacket.vescOnline ) {
-		sprintf( value, "%.1f", esk8.boardPacket.batteryVoltage );
-		populateMediumWidget( &img_middle, WIDGET_MEDIUM, value, "BATTERY VOLTS", /*warning*/ false);
-	}
-	// else {
-	// 	pushTextToMiddleOfSprite(&img_middle, "VESC Offline!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
-	// }
-	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
-
-	
-	// populateWidget( &img_bottomLeft, WIDGET_SMALL, bottomleft);
-	// img_bottomLeft.pushSprite(0, 240-img_bottomLeft.height());
-	
-	// populateWidget( &img_bottomRight, WIDGET_SMALL, bottomright);
-	// img_bottomRight.pushSprite(320-(img_topRight.width()), 240-img_bottomLeft.height());
-	
-	// img.fillSprite(TFT_BLUE);
-	// img_topLeft.setFreeFont(FF18);                 // Select the font
- //  	img_topLeft.setTextDatum(MC_DATUM);
-	// img_topLeft.setTextColor(TFT_YELLOW, TFT_BLACK);
-}
 //--------------------------------------------------------------
 void ledsUpdate(uint32_t color) {
 	for (int i = 0; i < NUMPIXELS; i++){
@@ -624,7 +601,7 @@ void ledsUpdate(uint32_t color) {
 }
 //--------------------------------------------------------------
 void powerDown() {
-	pushTextToMiddleOfSprite(&img_middle, "POWERING DOWN!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2));
+	pushTextToMiddleOfSprite(&img_middle, "POWERING DOWN!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_BLACK);
 	img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	// radio
 	debug.print(STARTUP, "Powering down!\n");
