@@ -42,6 +42,7 @@ void esk8Lib::begin(
 	_radio->printDetails();                   // Dump the configuration of the rf unit for debugging
 
 	controllerPacket.throttle = 127;
+	controllerPacket.id = 0;
 
 	ctime = millis();
 	btime = millis();
@@ -69,7 +70,7 @@ bool esk8Lib::sendPacketToController() {
 //---------------------------------------------------------------------------------
 bool esk8Lib::sendPacketToBoard() {
 	RF24NetworkHeader header( RF24_BOARD );
-	// Serial.printf("Sending %d \n", controllerPacket.throttle);
+	controllerPacket.id++;
 	return _network->write(header, &controllerPacket, sizeof(ControllerStruct));
 }
 //---------------------------------------------------------------------------------
@@ -93,6 +94,7 @@ uint16_t esk8Lib::readPacket() {
 	long time = 0;
 
 	if ( header.from_node == RF24_CONTROLLER ) {
+		_oldControllerPacketId = controllerPacket.id;
 		 _network->read(header, &controllerPacket, sizeof(controllerPacket));
 		// Serial.printf("%s %d\n", header.toString(), controllerPacket.throttle);
 	}
@@ -109,6 +111,16 @@ uint16_t esk8Lib::readPacket() {
 	return header.from_node;
 }
 //---------------------------------------------------------------------------------
+bool esk8Lib::numMissedPackets() {
+	if ( _role == RF24_BOARD ) {
+		return controllerPacket.id - _oldControllerPacketId - 1;
+	}
+	else {
+		Serial.printf("DO NOT USE THIS!!! ONLY WITH BOARD\n");
+	}
+	return 0;
+}
+
 bool esk8Lib::controllerOnline(int timeoutMs) {
 	return millis() - ctime > timeoutMs;
 }

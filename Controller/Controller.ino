@@ -162,23 +162,23 @@ void NeoPixelsShowESP32() {
 	}
 }
 
-// static TaskHandle_t core0DisplayTaskHandle = 0;
-// static TaskHandle_t core0DisplayUserTaskHandle = 0;
+// static TaskHandle_t core0ReadJoystickTaskHandle = 0;
+// static TaskHandle_t core0ReadJoystickTaskUserTaskHandle = 0;
 
 // BaseType_t xHigherPriorityTaskWoken;
 
 // void UpdateDisplayTask() {
-// 	if ( core0DisplayUserTaskHandle == 0 ) {
-//         core0DisplayUserTaskHandle = xTaskGetCurrentTaskHandle();
+// 	if ( core0ReadJoystickTaskUserTaskHandle == 0 ) {
+//         core0ReadJoystickTaskUserTaskHandle = xTaskGetCurrentTaskHandle();
 // 		// make sure is not null otherwise will fail
-// 		if ( core0DisplayTaskHandle != NULL ) {
-// 			xTaskNotifyFromISR( core0DisplayTaskHandle, 0, eNoAction,
+// 		if ( core0ReadJoystickTaskHandle != NULL ) {
+// 			xTaskNotifyFromISR( core0ReadJoystickTaskHandle, 0, eNoAction,
 //                         &xHigherPriorityTaskWoken );
-// 			// xTaskNotifyGive(core0DisplayTaskHandle);
+// 			// xTaskNotifyGive(core0ReadJoystickTaskHandle);
 // 			// // -- Wait to be notified that it's done
 // 			// const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 200 );
 // 			// ulTaskNotifyTake(pdTRUE, xMaxBlockTime);
-// 			core0DisplayUserTaskHandle = 0;	
+// 			core0ReadJoystickTaskUserTaskHandle = 0;	
 // 			portYIELD_FROM_ISR( );
 // 		}
 // 	}
@@ -187,8 +187,6 @@ void NeoPixelsShowESP32() {
 
 const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
 const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
-
-volatile int timesOfflineCount;
 
 //--------------------------------------------------------------------------------
 
@@ -247,7 +245,6 @@ void boardOfflineCallback() {
 
 void boardOnlineCallback() {
 	ledsUpdate( COLOUR_LIGHT_GREEN );
-	timesOfflineCount++;
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
@@ -299,32 +296,47 @@ float calculatePacketRatio() {
 	debug.print(LOGGING, "ratio: %s and took %ulus\n", stats, micros() - start);
 }
 //--------------------------------------------------------------
-unsigned long lastSentToBoard = 0;
+volatile unsigned long lastSentToBoard = 0;
 
 void tSendControllerValues_callback() {
 
 	taskENTER_CRITICAL(&mmux);
-
+	esk8.controllerPacket.buttonC = m5.BtnC.isPressed();
 	bool sentOK = esk8.sendPacketToBoard();
+	taskEXIT_CRITICAL(&mmux);
 
-    taskEXIT_CRITICAL(&mmux);
+	// logPacket( sentOK );
+	// calculatePacketRatio();
 
-	debug.print(COMMUNICATION, "Sending: %d %u \n", esk8.controllerPacket.throttle, millis() - lastSentToBoard);
-    lastSentToBoard = millis();
-
-    logPacket( sentOK );
-    calculatePacketRatio();
-
-    if ( sentOK ) {
-    	lastAckFromBoard = millis();
+	if ( sentOK ) {
+		lastAckFromBoard = millis();
 		updateBoardImmediately = false;
-    }
-    else {
-		debug.print(COMMUNICATION, "tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
-    }
+		Serial.printf("tSendControllerValues_callback: %d %u \n", 
+			esk8.controllerPacket.throttle, 
+			millis() - lastSentToBoard);
+	    lastSentToBoard = millis();
+	}
+	else {
+		Serial.printf("tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+	}
 	boardStatus.serviceState( sentOK );
+
+	
 }
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
+//--------------------------------------------------------------
+static TaskHandle_t core0ReadJoystickTaskHandle = 0;
+static TaskHandle_t core0ReadJoystickTaskUserTaskHandle = 0;
+
+void tReadJoystick_callback() {
+	core0ReadJoystickTaskUserTaskHandle = xTaskGetCurrentTaskHandle();
+	xTaskNotify( core0ReadJoystickTaskHandle, 0, eNoAction );
+	core0ReadJoystickTaskUserTaskHandle = 0;
+}
+Task tReadJoystick(READ_JOYSTICK_INTERVAL, TASK_FOREVER, &tReadJoystick_callback);
+
+
+
 
 //--------------------------------------------------------------
 
@@ -352,6 +364,12 @@ void setup() {
 	M5.begin();
 	M5.setWakeupButton(BUTTON_A_PIN);
 
+	SPI.begin();                                           // Bring up the RF network
+	radio.begin();
+	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
+
+	radio.setAutoAck(true);
+
 	initPacketLog();
 
 	// WiFi.mode( WIFI_OFF );	// WIFI_MODE_NULL
@@ -364,25 +382,12 @@ void setup() {
 	
 	updateBoardImmediately = true;	// initialise
 
-	SPI.begin();                                           // Bring up the RF network
-	radio.begin();
-	
-	timesOfflineCount = 0;
-	radio.setAutoAck(true);
-	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
-
 	if ( setupJoystick() == -1 ) {
 		// error condition (joystick not connected)
 	}
 	
 	setupDisplay();
 
-	// pinMode(BUTTON_A_PIN, INPUT_PULLUP);
-	// pinMode(BUTTON_C_PIN, INPUT_PULLUP);
-	// byte btnC = digitalRead(BUTTON_C_PIN);
-	// if (btnC == 1) {
-	// 	powerDown();
-	// }
 	m5.update();
 	if (m5.BtnC.isPressed() == false) {
 		powerDown();
@@ -409,7 +414,9 @@ void setup() {
 	runner.startNow();
 	runner.addTask(tFlashLeds);
 	runner.addTask(tSendControllerValues);
+	runner.addTask(tReadJoystick);
 	tSendControllerValues.enable();
+	tReadJoystick.enable();
 	
 	int core = xPortGetCoreID();
 
@@ -423,15 +430,15 @@ void setup() {
 		0
 	);				// port	
 
-	// xTaskCreatePinnedToCore (
-	// 	core0DisplayTask,	// function
-	// 	"Core 0 Display Task",		// name
-	// 	10000,			// stack
-	// 	NULL,			// parameter
-	// 	10,				// priority
-	// 	&core0DisplayTaskHandle,	// handle
-	// 	0
-	// );				// port	
+	xTaskCreatePinnedToCore (
+		core0ReadJoystickTask,	// function
+		"Core 0 Display Task",		// name
+		2048,			// stack
+		NULL,			// parameter
+		10,				// priority
+		&core0ReadJoystickTaskHandle,	// handle
+		0
+	);				// port	
 
 	// has to be here after creating the above task
 	ledsUpdate(pixels.Color(0, 120, 0));
@@ -448,27 +455,17 @@ void loop() {
 
 	esk8.service();
 
-	if ( readJoystickOk() == false ) {
-		// joystick not connected
-		updateBoardImmediately = true;
-		esk8.controllerPacket.throttle = 127;
-	}
-
 	if ( updateBoardImmediately ) {
 		updateBoardImmediately = false;
 		tSendControllerValues.restart();
 	}
-
-	// if ( digitalRead(BUTTON_A_PIN) == 0 && digitalRead(BUTTON_C_PIN) == 0 ) {
-	// 	powerDown();
-	// }
 	
 	M5.update();
 	if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
 		powerDown();
 	}
 
-	vTaskDelay( 10 );
+	vTaskDelay( 1 );
 }
 /**************************************************************
 					TASK 0
@@ -482,37 +479,39 @@ void core0LedsTask( void *parameter ) {
 
 		xTaskNotifyGive(core0LedsUserTaskHandle);
 		
-		vTaskDelay( 10 );
+		vTaskDelay( 1 );
 	}
 
 	vTaskDelete(NULL);
 }
 //--------------------------------------------------------------
-// void core0DisplayTask( void *parameter ) {
+void core0ReadJoystickTask( void *parameter ) {
 
-// 	BaseType_t xResult;
-// 	const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 10000 );
-// 	uint32_t ulNotifiedValue;
+	BaseType_t xResult;
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS( 1000 );
+	uint32_t ulNotifiedValue;
 
-// 	setupDisplay();
+	for (;;) {
+		// ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+		xResult = xTaskNotifyWait( 
+							pdFALSE,    /* Don't clear bits on entry. */
+		                   	ULONG_MAX,        /* Clear all bits on exit. */
+		                   	&ulNotifiedValue, /* Stores the notified value. */
+		                   	xMaxBlockTime );
 
-// 	for (;;) {
-// 		// ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-// 		xResult = xTaskNotifyWait( pdFALSE,    /* Don't clear bits on entry. */
-// 		                   ULONG_MAX,        /* Clear all bits on exit. */
-// 		                   &ulNotifiedValue, /* Stores the notified value. */
-// 		                   xMaxBlockTime );
+		if( xResult == pdPASS )
+		{
+			bool readOk = readJoystickOk();
+		}
+		else {
+			Serial.printf("core0ReadJoystickTask: nothing called me\n");
+		}
 
-// 		if( xResult == pdPASS )
-// 		{
-// 			Serial.printf("Handling task B\n");
-// 			updateDisplay();
-// 		}
-// 		vTaskDelay( 1 );
-// 	}
+		vTaskDelay( 1 );
+	}
 
-// 	vTaskDelete(NULL);
-// }
+	vTaskDelete(NULL);
+}
 
 //**************************************************************
 

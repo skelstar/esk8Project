@@ -14,11 +14,14 @@
 struct BoardStruct{
 	bool vescOnline;
 	float batteryVoltage;
+	bool areMoving;
 };
 
 
 struct ControllerStruct {
 	byte throttle;
+	long id;
+	bool buttonC;
 };
 
 struct HudStruct {
@@ -49,6 +52,7 @@ class esk8Lib
 		bool sendPacketToController();
 		bool sendPacketToBoard();
 		bool sendPacketToHUD();
+		bool numMissedPackets();
 		bool controllerOnline(int timeoutMs);
 		bool boardOnline(int timeoutMs);
 
@@ -63,6 +67,7 @@ class esk8Lib
 
 		long ctime;
 		long btime;
+		long _oldControllerPacketId;
 
 		uint16_t readPacket();
 		bool sendPacket(uint16_t to, unsigned char type, const void *message);

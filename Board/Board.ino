@@ -104,7 +104,12 @@ void tSendToVESC_callback() {
 
 void controllerPacketAvailableCallback( uint16_t from ) {
 	lastRxFromController = millis();
-	debug.print(CONTROLLER_COMMS, "Controller throttle: %d \n", esk8.controllerPacket.throttle);
+	if ( esk8.numMissedPackets() > 0 ) {
+		debug.print(CONTROLLER_COMMS, "Controller throttle: %d (missed: %d) \n", esk8.controllerPacket.throttle, esk8.numMissedPackets());
+	}
+	else {
+		debug.print(CONTROLLER_COMMS, "Controller throttle: %d \n", esk8.controllerPacket.throttle);	
+	}
 	tSendToVESC.restart();
 }
 
@@ -164,7 +169,7 @@ void setup()
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
 	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP | STATUS );
+	debug.setFilter( STARTUP );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -264,11 +269,13 @@ void sendToController() {
 
 	if ( timeToUpdateController ) {
 		lastSentToController = millis();
-		// update controller
 		bool vescOnline = getVescValues();
-		bool ackknowledged = esk8.sendPacketToController();
+		if ( true == esk8.controllerPacket.buttonC ) {
+			// update controller
+			bool acknowledged = esk8.sendPacketToController();
 
-		bool vescStatusChanged = vescStatus.serviceState(vescOnline);
+			bool vescStatusChanged = vescStatus.serviceState(vescOnline);
+		}
 	}
 }
 //--------------------------------------------------------------
@@ -287,12 +294,9 @@ bool getVescValues() {
 	}; */
 
     bool success = UART.getVescValues();
-    // UART.setDebugPort(&Serial);
-    // UART.printVescValues();
-	esk8.boardPacket.vescOnline = success;
+    esk8.boardPacket.vescOnline = success;
 	if ( success ) {
 		esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-		debug.print(VESC_COMMS, "vescOnline = true, esk8.boardPacket.batteryVoltage: %.1f \n", esk8.boardPacket.vescOnline, esk8.boardPacket.batteryVoltage);
 	}
 	else {
 		debug.print(VESC_COMMS, "vescOnline = false\n");	
