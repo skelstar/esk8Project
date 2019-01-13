@@ -311,13 +311,13 @@ void tSendControllerValues_callback() {
 	if ( sentOK ) {
 		lastAckFromBoard = millis();
 		updateBoardImmediately = false;
-		Serial.printf("tSendControllerValues_callback: %d %u \n", 
-			esk8.controllerPacket.throttle, 
-			millis() - lastSentToBoard);
+		// Serial.printf("tSendControllerValues_callback: %d %u \n", 
+		// 	esk8.controllerPacket.throttle, 
+		// 	millis() - lastSentToBoard);
 	    lastSentToBoard = millis();
 	}
 	else {
-		Serial.printf("tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
+		// Serial.printf("tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
 	}
 	boardStatus.serviceState( sentOK );
 
@@ -504,7 +504,7 @@ void core0ReadJoystickTask( void *parameter ) {
 			bool readOk = readJoystickOk();
 		}
 		else {
-			Serial.printf("core0ReadJoystickTask: nothing called me\n");
+			// Serial.printf("core0ReadJoystickTask: nothing called me\n");
 		}
 
 		vTaskDelay( 1 );
