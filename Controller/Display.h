@@ -215,7 +215,7 @@ void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, char *l
 
 	uint16_t bgColour = warning ? TFT_RED : TFT_BLACK;
     spr->fillRect(0, 0, spr->width(), spr->height(), bgColour);
-    tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, pixelSize );
+	tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, pixelSize );
 
 	int labelsX = middleX;
 	spr->setTextColor(TFT_GREY, bgColour);
@@ -251,8 +251,6 @@ void updateDisplay() {
 
 	if ( esk8.controllerPacket.throttle == 127 ) {
 
-		debug.print(DEBUG, "Updating display\n");
-
 	    // commsStats
 	    char value[5];  // xx.x\0
 
@@ -260,6 +258,8 @@ void updateDisplay() {
 	    char topRight[] = "456";
 	    char bottomleft[] = "789";
 	    char bottomright[] = "012";
+
+		vTaskDelay( 1 );
 
 	    if ( currentFailRatio == 1 ) {
 	        pushTextToMiddleOfSprite(&img_middle, "BOARD OFFLINE!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_RED);
