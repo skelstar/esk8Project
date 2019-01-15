@@ -22,6 +22,9 @@
 #include "Free_Fonts.h" 
 // #include "Org_01.h"
 
+// FEATURES
+#define FEATURE_DISPLAY	1
+
 //--------------------------------------------------------------------------------
 
 #define READ_JOYSTICK_INTERVAL		150
@@ -42,6 +45,12 @@
 
 // can't use pins: 17, 16, 35
 // #define DEADMAN_SWITCH		2
+
+
+#define WHEEL_PULLEY_TEETH	36
+#define MOTOR_PULLEY_TEETH	15
+#define MOTOR_POLE_PAIRS 	7
+#define WHEEL_CIRCUMFERENCE_MM 	609 // 2piR
 
 /*****************************************************/
 
@@ -597,6 +606,11 @@ void ledsUpdate(uint32_t color) {
 		vTaskDelay( 1 );
 	}
 	NeoPixelsShowESP32();
+}
+//--------------------------------------------------------------
+int32_t rotations_to_meters(int32_t rotations) {
+    float gear_ratio = float(WHEEL_PULLEY_TEETH) / float(MOTOR_PULLEY_TEETH);
+    return (rotations / MOTOR_POLE_PAIRS / gear_ratio) * WHEEL_CIRCUMFERENCE_MM / 1000;
 }
 //--------------------------------------------------------------
 void powerDown() {

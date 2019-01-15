@@ -178,49 +178,39 @@ void tft_util_draw_number(
 #define WIDGET_POS_BOTTOM_RIGHT 5
 //-----------------------------------------------------
 
-void populateSmallWidget(TFT_eSprite* spr, int pixelSize, char *number) {
+void renderSmallWidget(TFT_eSprite* spr, char *number, bool warning) {
 	
-	int spacing = pixelSize / 4;
-    int x;
-    int y;
-    int width = strlen(number) * pixelSize * 3;	// + (spacing*(strlen(number)-1));
-    int height = 5 * pixelSize;
+	int spacing = WIDGET_SMALL / 4;
+    int x = 5;
+    int y = 5;
+    int width = strlen(number) * WIDGET_SMALL * 3;
+    int height = 5 * WIDGET_SMALL;
+	uint16_t bgColour = warning ? TFT_RED : TFT_BLACK;
 
-    switch (pixelSize) {
-    	case WIDGET_SMALL:
-    		x = 5;
-    		y = 5;
-    		break;
-		case WIDGET_MEDIUM:
-    		x = 320/2 - width/2;
-    		y = 10;
-			break;
-    }
+    tft_util_draw_number( spr, number, x, y, TFT_WHITE, bgColour, spacing, WIDGET_SMALL );
 
-    tft_util_draw_number( spr, number, x, y, TFT_WHITE, TFT_BLACK, spacing, /*textSize = 1*/ pixelSize );
-
-	spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
+	// spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
 }
 //-----------------------------------------------------
-void populateMediumWidget(TFT_eSprite* spr, int pixelSize, char *number, char *label, bool warning) {
+void populateMediumWidget(TFT_eSprite* spr, char *number, char *label, bool warning) {
 	#define TFT_GREY 0xC618
 
 	int spacing = 5;
-    int width = strlen(number) * pixelSize * 3; // + paddingLeft;
-    int height = 5 * pixelSize;
+    int width = strlen(number) * WIDGET_MEDIUM * 3; // + paddingLeft;
+    int height = 5 * WIDGET_MEDIUM;
 
-    int middleX = 320-100;
-	int startX = middleX - width;// paddingLeft;
+    int middleX = 320/2;
+	int startX = middleX - width/2;// paddingLeft;
 	int startY = 10;
 
 	uint16_t bgColour = warning ? TFT_RED : TFT_BLACK;
     spr->fillRect(0, 0, spr->width(), spr->height(), bgColour);
-	tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, pixelSize );
+	tft_util_draw_number( spr, number, startX, startY, TFT_WHITE, bgColour, spacing, WIDGET_MEDIUM );
 
 	int labelsX = middleX;
 	spr->setTextColor(TFT_GREY, bgColour);
-	spr->setTextDatum(BR_DATUM);
-	spr->drawString(label, labelsX, spr->height() - 4);
+	spr->setTextDatum(BC_DATUM);
+	spr->drawString(label, middleX, spr->height() - 4);
 	// spr->drawRect(0, 0, spr->width(), spr->height(), TFT_BLUE);
 }//-----------------------------------------------------
 //-----------------------------------------------------
@@ -269,13 +259,18 @@ void updateDisplay() {
 	        pushTextToMiddleOfSprite(&img_middle, "VESC OFFLINE!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_RED);
 	        img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	    }
-	    else  { //if ( millis()/1000 % 2 == 0 ) {
-	        bool warning = currentFailRatio > 0.1;
-	        int decimalRatio = currentFailRatio*100;
-	        sprintf( value, "%d", decimalRatio);
-	        // Serial.printf("%s\n", stats);
-	        populateMediumWidget( &img_middle, WIDGET_MEDIUM, value, "FAIL RATIO (%)", /*warning*/ warning);
+	    else  {
+	    	// odometer
+	    	int32_t tripmeters = rotations_to_meters(esk8.boardPacket.odometer);
+			dtostrf(tripmeters/1000.0, 4, 1, value);
+	    	renderSmallWidget( &img_topLeft, value, /*warning*/ false);
+	    	img_topLeft.pushSprite(0, 0);
+
+	    	// battery voltage
+	    	bool warning = esk8.boardPacket.batteryVoltage < 34;
+			dtostrf(esk8.boardPacket.batteryVoltage, 4, 1, value);
+	    	populateMediumWidget( &img_middle, value, "BATTERY (v)", /*warning*/ warning);
+		    img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	    }
-	    img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
 	}
 }

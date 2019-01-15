@@ -15,6 +15,7 @@ struct BoardStruct{
 	bool vescOnline;
 	float batteryVoltage;
 	bool areMoving;
+	int odometer;
 };
 
 
