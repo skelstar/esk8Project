@@ -297,7 +297,7 @@ bool getVescValues() {
     esk8.boardPacket.vescOnline = success;
 	if ( success ) {
 		esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-		esk8.boardPacket.odometer = UART.data.tachometer;
+		esk8.boardPacket.odometer = UART.data.tachometerAbs/42;
 		esk8.boardPacket.areMoving = UART.data.rpm > 100;
 		Serial.printf("areMoving: %d\n", esk8.boardPacket.areMoving);
 
