@@ -63,11 +63,11 @@ CRGB leds[NUM_PIXELS];
 
 #define BRIGHTNESS	20
 
-CRGB COLOUR_OFF = CRGB::Black;
-CRGB COLOUR_RED = CRGB::Red;
-CRGB COLOUR_GREEN = CRGB::Green;
-CRGB COLOUR_BLUE = CRGB::Blue;
-CRGB COLOUR_WHITE = CRGB::White;
+// CRGB COLOUR_OFF = CRGB::Black;
+// CRGB COLOUR_RED = CRGB::Red;
+// CRGB COLOUR_GREEN = CRGB::Green;
+// CRGB COLOUR_BLUE = CRGB::Blue;
+// CRGB COLOUR_WHITE = CRGB::White;
 
 //--------------------------------------------------------------------------------
 

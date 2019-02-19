@@ -195,7 +195,9 @@ void NeoPixelsShowESP32() {
 // }
 
 
+const uint32_t COLOUR_OFF = pixels.Color(0, 0, 0);
 const uint32_t COLOUR_LIGHT_GREEN = pixels.Color(0, 50, 0);
+const uint32_t COLOUR_DIM_GREEN = pixels.Color(0, 5, 0);
 const uint32_t COLOUR_BRIGHT_RED = pixels.Color(255, 0, 0);
 
 //--------------------------------------------------------------------------------
@@ -247,14 +249,14 @@ void packetAvailableCallback( uint16_t from ) {
 }
 //--------------------------------------------------------------
 void boardOfflineCallback() {
-	ledsUpdate( COLOUR_BRIGHT_RED );
+	ledsUpdate( COLOUR_OFF );
 	// tFlashLeds.enable();
 	// M5.Speaker.tone(330, 100);	// tone 330, 200ms
 	updateDisplay();
 }
 
 void boardOnlineCallback() {
-	ledsUpdate( COLOUR_LIGHT_GREEN );
+	ledsUpdate( COLOUR_DIM_GREEN );
 	//debug.print(ONLINE_STATUS, "onlineCallback();\n");	
 	// tFlashLeds.disable();
 	// updateDisplay(/* mode */ 1, /* backlight */ 1);
@@ -451,7 +453,7 @@ void setup() {
 	);				// port	
 
 	// has to be here after creating the above task
-	ledsUpdate(pixels.Color(0, 120, 0));
+	ledsUpdate(COLOUR_OFF);
 }
 /**************************************************************
 					LOOP
@@ -623,7 +625,7 @@ void powerDown() {
 	radio.stopListening();
 	radio.powerDown();
 	// leds
-	ledsUpdate(pixels.Color(0, 0, 0));
+	ledsUpdate(COLOUR_OFF);
 	dacWrite(25, 0);
 
 	delay(800);
