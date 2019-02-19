@@ -1,5 +1,5 @@
 #include <SPI.h>
-#include <RF24Network.h>
+// #include <RF24Network.h>
 #include <RF24.h> 
 // #include "WiFi.h"
 #include <Adafruit_NeoPixel.h>
@@ -29,7 +29,7 @@
 //--------------------------------------------------------------------------------
 
 #define READ_JOYSTICK_INTERVAL		150
-#define SEND_TO_BOARD_INTERVAL_MS 	200
+#define SEND_TO_BOARD_INTERVAL_MS 	1000	//200
 #define BOARD_OFFLINE_CONSECUTIVE_TIMES_ALLOWANCE	4
 
 #define ENCODER_MIN 	-20 	// decceleration (ie -20 divides 0-127 into 20)
@@ -141,13 +141,16 @@ TFT_eSprite img_bottomRight = TFT_eSprite(&tft);
 
 portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
-//--------------------------------------------------------------
-
-#define SPI_CE        5 	//33    // white/purple
-#define SPI_CS        13	//26  // green
+//---------------------------------------------------------
+// DEV board
+#define SPI_CE        33    // white/purple
+#define SPI_CS        26  // green
+// M5Stack
+// #define SPI_CE        5 	//33    // white/purple
+// #define SPI_CS        13	//26  // green
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
-RF24Network network(radio); 
+// RF24Network network(radio); 
 
 //--------------------------------------------------------------
 
@@ -321,17 +324,14 @@ void tSendControllerValues_callback() {
 	if ( sentOK ) {
 		lastAckFromBoard = millis();
 		updateBoardImmediately = false;
-		// Serial.printf("tSendControllerValues_callback: %d %u \n", 
-		// 	esk8.controllerPacket.throttle, 
-		// 	millis() - lastSentToBoard);
+		debug.print(COMMUNICATION, "Sending to Board\n");
 	    lastSentToBoard = millis();
 	}
 	else {
+		debug.print(COMMUNICATION, "Sending to Board: FAILED\n");
 		// Serial.printf("tSendControllerValues_callback(): ERR_NOT_SEND_OK \n");
 	}
 	boardStatus.serviceState( sentOK );
-
-	
 }
 Task tSendControllerValues(SEND_TO_BOARD_INTERVAL_MS, TASK_FOREVER, &tSendControllerValues_callback);
 //--------------------------------------------------------------
@@ -344,11 +344,6 @@ void tReadJoystick_callback() {
 	core0ReadJoystickTaskUserTaskHandle = 0;
 }
 Task tReadJoystick(READ_JOYSTICK_INTERVAL, TASK_FOREVER, &tReadJoystick_callback);
-
-
-
-
-//--------------------------------------------------------------
 
 /**************************************************************
 					SETUP
@@ -365,7 +360,7 @@ void setup() {
 	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
 	debug.addOption(LOGGING, "LOGGING");
 	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
+	debug.setFilter( STARTUP | COMMUNICATION );// DEBUG | COMMUNICATION );// | COMMUNICATION | HARDWARE );
 	//debug.setFilter( STARTUP );
 
 	// disable speaker noise
@@ -376,7 +371,7 @@ void setup() {
 
 	SPI.begin();                                           // Bring up the RF network
 	radio.begin();
-	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
+	esk8.begin(&radio, esk8.RF24_CONTROLLER, packetAvailableCallback);
 
 	radio.setAutoAck(true);
 
@@ -405,21 +400,13 @@ void setup() {
 
 	pushTextToMiddleOfSprite(&img_middle, "READY!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_BLACK);
 
-	int deadzone = 5;
-	bool displayedMessage = false;
-	while ( readJoystickOk() == false || esk8.controllerPacket.throttle > 127+deadzone || esk8.controllerPacket.throttle < 127-deadzone ) {
-		if ( !displayedMessage ) {
-			pushTextToMiddleOfSprite(&img_middle, "Zero throttle!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_BLACK);
-			debug.print(STARTUP, "Displayed message\n");
-			displayedMessage = true;
-		}
-		vTaskDelay( 500 );
-	}
+	// makeSureControlsIdle();
+
 	debug.print(STARTUP, "esk8.controllerPacket.throttle == %d\n", esk8.controllerPacket.throttle);
 
-	while ( m5.BtnC.wasReleased() == false ){
-		m5.update();
-	}
+	// while ( m5.BtnC.wasReleased() == false ){
+	// 	m5.update();
+	// }
 
 	runner.startNow();
 	runner.addTask(tFlashLeds);
@@ -470,10 +457,10 @@ void loop() {
 		tSendControllerValues.restart();
 	}
 	
-	M5.update();
-	if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
-		powerDown();
-	}
+	// M5.update();
+	// if ( M5.BtnA.isPressed() && M5.BtnC.isPressed() ) {
+	// 	powerDown();
+	// }
 
 	vTaskDelay( 1 );
 }
@@ -525,6 +512,21 @@ void core0ReadJoystickTask( void *parameter ) {
 
 //**************************************************************
 
+void makeSureControlsIdle() {
+	int deadzone = 5;
+	bool displayedMessage = false;
+	while ( readJoystickOk() == false || 
+			esk8.controllerPacket.throttle > 127+deadzone || 
+			esk8.controllerPacket.throttle < 127-deadzone ) {
+		if ( !displayedMessage ) {
+			pushTextToMiddleOfSprite(&img_middle, "Zero throttle!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_BLACK);
+			debug.print(STARTUP, "Displayed message\n");
+			displayedMessage = true;
+		}
+		vTaskDelay( 500 );
+	}
+}
+//--------------------------------------------------------------
 bool readJoystickOk() {
 	
 	if (millis() - timeLastReadJoystick > READ_JOYSTICK_INTERVAL) {

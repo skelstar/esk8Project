@@ -1,6 +1,5 @@
 
 #include <SPI.h>
-#include <RF24Network.h> 
 #include <RF24.h> 
 
 #include <esk8Lib.h>
@@ -40,7 +39,6 @@ volatile long lastRxFromController = 0;
 #define SPI_CS        26  	// green
 
 RF24 radio(SPI_CE, SPI_CS);	// ce pin, cs pin
-RF24Network network(radio);
 
 esk8Lib esk8;
 
@@ -48,7 +46,7 @@ VescUart UART;
 
 #define 	CONTROLLER_TIMEOUT							500
 #define 	CONTROLLER_CONSECUTIVE_TIMEOUTS_ALLOWANCE	1
-#define 	GET_VESC_DATA_AND_SEND_TO_CONTROLLER_INTERVAL	1000
+#define 	GET_VESC_DATA_AND_SEND_TO_CONTROLLER_INTERVAL	2300
 #define 	SEND_TO_VESC_INTERVAL						200
 
 
@@ -104,12 +102,7 @@ void tSendToVESC_callback() {
 
 void controllerPacketAvailableCallback( uint16_t from ) {
 	lastRxFromController = millis();
-	if ( esk8.numMissedPackets() > 0 ) {
-		debug.print(CONTROLLER_COMMS, "Controller throttle: %d (missed: %d) \n", esk8.controllerPacket.throttle, esk8.numMissedPackets());
-	}
-	else {
-		debug.print(CONTROLLER_COMMS, "Controller throttle: %d \n", esk8.controllerPacket.throttle);	
-	}
+	debug.print(CONTROLLER_COMMS, "Controller throttle: %d (missed: %d) \n", esk8.controllerPacket.throttle, esk8.numMissedPackets());
 	tSendToVESC.restart();
 }
 
@@ -169,7 +162,7 @@ void setup()
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
 	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | CONTROLLER_COMMS );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -273,6 +266,9 @@ void sendToController() {
 		if ( false == esk8.boardPacket.areMoving ) {
 			// update controller
 			bool acknowledged = esk8.sendPacketToController();
+			if (!acknowledged) {
+				debug.print(CONTROLLER_COMMS, "Sending to Contorller: FAILED!\n");
+			}
 
 			bool vescStatusChanged = vescStatus.serviceState(vescOnline);
 		}
@@ -326,7 +322,7 @@ void setupRadio() {
 	#endif
 	radio.begin();
 	radio.setAutoAck(true);
-	esk8.begin(&radio, &network, esk8.RF24_BOARD, controllerPacketAvailableCallback);
+	esk8.begin(&radio, esk8.RF24_BOARD, controllerPacketAvailableCallback);
 }
 
 //--------------------------------------------------------------------------------

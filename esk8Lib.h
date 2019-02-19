@@ -3,7 +3,6 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <RF24Network.h>
 #include <RF24.h>
 
 #include <esp_int_wdt.h>
@@ -46,7 +45,6 @@ class esk8Lib
 		
 		void begin(
 			RF24 *radio, 
-			RF24Network *network, 
 			Role role, 
 			PacketAvailableCallback packetAvailableCallback);
 		void service();
@@ -63,15 +61,15 @@ class esk8Lib
 
 	private:
 		RF24 *_radio;
-		RF24Network *_network;
 		Role _role;
 
 		long ctime;
 		long btime;
 		long _oldControllerPacketId;
 
-		uint16_t readPacket();
-		bool sendPacket(uint16_t to, unsigned char type, const void *message);
+		bool readPacket();
+		bool sendPacket();
+
 
 		PacketAvailableCallback _packetAvailableCallback;
 };
