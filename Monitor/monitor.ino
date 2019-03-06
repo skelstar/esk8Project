@@ -9,6 +9,12 @@
 #include <esp_task_wdt.h>
 #include <TaskScheduler.h>
 
+#include <WiFi.h>
+#include <WiFiClient.h>
+#include <BlynkSimpleEsp32.h>
+#include "wificonfig.h";
+
+#define BLYNK_PRINT Serial
 
 /*--------------------------------------------------------------------------------*/
 
@@ -25,6 +31,10 @@ VescUart UART;
 #define 	SEND_TO_VESC_INTERVAL						200
 #define 	GET_FROM_VESC_INTERVAL						1000
 
+
+//--------------------------------------------------------------------------------
+
+char auth[] = "5db4749b3d1f4aa5846fc01dfaf2188a";
 
 //--------------------------------------------------------------------------------
 #define	STARTUP 			1 << 0	// 1
@@ -91,6 +101,30 @@ OnlineStatusLib vescStatus(
 
 /**************************************************************/
 
+
+BLYNK_APP_CONNECTED() {
+  Serial.println("App Connected.");
+}
+
+// This is called when Smartphone App is closed
+BLYNK_APP_DISCONNECTED() {
+  Serial.println("App Disconnected.");
+}
+
+// This function will be called every time Slider Widget
+// in Blynk app writes values to the Virtual Pin 1
+BLYNK_WRITE(V1)
+{
+  int pinValue = param.asInt(); // assigning incoming value from pin V1 to a variable
+  // You can also use:
+  // String i = param.asStr();
+  // double d = param.asDouble();
+  Serial.print("V1 Slider value is: ");
+  Serial.println(pinValue);
+}
+
+
+
 //--------------------------------------------------------------------------------
 TaskHandle_t RF24CommsRxTask;
 //--------------------------------------------------------------------------------
@@ -98,43 +132,49 @@ void setup()
 {
     Serial.begin(9600);
 
+	Blynk.begin(auth, ssid, pass);
+
+	Serial.println("Ready");
+
+	Blynk.notify("Yaaay... button is pressed!");
+
     // Serial1.begin(VESC_UART_BAUDRATE);
 
-	debug.init();
-	debug.addOption(STARTUP, "STARTUP");
-	debug.addOption(DEBUG, "DEBUG");
-	debug.addOption(VESC_COMMS, "VESC_COMMS");
-	// debug.addOption(CONTROLLER_COMMS, "CONTROLLER");
-	debug.addOption(HARDWARE, "HARDWARE");
-	debug.addOption(STATUS, "STATUS");
-	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
-	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
-	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP | VESC_COMMS );
+	// debug.init();
+	// debug.addOption(STARTUP, "STARTUP");
+	// debug.addOption(DEBUG, "DEBUG");
+	// debug.addOption(VESC_COMMS, "VESC_COMMS");
+	// // debug.addOption(CONTROLLER_COMMS, "CONTROLLER");
+	// debug.addOption(HARDWARE, "HARDWARE");
+	// debug.addOption(STATUS, "STATUS");
+	// // debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
+	// // debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
+	// // debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
+	// debug.setFilter( STARTUP | VESC_COMMS );
 
-    debug.print(STARTUP, "%s\n", file_name);
-	debug.print(STARTUP, "%s\n", compile_date);
+    // debug.print(STARTUP, "%s\n", file_name);
+	// debug.print(STARTUP, "%s\n", compile_date);
 
-	print_reset_reason(rtc_get_reset_reason(0), 0);
-	print_reset_reason(rtc_get_reset_reason(1), 1);
+	// print_reset_reason(rtc_get_reset_reason(0), 0);
+	// print_reset_reason(rtc_get_reset_reason(1), 1);
 
-  	while (!Serial) {;}
+  	// //while (!Serial) {;}
 
-	/** Define which ports to use as UART */
-	UART.setSerialPort(&Serial1);
+	// /** Define which ports to use as UART */
+	// UART.setSerialPort(&Serial1);
 
-	bool vescOnline = getVescValues();
-	debug.print(STARTUP, "%s\n", vescOnline ? "VESC Online!" : "ERROR: VESC Offline!");
+	// bool vescOnline = getVescValues();
+	// debug.print(STARTUP, "%s\n", vescOnline ? "VESC Online!" : "ERROR: VESC Offline!");
 
-	runner.startNow();
-	//runner.addTask(tSendToVESC);
-	//tSendToVESC.enable();
-	runner.addTask(tGetFromVESC);
-	tGetFromVESC.enable();
+	// runner.startNow();
+	// //runner.addTask(tSendToVESC);
+	// //tSendToVESC.enable();
+	// runner.addTask(tGetFromVESC);
+	// tGetFromVESC.enable();
 
-	debug.print(STARTUP, "Starting Core 0 \n");
+	// debug.print(STARTUP, "Starting Core 0 \n");
 
-	debug.print(STARTUP, "loop() core: %d \n", xPortGetCoreID());
+	// debug.print(STARTUP, "loop() core: %d \n", xPortGetCoreID());
 
 	xTaskCreatePinnedToCore (
 		codeForRF24CommsRxTask,	// function
@@ -156,6 +196,10 @@ void loop() {
 	runner.execute();
 
 	vTaskDelay( 10 );
+
+	// Serial.printf(".");
+
+	Blynk.run();
 }
 //*************************************************************
 long nowms = 0;
