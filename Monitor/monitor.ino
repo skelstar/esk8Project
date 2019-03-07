@@ -34,6 +34,9 @@ VescUart UART;
 #define 	SEND_TO_VESC_INTERVAL						200
 #define 	GET_FROM_VESC_INTERVAL						1000
 
+float batteryVoltage = 0.0;
+float ampHours = 0.0;
+bool moving = false;
 
 //--------------------------------------------------------------------------------
 
@@ -51,11 +54,13 @@ char auth[] = "5db4749b3d1f4aa5846fc01dfaf2188a";
 debugHelper debug;
 
 //--------------------------------------------------------------
-#define 	VESC_UART_RX		16		// orange - VESC 5
-#define 	VESC_UART_TX		17		// green - VESC 6
-#define 	VESC_UART_BAUDRATE	19200	// old: 9600
+#define 	VESC_UART_RX		16		// orange
+#define 	VESC_UART_TX		17		// green
+#define 	VESC_UART_BAUDRATE	115200	// old: 19200
 
 HardwareSerial Serial1(2);
+
+#define INBUILT_LED	2
 
 //--------------------------------------------------------------
 
@@ -74,19 +79,19 @@ void tSendToVESC_callback() {
     taskEXIT_CRITICAL(&mmux);
 }
 
+bool ledOn;
+
 void tGetFromVESC_callback();
 Task tGetFromVESC( GET_FROM_VESC_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback );
 void tGetFromVESC_callback() {
 
-	taskENTER_CRITICAL(&mmux);
+	// taskENTER_CRITICAL(&mmux);
 
-	Serial.printf("tGetFromVESC \n");
-	// Blynk.virtualWrite(V5, millis() / 1000);
+	Blynk.virtualWrite(V0, batteryVoltage);
 	if (getVescValues() == false) {
 		// vesc offline
 	}
-
-    taskEXIT_CRITICAL(&mmux);
+    // taskEXIT_CRITICAL(&mmux);
 }
 
 /**************************************************************/
@@ -107,26 +112,26 @@ OnlineStatusLib vescStatus(
 /**************************************************************/
 
 
-BLYNK_APP_CONNECTED() {
-  Serial.println("App Connected.");
-}
+// BLYNK_APP_CONNECTED() {
+//   Serial.println("App Connected.");
+// }
 
-// This is called when Smartphone App is closed
-BLYNK_APP_DISCONNECTED() {
-  Serial.println("App Disconnected.");
-}
+// // This is called when Smartphone App is closed
+// BLYNK_APP_DISCONNECTED() {
+//   Serial.println("App Disconnected.");
+// }
 
-// This function will be called every time Slider Widget
-// in Blynk app writes values to the Virtual Pin 1
-BLYNK_WRITE(V1)
-{
-  int pinValue = param.asInt(); // assigning incoming value from pin V1 to a variable
-  // You can also use:
-  // String i = param.asStr();
-  // double d = param.asDouble();
-  Serial.print("V1 Slider value is: ");
-  Serial.println(pinValue);
-}
+// // This function will be called every time Slider Widget
+// // in Blynk app writes values to the Virtual Pin 1
+// BLYNK_WRITE(V1)
+// {
+//   int pinValue = param.asInt(); // assigning incoming value from pin V1 to a variable
+//   // You can also use:
+//   // String i = param.asStr();
+//   // double d = param.asDouble();
+//   Serial.print("V1 Slider value is: ");
+//   Serial.println(pinValue);
+// }
 
 
 
@@ -137,7 +142,12 @@ void setup()
 {
     Serial.begin(9600);
 
+	pinMode(INBUILT_LED, OUTPUT);
+
 	Blynk.begin(auth, ssid, pass);
+
+	Serial1.begin(VESC_UART_BAUDRATE);
+	UART.setSerialPort(&Serial1);
 
 	Serial.println("Ready");
 
@@ -173,9 +183,6 @@ void setup()
     });
 
   ArduinoOTA.begin();
-
-    Serial1.begin(VESC_UART_BAUDRATE);
-
 	debug.init();
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(DEBUG, "DEBUG");
@@ -197,7 +204,6 @@ void setup()
   	//while (!Serial) {;}
 
 	/** Define which ports to use as UART */
-	UART.setSerialPort(&Serial1);
 
 	bool vescOnline = getVescValues();
 	debug.print(STARTUP, "%s\n", vescOnline ? "VESC Online!" : "ERROR: VESC Offline!");
@@ -272,9 +278,17 @@ bool getVescValues() {
 	if ( success ) {
 
 		Serial.printf("inpVoltage: %.1f\n", UART.data.inpVoltage);
-		const char testNotify[] = "test notify";
-		Blynk.notify(testNotify);
+		Serial.printf("ampHours: %.1f\n", UART.data.ampHours);
+		Serial.printf("rpm: %ul\n", UART.data.rpm);
+		bool moving = UART.data.rpm > 100;
+		bool accelerating = UART.data.avgMotorCurrent > 0.2;
+		Serial.printf("moving: %d accelerating: %d \n", moving, accelerating);
+		Serial.printf("motor current: %.1f\n", UART.data.avgMotorCurrent);
+		Serial.printf("Odometer: %ul\n", UART.data.tachometerAbs/42);
 
+		batteryVoltage = UART.data.inpVoltage;
+		ampHours = UART.data.ampHours;
+		moving = UART.data.tachometer > 100;
 		// esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
 		// esk8.boardPacket.odometer = UART.data.tachometerAbs/42;
 		// esk8.boardPacket.areMoving = UART.data.rpm > 100;
