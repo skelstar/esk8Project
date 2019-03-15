@@ -147,7 +147,7 @@ void setup()
 	Blynk.begin(auth, ssid, pass);
 
 	Serial1.begin(VESC_UART_BAUDRATE);
-	UART.setSerialPort(&Serial1);
+	UART.setSerialPort(&mySerial);
 
 	Serial.println("Ready");
 
