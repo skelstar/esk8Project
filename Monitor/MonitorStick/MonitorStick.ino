@@ -10,6 +10,7 @@ Stick test
 #include <U8g2lib.h>
 #include <SPI.h>
 #include <Wire.h>
+#include <myPushButton.h>
 
 #define LedPin 19
 #define IrPin 17
@@ -36,6 +37,30 @@ void mpu9250_read() {
     // if(data == 0x71) {
     //     mpu9250_exis = true;
     // }
+}
+
+
+#define PULLUP		true
+#define OFFSTATE	HIGH
+
+void listener_Button(int eventCode, int eventPin, int eventParam);
+myPushButton button(BtnPin, PULLUP, OFFSTATE, listener_Button);
+void listener_Button(int eventCode, int eventPin, int eventParam) {
+    
+	switch (eventCode) {
+		case button.EV_BUTTON_PRESSED:
+			Serial.println("EV_BUTTON_PRESSED");
+			break;
+		case button.EV_RELEASED:
+			Serial.println("EV_RELEASED");
+			break;
+		case button.EV_DOUBLETAP:
+			Serial.println("EV_DOUBLETAP");
+			break;
+		case button.EV_HELD_SECONDS:
+			Serial.println("EV_HELD_SECONDS");
+			break;
+    }
 }
 
 void setup() {
@@ -68,6 +93,8 @@ void loop()
     } else {
         u8g2.clearDisplay();
     }
+
+    button.serviceEvents();
     // delay(200);
 }
 
@@ -89,7 +116,7 @@ void setupPeripherals() {
     pinMode(LedPin, OUTPUT);
     pinMode(IrPin, OUTPUT);
     pinMode(BuzzerPin, OUTPUT);
-    pinMode(BtnPin, INPUT_PULLUP);
+    // pinMode(BtnPin, INPUT_PULLUP);
     ledcSetup(1, 38000, 10);
     ledcAttachPin(IrPin, 1);
     digitalWrite(BuzzerPin, LOW);
