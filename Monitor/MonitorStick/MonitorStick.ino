@@ -11,6 +11,7 @@ Stick test
 #include <Wire.h>
 #include <myPushButton.h>
 #include "BLEDevice.h"
+#include <driver/adc.h>
 
 // static BLEUUID serviceUUID("0000ffe0-0000-1000-8000-00805f9b34fb");
 // static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
@@ -67,12 +68,21 @@ void listener_Button(int eventCode, int eventPin, int eventParam) {
 			break;
 		case button.EV_RELEASED:
 			Serial.println("EV_RELEASED");
+            if (eventParam >= 2) {
+                pureDeepSleep();
+            }
 			break;
 		case button.EV_DOUBLETAP:
 			Serial.println("EV_DOUBLETAP");
 			break;
 		case button.EV_HELD_SECONDS:
-			Serial.println("EV_HELD_SECONDS");
+            if (eventParam >= 2) {
+                lcdMessage("release!");
+            }
+            else {
+                lcdMessage("powering down");
+            }
+			Serial.printf("EV_HELD_SECONDS %d\n", eventParam);
 			break;
     }
 }
@@ -85,10 +95,11 @@ static void notifyCallback(
     size_t length,
     bool isNotify) {
     Serial.print("Notify! ");
-    // Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-    // Serial.println(length);
     Serial.print("data: ");
     Serial.println((char*)pData);
+    if (button.isPressed() == false) {
+        drawBattery(68);
+    }
 }
 
 void setup() {
@@ -111,60 +122,9 @@ long now = 0;
 
 void loop()
 {
-    digitalWrite(LedPin, 1 - digitalRead(LedPin));
-    ledcWrite(1, ledcRead(1) ? 0 : 512);
-    delay(200);
-    if(digitalRead(BtnPin) == 0){
-        // lcdWriteLine(0, "hello", "world");
-        u8g2.drawStr(0, 20, "test");
-        u8g2.setFont(u8g2_font_open_iconic_arrow_2x_t);
-        u8g2.drawGlyph(0, 40, 0x40);
-        u8g2.setFont(u8g2_font_4x6_tr);
-
-        u8g2.sendBuffer();
-        buzzerBuzz();
-    } else {
-        //lcdNumber("39.2");
-        drawBattery(68);
-        // u8g2.clearDisplay();
-    }
-
     button.serviceEvents();
-    // delay(200);
-    
-    // If the flag "doConnect" is true then we have scanned for and found the desired
-    // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
-    // connected we set the connected flag to be true.
-    // if (doConnect == true) {
-    //     if (connectToServer(*pServerAddress)) {
-    //         Serial.println("We are now connected to the BLE Server.");
-    //         connected = true;
-    //     } else {
-    //         Serial.println("We have failed to connect to the server; there is nothin more we will do.");
-    //     }
-    //     doConnect = false;
-    // }
 
-    // // If we are connected to a peer BLE Server, update the characteristic each time we are reached
-    // // with the current time since boot.
-    // if (connected) {
-    //     String newValue = "Time since boot: " + String(millis()/1000);
-    //     Serial.println("Setting new characteristic value to \"" + newValue + "\"");
-    // }
-
-    // if (pRemoteCharacteristic->canRead()) {
-    //     std::string value = pRemoteCharacteristic->readValue();
-    //     Serial.print("The characteristic value was: ");
-    //     Serial.println(value.c_str());
-
-    //     // Set the characteristic's value to be the array of bytes that is actually a string.
-    //     Serial.printf("sending to master\n");
-    //     char buff[6];
-    //     ltoa(millis(), buff, 10);
-    //     now = millis();
-
-    //     pRemoteCharacteristic->writeValue(buff, sizeof(buff));
-    // }
+    delay(200);
 }
 
 void lcdNumber(char* number) {
@@ -204,11 +164,16 @@ void buzzerBuzz() {
     }
 }
 
+void setLed(int state) {
+
+}
+
 void sendToMaster() {
     Serial.printf("sending to master\n");
     char buff[6];
     ltoa(millis(), buff, 10);
     pRemoteCharacteristic->writeValue(buff, sizeof(buff));
+    buzzerBuzz();
 }
 
 bool bleConnectToServer() {
@@ -268,6 +233,29 @@ void drawBattery(int percent) {
     );
     u8g2.sendBuffer();
 }
+
+void deepSleep() {
+  lcdMessage("sleeping");
+  delay(500);
+  pureDeepSleep();
+}
+
+void pureDeepSleep() {
+  // https://esp32.com/viewtopic.php?t=3083
+  // esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+
+  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+//   IMU.setSleepEnabled(true);
+  delay(100);
+  adc_power_off();
+  esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, LOW); //1 = High, 0 = Low
+  esp_deep_sleep_start();
+  Serial.println("This will never be printed");
+}
+
 
 // #define 	BATTERY_WIDTH	20
 // #define BATTERY_HEIGHT	8

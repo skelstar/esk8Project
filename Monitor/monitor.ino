@@ -11,7 +11,7 @@
 
 #include <WiFi.h>
 #include <WiFiClient.h>
-#include <BlynkSimpleEsp32.h>
+// #include <BlynkSimpleEsp32.h>
 #include "wificonfig.h";
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
@@ -23,7 +23,7 @@
 #include <BLE2902.h>
 
 
-#define BLYNK_PRINT Serial
+// #define BLYNK_PRINT Serial
 
 
 /*--------------------------------------------------------------------------------*/
