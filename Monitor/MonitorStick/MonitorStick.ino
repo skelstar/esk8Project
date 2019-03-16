@@ -64,6 +64,7 @@ void listener_Button(int eventCode, int eventPin, int eventParam) {
 	switch (eventCode) {
 		case button.EV_BUTTON_PRESSED:
 			Serial.println("EV_BUTTON_PRESSED");
+            sendToMaster();
 			break;
 		case button.EV_RELEASED:
 			Serial.println("EV_RELEASED");
@@ -91,71 +92,6 @@ static void notifyCallback(
     Serial.println((char*)pData);
 }
 
-
-bool connectToServer(BLEAddress pAddress) {
-    // Serial.print("Forming a connection to ");
-    // Serial.println(pAddress.toString().c_str());
-    
-    // BLEClient*  pClient  = BLEDevice::createClient();
-    // Serial.println(" - Created client");
-
-    // // Connect to the remove BLE Server.
-    // pClient->connect(pAddress);
-    // Serial.println(" - Connected to server");
-
-    // // Obtain a reference to the service we are after in the remote BLE server.
-    // BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
-    // if (pRemoteService == nullptr) {
-    //   Serial.print("Failed to find our service UUID: ");
-    //   Serial.println(serviceUUID.toString().c_str());
-    //   return false;
-    // }
-    // Serial.println(" - Found our service");
-
-
-    // // Obtain a reference to the characteristic in the service of the remote BLE server.
-    // pRemoteCharacteristic = pRemoteService->getCharacteristic(CHARACTERISTIC_UUID);
-    // if (pRemoteCharacteristic == nullptr) {
-    //   Serial.print("Failed to find our characteristic UUID: ");
-    //   Serial.println(CHARACTERISTIC_UUID.toString().c_str());
-    //   return false;
-    // }
-    // Serial.println(" - Found our characteristic");
-
-    // // Read the value of the characteristic.
-    // std::string value = pRemoteCharacteristic->readValue();
-    // Serial.print("The characteristic value was: ");
-    // Serial.println(value.c_str());
-
-    // pRemoteCharacteristic->registerForNotify(notifyCallback);
-}
-
-/** Scan for BLE servers and find the first one that advertises the service we are looking for. */
-class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
- /**
-   * Called for each advertising BLE server.
-   */
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-    // Serial.print("BLE Advertised Device found: ");
-    // Serial.println(advertisedDevice.toString().c_str());
-    // Serial.printf(" - name: %s \n", advertisedDevice.getName().c_str());
-
-    // Serial
-
-    // // We have found a device, let us now see if it contains the service we are looking for.
-    // if (advertisedDevice.haveServiceUUID() && advertisedDevice.getServiceUUID().equals(serviceUUID)) {
-
-    //   // 
-    //   Serial.print("Found our device!  address: "); 
-    //   advertisedDevice.getScan()->stop();
-
-    //   pServerAddress = new BLEAddress(advertisedDevice.getAddress());
-    //   doConnect = true;
-
-    // } // Found our server
-  } // onResult
-}; // MyAdve
-
 void setup() {
     // put your setup code here, to run once:
     Wire.begin(21, 22, 100000);
@@ -170,11 +106,6 @@ void setup() {
     setupPeripherals();
     
     bleConnectToServer();
-
-    // BLEScan* pBLEScan = BLEDevice::getScan();
-    // pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-    // pBLEScan->setActiveScan(true);
-    // pBLEScan->start(30);
 }
 
 long now = 0;
@@ -247,6 +178,13 @@ void buzzerBuzz() {
         digitalWrite(BuzzerPin,LOW);
         delay(1);
     }
+}
+
+void sendToMaster() {
+    Serial.printf("sending to master\n");
+    char buff[6];
+    ltoa(millis(), buff, 10);
+    pRemoteCharacteristic->writeValue(buff, sizeof(buff));
 }
 
 bool bleConnectToServer() {
