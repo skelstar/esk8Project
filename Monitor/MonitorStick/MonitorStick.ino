@@ -11,6 +11,20 @@ Stick test
 #include <SPI.h>
 #include <Wire.h>
 #include <myPushButton.h>
+#include "BLEDevice.h"
+
+// static BLEUUID serviceUUID("0000ffe0-0000-1000-8000-00805f9b34fb");
+// static BLEUUID serviceUUID("4fafc201-1fb5-459e-8fcc-c5c9c331914b");
+// static BLEUUID    CHARACTERISTIC_UUID("0000ffe1-0000-1000-8000-00805f9b34fb");
+// static BLEUUID    CHARACTERISTIC_UUID("beb5483e-36e1-4688-b7f5-ea07361b26a8");
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
+
+static BLEAddress *pServerAddress;
+static boolean doConnect = false;
+static boolean connected = false;
+static BLERemoteCharacteristic* pRemoteCharacteristic;
 
 #define LedPin 19
 #define IrPin 17
@@ -63,18 +77,107 @@ void listener_Button(int eventCode, int eventPin, int eventParam) {
     }
 }
 
+//--    
+
+static void notifyCallback(
+    BLERemoteCharacteristic* pBLERemoteCharacteristic,
+    uint8_t* pData,
+    size_t length,
+    bool isNotify) {
+    Serial.print("Notify! ");
+    // Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
+    // Serial.println(length);
+    Serial.print("data: ");
+    Serial.println((char*)pData);
+}
+
+
+bool connectToServer(BLEAddress pAddress) {
+    // Serial.print("Forming a connection to ");
+    // Serial.println(pAddress.toString().c_str());
+    
+    // BLEClient*  pClient  = BLEDevice::createClient();
+    // Serial.println(" - Created client");
+
+    // // Connect to the remove BLE Server.
+    // pClient->connect(pAddress);
+    // Serial.println(" - Connected to server");
+
+    // // Obtain a reference to the service we are after in the remote BLE server.
+    // BLERemoteService* pRemoteService = pClient->getService(serviceUUID);
+    // if (pRemoteService == nullptr) {
+    //   Serial.print("Failed to find our service UUID: ");
+    //   Serial.println(serviceUUID.toString().c_str());
+    //   return false;
+    // }
+    // Serial.println(" - Found our service");
+
+
+    // // Obtain a reference to the characteristic in the service of the remote BLE server.
+    // pRemoteCharacteristic = pRemoteService->getCharacteristic(CHARACTERISTIC_UUID);
+    // if (pRemoteCharacteristic == nullptr) {
+    //   Serial.print("Failed to find our characteristic UUID: ");
+    //   Serial.println(CHARACTERISTIC_UUID.toString().c_str());
+    //   return false;
+    // }
+    // Serial.println(" - Found our characteristic");
+
+    // // Read the value of the characteristic.
+    // std::string value = pRemoteCharacteristic->readValue();
+    // Serial.print("The characteristic value was: ");
+    // Serial.println(value.c_str());
+
+    // pRemoteCharacteristic->registerForNotify(notifyCallback);
+}
+
+/** Scan for BLE servers and find the first one that advertises the service we are looking for. */
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+ /**
+   * Called for each advertising BLE server.
+   */
+  void onResult(BLEAdvertisedDevice advertisedDevice) {
+    // Serial.print("BLE Advertised Device found: ");
+    // Serial.println(advertisedDevice.toString().c_str());
+    // Serial.printf(" - name: %s \n", advertisedDevice.getName().c_str());
+
+    // Serial
+
+    // // We have found a device, let us now see if it contains the service we are looking for.
+    // if (advertisedDevice.haveServiceUUID() && advertisedDevice.getServiceUUID().equals(serviceUUID)) {
+
+    //   // 
+    //   Serial.print("Found our device!  address: "); 
+    //   advertisedDevice.getScan()->stop();
+
+    //   pServerAddress = new BLEAddress(advertisedDevice.getAddress());
+    //   doConnect = true;
+
+    // } // Found our server
+  } // onResult
+}; // MyAdve
+
 void setup() {
     // put your setup code here, to run once:
     Wire.begin(21, 22, 100000);
     // u8x8.begin();
     u8g2.begin();
-    u8g2.setFont(u8g2_font_4x6_tr);
-    u8g2.drawStr(0, 20, "test");
 
     Serial.begin(9600);
+    Serial.println("\nStarting Arduino BLE Client application...");
+
+    u8g2.setFont(u8g2_font_4x6_tr);
     
     setupPeripherals();
+    
+    bleConnectToServer();
+
+    // BLEScan* pBLEScan = BLEDevice::getScan();
+    // pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+    // pBLEScan->setActiveScan(true);
+    // pBLEScan->start(30);
 }
+
+long now = 0;
 
 void loop()
 {
@@ -96,6 +199,40 @@ void loop()
 
     button.serviceEvents();
     // delay(200);
+    
+    // If the flag "doConnect" is true then we have scanned for and found the desired
+    // BLE Server with which we wish to connect.  Now we connect to it.  Once we are 
+    // connected we set the connected flag to be true.
+    // if (doConnect == true) {
+    //     if (connectToServer(*pServerAddress)) {
+    //         Serial.println("We are now connected to the BLE Server.");
+    //         connected = true;
+    //     } else {
+    //         Serial.println("We have failed to connect to the server; there is nothin more we will do.");
+    //     }
+    //     doConnect = false;
+    // }
+
+    // // If we are connected to a peer BLE Server, update the characteristic each time we are reached
+    // // with the current time since boot.
+    // if (connected) {
+    //     String newValue = "Time since boot: " + String(millis()/1000);
+    //     Serial.println("Setting new characteristic value to \"" + newValue + "\"");
+    // }
+
+    // if (pRemoteCharacteristic->canRead()) {
+    //     std::string value = pRemoteCharacteristic->readValue();
+    //     Serial.print("The characteristic value was: ");
+    //     Serial.println(value.c_str());
+
+    //     // Set the characteristic's value to be the array of bytes that is actually a string.
+    //     Serial.printf("sending to master\n");
+    //     char buff[6];
+    //     ltoa(millis(), buff, 10);
+    //     now = millis();
+
+    //     pRemoteCharacteristic->writeValue(buff, sizeof(buff));
+    // }
 }
 
 void lcdWriteLine(uint8_t line, char* title, char* value) {
@@ -110,6 +247,48 @@ void buzzerBuzz() {
         digitalWrite(BuzzerPin,LOW);
         delay(1);
     }
+}
+
+bool bleConnectToServer() {
+    BLEDevice::init("");
+    delay(1000);
+    pServerAddress = new BLEAddress("80:7d:3a:c5:6a:36");
+    delay(1000);
+    BLEClient* pClient = BLEDevice::createClient();
+    pClient->connect(*pServerAddress);
+    Serial.println("Connected to server");
+
+    // Obtain a reference to the service we are after in the remote BLE server.
+    BLERemoteService* pRemoteService = pClient->getService(SERVICE_UUID);
+    // if (pRemoteService == nullptr) {
+    //   Serial.print("Failed to find our service UUID: ");
+    //   Serial.println(SERVICE_UUID);
+    //   pClient->disconnect();
+    //   return false;
+    // }
+    // Serial.println(" - Found our service");
+
+    // Obtain a reference to the characteristic in the service of the remote BLE server.
+    pRemoteCharacteristic = pRemoteService->getCharacteristic(CHARACTERISTIC_UUID);
+    // if (pRemoteCharacteristic == nullptr) {
+    //   Serial.print("Failed to find our characteristic UUID: ");
+    //   Serial.println(CHARACTERISTIC_UUID);
+    //   pClient->disconnect();
+    //   return false;
+    // }
+    // Serial.println(" - Found our characteristic");
+    if (pRemoteCharacteristic->canNotify()) {
+        Serial.println("registering for notify");
+        pRemoteCharacteristic->registerForNotify(notifyCallback);
+    }
+
+    // Read the value of the characteristic.
+//     if (pRemoteCharacteristic->canRead()) {
+//       std::string value = pRemoteCharacteristic->readValue();
+//       Serial.print("The characteristic value was: ");
+//       Serial.println(value.c_str());
+//       pRemoteCharacteristic->writeValue("test");
+// }
 }
 
 void setupPeripherals() {

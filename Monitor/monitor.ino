@@ -17,7 +17,14 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+#include <BLE2902.h>
+
+
 #define BLYNK_PRINT Serial
+
 
 /*--------------------------------------------------------------------------------*/
 
@@ -40,6 +47,13 @@ bool moving = false;
 
 //--------------------------------------------------------------------------------
 
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+
+BLECharacteristic *pCharacteristic;
+
+//--------------------------------------------------------------------------------
+
 char auth[] = "5db4749b3d1f4aa5846fc01dfaf2188a";
 
 //--------------------------------------------------------------------------------
@@ -58,7 +72,7 @@ debugHelper debug;
 #define 	VESC_UART_TX		17		// green
 #define 	VESC_UART_BAUDRATE	115200	// old: 19200
 
-HardwareSerial Serial1(2);
+HardwareSerial VescSerial(2);
 
 #define INBUILT_LED	2
 
@@ -91,6 +105,10 @@ void tGetFromVESC_callback() {
 	if (getVescValues() == false) {
 		// vesc offline
 	}
+
+	// if (deviceConnected) {
+		sendToStick();
+	// }
     // taskEXIT_CRITICAL(&mmux);
 }
 
@@ -133,6 +151,45 @@ OnlineStatusLib vescStatus(
 //   Serial.println(pinValue);
 // }
 
+// class MyServerCallbacks: public BLEServerCallbacks {
+//     void onConnect(BLEServer* pServer) {
+//       deviceConnected = true;
+//     };
+
+//     void onDisconnect(BLEServer* pServer) {
+//       deviceConnected = false;
+//     }
+// };
+
+bool deviceConnected = false;
+
+class MyServerCallbacks: public BLECharacteristicCallbacks {
+	// receive
+    void onWrite(BLECharacteristic *pCharacteristic) {
+      std::string value = pCharacteristic->getValue();
+
+      if (value.length() > 0) {
+        Serial.println("*********");
+        Serial.print("New value: ");
+        for (int i = 0; i < value.length(); i++) {
+          Serial.print(value[i]);
+		}
+        Serial.println();
+        Serial.println("*********");
+      }
+    }
+	void onConnect(BLEServer* pServer) {
+		Serial.printf("device connected\n");
+      	deviceConnected = true;
+    };
+
+    void onDisconnect(BLEServer* pServer) {
+		Serial.printf("device disconnected\n");
+      	deviceConnected = false;
+    }
+
+};
+
 
 
 //--------------------------------------------------------------------------------
@@ -140,14 +197,16 @@ TaskHandle_t RF24CommsRxTask;
 //--------------------------------------------------------------------------------
 void setup()
 {
-    Serial.begin(9600);
+	Serial.begin(9600);
+
+    Serial.println("Starting BLE work!");
 
 	pinMode(INBUILT_LED, OUTPUT);
 
 	Blynk.begin(auth, ssid, pass);
 
-	Serial1.begin(VESC_UART_BAUDRATE);
-	UART.setSerialPort(&mySerial);
+	VescSerial.begin(VESC_UART_BAUDRATE);
+	UART.setSerialPort(&VescSerial);
 
 	Serial.println("Ready");
 
@@ -156,33 +215,34 @@ void setup()
 	// ArduinoOTA.setHostname("Monitor OTA");  // For OTA - Use your own device identifying name
 	// ArduinoOTA.begin();  // For OTA
 
-  ArduinoOTA
-    .onStart([]() {
-      String type;
-      if (ArduinoOTA.getCommand() == U_FLASH)
-        type = "sketch";
-      else // U_SPIFFS
-        type = "filesystem";
+    ArduinoOTA
+        .onStart([]() {
+            String type;
+            if (ArduinoOTA.getCommand() == U_FLASH)
+            type = "sketch";
+            else // U_SPIFFS
+            type = "filesystem";
 
-      // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-      Serial.println("Start updating " + type);
-    })
-    .onEnd([]() {
-      Serial.println("\nEnd");
-    })
-    .onProgress([](unsigned int progress, unsigned int total) {
-      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    })
-    .onError([](ota_error_t error) {
-      Serial.printf("Error[%u]: ", error);
-      if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-      else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-      else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-      else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-      else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    });
+            // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+            Serial.println("Start updating " + type);
+        })
+        .onEnd([]() {
+            Serial.println("\nEnd");
+        })
+        .onProgress([](unsigned int progress, unsigned int total) {
+            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        })
+        .onError([](ota_error_t error) {
+            Serial.printf("Error[%u]: ", error);
+            if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+            else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+            else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+            else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+            else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        });
 
-  ArduinoOTA.begin();
+    ArduinoOTA.begin();
+
 	debug.init();
 	debug.addOption(STARTUP, "STARTUP");
 	debug.addOption(DEBUG, "DEBUG");
@@ -197,6 +257,8 @@ void setup()
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
+
+    setupBLE();
 
 	// print_reset_reason(rtc_get_reset_reason(0), 0);
 	// print_reset_reason(rtc_get_reset_reason(1), 1);
@@ -231,6 +293,8 @@ void setup()
 
 //*************************************************************
 
+long now = 0;
+
 void loop() {
 
 	esp_task_wdt_feed();
@@ -257,6 +321,39 @@ void codeForRF24CommsRxTask( void *parameter ) {
 		vTaskDelay( 10 );
 	}
 	vTaskDelete(NULL);
+}
+//--------------------------------------------------------------
+void sendToStick() {
+	char buff[6];
+	ltoa(millis(), buff, 10);
+	pCharacteristic->setValue(buff);
+	Serial.printf("notifying!\n");
+	pCharacteristic->notify();
+}
+//--------------------------------------------------------------
+void setupBLE() {
+
+    BLEDevice::init("ESP32 Board Monitor");
+    BLEServer *pServer = BLEDevice::createServer();
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+    pCharacteristic = pService->createCharacteristic(
+		CHARACTERISTIC_UUID,
+		BLECharacteristic::PROPERTY_READ |
+		BLECharacteristic::PROPERTY_WRITE |
+		BLECharacteristic::PROPERTY_NOTIFY
+	);
+	pCharacteristic->addDescriptor(new BLE2902());
+
+    pCharacteristic->setCallbacks(new MyServerCallbacks());
+    pCharacteristic->setValue("Hello World says Neil");
+    pService->start();
+    BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    pAdvertising->addServiceUUID(SERVICE_UUID);
+    pAdvertising->setScanResponse(true);
+    pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+    pAdvertising->setMinPreferred(0x12);
+    BLEDevice::startAdvertising();
+    Serial.println("Characteristic defined! Now you can read it in your phone!");
 }
 
 //--------------------------------------------------------------
