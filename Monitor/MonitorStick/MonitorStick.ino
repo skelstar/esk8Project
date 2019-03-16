@@ -6,7 +6,6 @@ Stick test
 */
 
 #include <Arduino.h>
-// #include <U8x8lib.h>
 #include <U8g2lib.h>
 #include <SPI.h>
 #include <Wire.h>
@@ -125,7 +124,9 @@ void loop()
         u8g2.sendBuffer();
         buzzerBuzz();
     } else {
-        u8g2.clearDisplay();
+        //lcdNumber("39.2");
+        drawBattery(68);
+        // u8g2.clearDisplay();
     }
 
     button.serviceEvents();
@@ -166,6 +167,29 @@ void loop()
     // }
 }
 
+void lcdNumber(char* number) {
+    u8g2.clearBuffer();
+    // u8g2.setFont(u8g2_font_tenfatguys_tf);
+    // u8g2.setFont(u8g2_font_tenthinguys_tf);
+    u8g2.setFontPosCenter();
+    u8g2.setFont(u8g2_font_logisoso46_tf);
+    int width = u8g2.getStrWidth(number);
+    // int height = u8g2.getStrHeight(number);
+    // u8g2_font_inb49_mr
+    u8g2.drawStr(128/2 - width/2, 64/2, number);
+    u8g2.sendBuffer();
+}
+
+void lcdMessage(char* message) {
+    u8g2.clearBuffer();
+    // u8g2.setFont(u8g2_font_tenfatguys_tf);
+    // u8g2.setFont(u8g2_font_tenthinguys_tf);
+    u8g2.setFontPosCenter();
+    u8g2.setFont(u8g2_font_tenthinnerguys_tf);
+    u8g2.drawStr(128/2, 64/2, message);
+    u8g2.sendBuffer();
+}
+
 void lcdWriteLine(uint8_t line, char* title, char* value) {
     // u8x8.drawString(0, line, title);
     // u8x8.drawString(0, line+1, value);
@@ -189,57 +213,78 @@ void sendToMaster() {
 
 bool bleConnectToServer() {
     BLEDevice::init("");
+    lcdMessage("searching");
     delay(1000);
     pServerAddress = new BLEAddress("80:7d:3a:c5:6a:36");
     delay(1000);
     BLEClient* pClient = BLEDevice::createClient();
     pClient->connect(*pServerAddress);
     Serial.println("Connected to server");
-
-    // Obtain a reference to the service we are after in the remote BLE server.
+    lcdMessage("connected!");
+    delay(500);
     BLERemoteService* pRemoteService = pClient->getService(SERVICE_UUID);
-    // if (pRemoteService == nullptr) {
-    //   Serial.print("Failed to find our service UUID: ");
-    //   Serial.println(SERVICE_UUID);
-    //   pClient->disconnect();
-    //   return false;
-    // }
-    // Serial.println(" - Found our service");
-
-    // Obtain a reference to the characteristic in the service of the remote BLE server.
     pRemoteCharacteristic = pRemoteService->getCharacteristic(CHARACTERISTIC_UUID);
-    // if (pRemoteCharacteristic == nullptr) {
-    //   Serial.print("Failed to find our characteristic UUID: ");
-    //   Serial.println(CHARACTERISTIC_UUID);
-    //   pClient->disconnect();
-    //   return false;
-    // }
-    // Serial.println(" - Found our characteristic");
     if (pRemoteCharacteristic->canNotify()) {
         Serial.println("registering for notify");
         pRemoteCharacteristic->registerForNotify(notifyCallback);
     }
-
-    // Read the value of the characteristic.
-//     if (pRemoteCharacteristic->canRead()) {
-//       std::string value = pRemoteCharacteristic->readValue();
-//       Serial.print("The characteristic value was: ");
-//       Serial.println(value.c_str());
-//       pRemoteCharacteristic->writeValue("test");
-// }
 }
 
 void setupPeripherals() {
     pinMode(LedPin, OUTPUT);
     pinMode(IrPin, OUTPUT);
     pinMode(BuzzerPin, OUTPUT);
-    // pinMode(BtnPin, INPUT_PULLUP);
     ledcSetup(1, 38000, 10);
     ledcAttachPin(IrPin, 1);
     digitalWrite(BuzzerPin, LOW);
-    // u8x8.fillDisplay();
-    // u8x8.setFont(u8x8_font_chroma48medium8_r);
-    delay(1500);
-    // u8x8.clearDisplay();
-    mpu9250_read();
+    // delay(1500);
+    // mpu9250_read();
 }
+
+#define BATTERY_WIDTH	100
+#define BATTERY_HEIGHT	50
+#define BORDER_SIZE 6
+#define KNOB_HEIGHT 20
+
+void drawBattery(int percent) {
+    u8g2.clearBuffer();
+    int outsideX = (128-(BATTERY_WIDTH+BORDER_SIZE))/2; // includes batt knob
+    int outsideY = (64-BATTERY_HEIGHT)/2;
+    u8g2.drawBox(outsideX, outsideY, BATTERY_WIDTH, BATTERY_HEIGHT);
+    u8g2.drawBox(
+        outsideX + BATTERY_WIDTH, 
+        outsideY + (BATTERY_HEIGHT-KNOB_HEIGHT)/2, 
+        BORDER_SIZE, 
+        KNOB_HEIGHT
+    );    // knob
+    u8g2.setDrawColor(0);
+    u8g2.drawBox(outsideX + BORDER_SIZE, outsideY + BORDER_SIZE, BATTERY_WIDTH - BORDER_SIZE*2, BATTERY_HEIGHT - BORDER_SIZE*2);
+    u8g2.setDrawColor(1);
+    u8g2.drawBox(
+        outsideX + BORDER_SIZE*2, 
+        outsideY + BORDER_SIZE*2, 
+        (BATTERY_WIDTH - BORDER_SIZE*4)*percent/100, 
+        BATTERY_HEIGHT - BORDER_SIZE*4
+    );
+    u8g2.sendBuffer();
+}
+
+// #define 	BATTERY_WIDTH	20
+// #define BATTERY_HEIGHT	8
+// void oledSmallBattery(int percent, int x, int y) {
+// 	int width = BATTERY_WIDTH;
+// 	int height = BATTERY_HEIGHT;
+	
+// 	// outside box (solid)
+// 	u8g2.setDrawColor(1);
+// 	u8g2.drawBox(x+2, y, width, height); 
+// 	// capacity
+// 	u8g2.setDrawColor(0); 
+// 	int cap = ((percent/100.0) * (width-2));
+// 	int notcap = width - cap;
+// 	u8g2.drawBox(x+2+1, y+1, notcap, height-2);
+// 	// nipple
+// 	u8g2.setDrawColor(1);
+// 	u8g2.drawBox(x, y+2, 2, height - (2*2));
+//     u8g2.sendBuffer();
+// }
