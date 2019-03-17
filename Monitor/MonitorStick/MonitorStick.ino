@@ -20,7 +20,30 @@ Stick test
 #define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
 #define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
+#define BATTERY_VOLTAGE_CUTOFF_START    37.4
+#define BATTERY_VOLTAGE_CUTOFF_END      34.1
+#define BATTERY_VOLTAGE_FULL            4.2 * 11
 
+#define LED_ON HIGH
+#define LED_OFF LOW
+
+/* ---------------------------------------------- */
+#define MODE_DISPLAY_SLEEPING   0
+#define MODE_DISPLAY_TO_SLEEP   1
+#define MODE_WAKE_DISPLAY       2
+#define MODE_BATTERY_VOLTAGE    3
+#define MODE_MOTOR_CURRENT      4
+
+uint8_t display_mode = MODE_BATTERY_VOLTAGE;
+
+struct STICK_DATA {
+	float batteryVoltage;
+	float motorCurrent;
+	bool moving;
+	bool vescOnline;
+};
+STICK_DATA stickdata;
+/* ---------------------------------------------- */
 static BLEAddress *pServerAddress;
 static boolean doConnect = false;
 static boolean connected = false;
@@ -30,10 +53,9 @@ static BLERemoteCharacteristic* pRemoteCharacteristic;
 #define IrPin 17
 #define BuzzerPin 26
 #define BtnPin 35
-
+/* ---------------------------------------------- */
 // U8X8_SH1107_64X128_4W_HW_SPI u8x8(14, /* dc=*/ 27, /* reset=*/ 33);
 U8G2_SH1107_64X128_F_4W_HW_SPI u8g2(U8G2_R1, /* cs=*/ 14, /* dc=*/ 27, /* reset=*/ 33);
-
 
 //https://github.com/olikraus/u8g2/wiki/fntgrpiconic#open_iconic_arrow_2x2
 
@@ -64,13 +86,20 @@ void listener_Button(int eventCode, int eventPin, int eventParam) {
 	switch (eventCode) {
 		case button.EV_BUTTON_PRESSED:
 			Serial.println("EV_BUTTON_PRESSED");
-            sendToMaster();
+            //sendToMaster();
 			break;
 		case button.EV_RELEASED:
 			Serial.println("EV_RELEASED");
             if (eventParam >= 2) {
                 pureDeepSleep();
+            }            
+            else if (display_mode == MODE_BATTERY_VOLTAGE) {
+                display_mode = MODE_MOTOR_CURRENT;
             }
+            else if (display_mode == MODE_MOTOR_CURRENT) {
+                display_mode = MODE_BATTERY_VOLTAGE;
+            }
+
 			break;
 		case button.EV_DOUBLETAP:
 			Serial.println("EV_DOUBLETAP");
@@ -94,11 +123,41 @@ static void notifyCallback(
     uint8_t* pData,
     size_t length,
     bool isNotify) {
-    Serial.print("Notify! ");
-    Serial.print("data: ");
-    Serial.println((char*)pData);
+			
+	memcpy(&stickdata, pData, sizeof(stickdata));
+
+	Serial.printf("Received batteryVoltage: %.1f \n", stickdata.batteryVoltage);
+	Serial.printf("Received motor current: %.1f \n", stickdata.motorCurrent);
+
     if (button.isPressed() == false) {
-        drawBattery(68);
+
+        switch (display_mode) {
+
+            case MODE_DISPLAY_SLEEPING:
+                break;
+            case MODE_DISPLAY_TO_SLEEP:
+                u8g2.setPowerSave(1);
+                display_mode = MODE_DISPLAY_SLEEPING;
+                break;
+            case MODE_WAKE_DISPLAY:
+                u8g2.setPowerSave(0);
+                display_mode = MODE_BATTERY_VOLTAGE;
+                break;
+            
+            case MODE_BATTERY_VOLTAGE: {
+                uint8_t ratio = ((stickdata.batteryVoltage - BATTERY_VOLTAGE_CUTOFF_END) / 
+                    (BATTERY_VOLTAGE_FULL - BATTERY_VOLTAGE_CUTOFF_END)) * 100;
+                if (ratio > 100) {
+                    ratio = 100;
+                }
+                Serial.printf("ratio: %d\n", ratio);
+                drawBattery(ratio);
+                break;
+            }
+            case MODE_MOTOR_CURRENT:
+                lcdMotorCurrent(stickdata.motorCurrent);
+                break;
+        }
     }
 }
 
@@ -127,26 +186,43 @@ void loop()
     delay(200);
 }
 
-void lcdNumber(char* number) {
+// u8g2.setFont(u8g2_font_tenfatguys_tf);
+// u8g2.setFont(u8g2_font_tenthinguys_tf);
+
+void lcdMotorCurrent(float current) {
     u8g2.clearBuffer();
-    // u8g2.setFont(u8g2_font_tenfatguys_tf);
-    // u8g2.setFont(u8g2_font_tenthinguys_tf);
-    u8g2.setFontPosCenter();
-    u8g2.setFont(u8g2_font_logisoso46_tf);
-    int width = u8g2.getStrWidth(number);
-    // int height = u8g2.getStrHeight(number);
-    // u8g2_font_inb49_mr
-    u8g2.drawStr(128/2 - width/2, 64/2, number);
+    char buff2[8];
+    char buff[8]; // Buffer big enough for 7-character float
+    dtostrf(stickdata.motorCurrent, 2, 1, buff); // Leave room for too large numbers!
+    sprintf(buff2, "%sA", buff);
+    lcdNumber(buff2);
+    if (stickdata.motorCurrent > 0) {
+        lcdBarGraph(stickdata.motorCurrent/40.0);
+    }
     u8g2.sendBuffer();
+}
+
+#define BAR_GRAPH_THICKNESS 5
+void lcdBarGraph(float percentage) {
+    u8g2.setDrawColor(1);
+    float x2 = 128.0 * percentage;
+    u8g2.drawBox(0, 64-BAR_GRAPH_THICKNESS, x2, BAR_GRAPH_THICKNESS);
+}
+
+void lcdNumber(char* number) {
+    u8g2.setFontPosCenter();
+    // u8g2.setFont(u8g2_font_inr24_mn);    // numbers only
+    u8g2.setFont(u8g2_font_inr24_mf);       // full
+    int width = u8g2.getStrWidth(number);
+    u8g2.drawStr(128/2 - width/2, 64/2, number);
 }
 
 void lcdMessage(char* message) {
     u8g2.clearBuffer();
-    // u8g2.setFont(u8g2_font_tenfatguys_tf);
-    // u8g2.setFont(u8g2_font_tenthinguys_tf);
-    u8g2.setFontPosCenter();
+    u8g2.setFontPosCenter();    // vertical center
     u8g2.setFont(u8g2_font_tenthinnerguys_tf);
-    u8g2.drawStr(128/2, 64/2, message);
+    int width = u8g2.getStrWidth(message);
+    u8g2.drawStr(128/2 - width/2, 64/2, message);
     u8g2.sendBuffer();
 }
 
@@ -199,8 +275,9 @@ void setupPeripherals() {
     pinMode(LedPin, OUTPUT);
     pinMode(IrPin, OUTPUT);
     pinMode(BuzzerPin, OUTPUT);
-    ledcSetup(1, 38000, 10);
-    ledcAttachPin(IrPin, 1);
+    // ledcSetup(1, 38000, 10);
+    // ledcAttachPin(IrPin, 1);
+    digitalWrite(LedPin, LED_ON);
     digitalWrite(BuzzerPin, LOW);
     // delay(1500);
     // mpu9250_read();
@@ -235,25 +312,26 @@ void drawBattery(int percent) {
 }
 
 void deepSleep() {
-  lcdMessage("sleeping");
-  delay(500);
-  pureDeepSleep();
+    digitalWrite(LedPin, LOW);
+    lcdMessage("sleeping");
+    delay(500);
+    pureDeepSleep();
 }
 
 void pureDeepSleep() {
-  // https://esp32.com/viewtopic.php?t=3083
-  // esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
+    // https://esp32.com/viewtopic.php?t=3083
+    // esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_SLOW_MEM, ESP_PD_OPTION_OFF);
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_FAST_MEM, ESP_PD_OPTION_OFF);
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_OFF);
 
-  // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
-//   IMU.setSleepEnabled(true);
-  delay(100);
-  adc_power_off();
-  esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, LOW); //1 = High, 0 = Low
-  esp_deep_sleep_start();
-  Serial.println("This will never be printed");
+    // esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    //   IMU.setSleepEnabled(true);
+    delay(100);
+    adc_power_off();
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_35, LOW); //1 = High, 0 = Low
+    esp_deep_sleep_start();
+    Serial.println("This will never be printed");
 }
 
 

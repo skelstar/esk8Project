@@ -4,14 +4,13 @@
 #include <VescUart.h>	// https://github.com/SolidGeek/VescUart
 #include "datatypes.h"
 #include <debugHelper.h>
-#include <rom/rtc.h>
-#include <esp_int_wdt.h>
-#include <esp_task_wdt.h>
+// #include <rom/rtc.h>
+// #include <esp_int_wdt.h>
+// #include <esp_task_wdt.h>
 #include <TaskScheduler.h>
 
 #include <WiFi.h>
 #include <WiFiClient.h>
-// #include <BlynkSimpleEsp32.h>
 #include "wificonfig.h";
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
@@ -21,10 +20,6 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 #include <BLE2902.h>
-
-
-// #define BLYNK_PRINT Serial
-
 
 /*--------------------------------------------------------------------------------*/
 
@@ -41,9 +36,19 @@ VescUart UART;
 #define 	SEND_TO_VESC_INTERVAL						200
 #define 	GET_FROM_VESC_INTERVAL						1000
 
-float batteryVoltage = 0.0;
+
+struct STICK_DATA {
+	float batteryVoltage;
+	float motorCurrent;
+	bool moving;
+	bool vescOnline;
+};
+STICK_DATA stickdata;
+
+// float batteryVoltage = 0.0;
 float ampHours = 0.0;
-bool moving = false;
+// float motorCurrent = 0.0;
+// bool moving = false;
 
 //--------------------------------------------------------------------------------
 
@@ -68,8 +73,8 @@ char auth[] = "5db4749b3d1f4aa5846fc01dfaf2188a";
 debugHelper debug;
 
 //--------------------------------------------------------------
-#define 	VESC_UART_RX		16		// orange
-#define 	VESC_UART_TX		17		// green
+// #define 	VESC_UART_RX		16		// orange
+// #define 	VESC_UART_TX		17		// green
 #define 	VESC_UART_BAUDRATE	115200	// old: 19200
 
 HardwareSerial VescSerial(2);
@@ -78,20 +83,11 @@ HardwareSerial VescSerial(2);
 
 //--------------------------------------------------------------
 
-portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
+// portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
 
 //--------------------------------------------------------------
 
 Scheduler runner;
-
-void tSendToVESC_callback();
-Task tSendToVESC(SEND_TO_VESC_INTERVAL, TASK_FOREVER, &tSendToVESC_callback);
-void tSendToVESC_callback() {
-
-	taskENTER_CRITICAL(&mmux);
-
-    taskEXIT_CRITICAL(&mmux);
-}
 
 bool ledOn;
 
@@ -99,17 +95,10 @@ void tGetFromVESC_callback();
 Task tGetFromVESC( GET_FROM_VESC_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback );
 void tGetFromVESC_callback() {
 
-	// taskENTER_CRITICAL(&mmux);
-
-	Blynk.virtualWrite(V0, batteryVoltage);
 	if (getVescValues() == false) {
 		// vesc offline
 	}
-
-	// if (deviceConnected) {
-		sendToStick();
-	// }
-    // taskEXIT_CRITICAL(&mmux);
+	sendToStick();
 }
 
 /**************************************************************/
@@ -128,38 +117,6 @@ OnlineStatusLib vescStatus(
 	/*debug*/ false);
 
 /**************************************************************/
-
-
-// BLYNK_APP_CONNECTED() {
-//   Serial.println("App Connected.");
-// }
-
-// // This is called when Smartphone App is closed
-// BLYNK_APP_DISCONNECTED() {
-//   Serial.println("App Disconnected.");
-// }
-
-// // This function will be called every time Slider Widget
-// // in Blynk app writes values to the Virtual Pin 1
-// BLYNK_WRITE(V1)
-// {
-//   int pinValue = param.asInt(); // assigning incoming value from pin V1 to a variable
-//   // You can also use:
-//   // String i = param.asStr();
-//   // double d = param.asDouble();
-//   Serial.print("V1 Slider value is: ");
-//   Serial.println(pinValue);
-// }
-
-// class MyServerCallbacks: public BLEServerCallbacks {
-//     void onConnect(BLEServer* pServer) {
-//       deviceConnected = true;
-//     };
-
-//     void onDisconnect(BLEServer* pServer) {
-//       deviceConnected = false;
-//     }
-// };
 
 bool deviceConnected = false;
 
@@ -187,14 +144,10 @@ class MyServerCallbacks: public BLECharacteristicCallbacks {
 		Serial.printf("device disconnected\n");
       	deviceConnected = false;
     }
-
 };
 
-
-
 //--------------------------------------------------------------------------------
-TaskHandle_t RF24CommsRxTask;
-//--------------------------------------------------------------------------------
+
 void setup()
 {
 	Serial.begin(9600);
@@ -203,45 +156,41 @@ void setup()
 
 	pinMode(INBUILT_LED, OUTPUT);
 
-	Blynk.begin(auth, ssid, pass);
-
 	VescSerial.begin(VESC_UART_BAUDRATE);
 	UART.setSerialPort(&VescSerial);
 
 	Serial.println("Ready");
 
-	// Blynk.notify("Yaaay... button is pressed!");
-
 	// ArduinoOTA.setHostname("Monitor OTA");  // For OTA - Use your own device identifying name
 	// ArduinoOTA.begin();  // For OTA
 
-    ArduinoOTA
-        .onStart([]() {
-            String type;
-            if (ArduinoOTA.getCommand() == U_FLASH)
-            type = "sketch";
-            else // U_SPIFFS
-            type = "filesystem";
+    // ArduinoOTA
+    //     .onStart([]() {
+    //         String type;
+    //         if (ArduinoOTA.getCommand() == U_FLASH)
+    //         type = "sketch";
+    //         else // U_SPIFFS
+    //         type = "filesystem";
 
-            // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-            Serial.println("Start updating " + type);
-        })
-        .onEnd([]() {
-            Serial.println("\nEnd");
-        })
-        .onProgress([](unsigned int progress, unsigned int total) {
-            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-        })
-        .onError([](ota_error_t error) {
-            Serial.printf("Error[%u]: ", error);
-            if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-            else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-            else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-            else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-            else if (error == OTA_END_ERROR) Serial.println("End Failed");
-        });
+    //         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+    //         Serial.println("Start updating " + type);
+    //     })
+    //     .onEnd([]() {
+    //         Serial.println("\nEnd");
+    //     })
+    //     .onProgress([](unsigned int progress, unsigned int total) {
+    //         Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    //     })
+    //     .onError([](ota_error_t error) {
+    //         Serial.printf("Error[%u]: ", error);
+    //         if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+    //         else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+    //         else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+    //         else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+    //         else if (error == OTA_END_ERROR) Serial.println("End Failed");
+    //     });
 
-    ArduinoOTA.begin();
+    // ArduinoOTA.begin();
 
 	debug.init();
 	debug.addOption(STARTUP, "STARTUP");
@@ -260,35 +209,14 @@ void setup()
 
     setupBLE();
 
-	// print_reset_reason(rtc_get_reset_reason(0), 0);
-	// print_reset_reason(rtc_get_reset_reason(1), 1);
-
-  	//while (!Serial) {;}
-
 	/** Define which ports to use as UART */
 
 	bool vescOnline = getVescValues();
-	debug.print(STARTUP, "%s\n", vescOnline ? "VESC Online!" : "ERROR: VESC Offline!");
+	// debug.print(STARTUP, "%s\n", vescOnline ? "VESC Online!" : "ERROR: VESC Offline!");
 
 	runner.startNow();
-	//runner.addTask(tSendToVESC);
-	//tSendToVESC.enable();
 	runner.addTask(tGetFromVESC);
 	tGetFromVESC.enable();
-
-	// debug.print(STARTUP, "Starting Core 0 \n");
-
-	// debug.print(STARTUP, "loop() core: %d \n", xPortGetCoreID());
-
-	xTaskCreatePinnedToCore (
-		codeForRF24CommsRxTask,	// function
-		"RF24 Comms Rx Task",		// name
-		10000,			// stack
-		NULL,			// parameter
-		1,				// priority
-		&RF24CommsRxTask,	// handle
-		0);				// port	
-	vTaskDelay(100);
 }
 
 //*************************************************************
@@ -297,37 +225,21 @@ long now = 0;
 
 void loop() {
 
-	esp_task_wdt_feed();
+	// esp_task_wdt_feed();
 
 	runner.execute();
-
-	vTaskDelay( 10 );
-
- 	ArduinoOTA.handle();
-	// Serial.printf(".");
-
-	Blynk.run();
 }
 //*************************************************************
-long nowms = 0;
 bool controllerOnline = true;
 
-void codeForRF24CommsRxTask( void *parameter ) {
-
-	debug.print(STARTUP, "codeForReceiverTask() core: %d \n", xPortGetCoreID());
-
-	for (;;) {
-
-		vTaskDelay( 10 );
-	}
-	vTaskDelete(NULL);
-}
 //--------------------------------------------------------------
 void sendToStick() {
-	char buff[6];
-	ltoa(millis(), buff, 10);
-	pCharacteristic->setValue(buff);
-	Serial.printf("notifying!\n");
+
+	uint8_t bs[sizeof(stickdata)];
+	memcpy(bs, &stickdata, sizeof(stickdata));
+
+	pCharacteristic->setValue(bs, sizeof(bs));
+	// Serial.printf("notifying!: %0.1f\n", stickdata.batteryVoltage);
 	pCharacteristic->notify();
 }
 //--------------------------------------------------------------
@@ -374,18 +286,21 @@ bool getVescValues() {
     bool success = UART.getVescValues();
 	if ( success ) {
 
+		stickdata.batteryVoltage = UART.data.inpVoltage;
+		ampHours = UART.data.ampHours;
+		stickdata.moving = UART.data.tachometer > 100;
+		stickdata.motorCurrent = UART.data.avgMotorCurrent;
+		stickdata.vescOnline = true;
+
 		Serial.printf("inpVoltage: %.1f\n", UART.data.inpVoltage);
 		Serial.printf("ampHours: %.1f\n", UART.data.ampHours);
 		Serial.printf("rpm: %ul\n", UART.data.rpm);
-		bool moving = UART.data.rpm > 100;
+		// bool moving = UART.data.rpm > 100;
 		bool accelerating = UART.data.avgMotorCurrent > 0.2;
-		Serial.printf("moving: %d accelerating: %d \n", moving, accelerating);
+		Serial.printf("moving: %d accelerating: %d \n", stickdata.moving, accelerating);
 		Serial.printf("motor current: %.1f\n", UART.data.avgMotorCurrent);
 		Serial.printf("Odometer: %ul\n", UART.data.tachometerAbs/42);
 
-		batteryVoltage = UART.data.inpVoltage;
-		ampHours = UART.data.ampHours;
-		moving = UART.data.tachometer > 100;
 		// esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
 		// esk8.boardPacket.odometer = UART.data.tachometerAbs/42;
 		// esk8.boardPacket.areMoving = UART.data.rpm > 100;
@@ -402,31 +317,36 @@ bool getVescValues() {
 		// Serial.print("tachometerAbs: "); 	Serial.println(UART.data.tachometerAbs);
 	}
 	else {
+		stickdata.vescOnline = false;
+		stickdata.batteryVoltage = 0.0;
+		stickdata.moving = false;
+		stickdata.motorCurrent = 0.0;
+
 		debug.print(VESC_COMMS, "vescOnline = false\n");	
 	}
     return success;
 }
 //--------------------------------------------------------------
-void print_reset_reason(RESET_REASON reason, int cpu)
-{
-	debug.print(STARTUP, "Reboot reason (CPU%d): ", cpu);
-	switch ( reason)
-	{
-		case 1 :  debug.print(STARTUP, "POWERON_RESET \n");break;          /**<1, Vbat power on reset*/
-		case 3 :  debug.print(STARTUP, "SW_RESET \n");break;               /**<3, Software reset digital core*/
-		case 4 :  debug.print(STARTUP, "OWDT_RESET \n");break;             /**<4, Legacy watch dog reset digital core*/
-		case 5 :  debug.print(STARTUP, "DEEPSLEEP_RESET \n");break;        /**<5, Deep Sleep reset digital core*/
-		case 6 :  debug.print(STARTUP, "SDIO_RESET \n");break;             /**<6, Reset by SLC module, reset digital core*/
-		case 7 :  debug.print(STARTUP, "TG0WDT_SYS_RESET \n");break;       /**<7, Timer Group0 Watch dog reset digital core*/
-		case 8 :  debug.print(STARTUP, "TG1WDT_SYS_RESET \n");break;       /**<8, Timer Group1 Watch dog reset digital core*/
-		case 9 :  debug.print(STARTUP, "RTCWDT_SYS_RESET \n");break;       /**<9, RTC Watch dog Reset digital core*/
-		case 10 : debug.print(STARTUP, "INTRUSION_RESET \n");break;       /**<10, Instrusion tested to reset CPU*/
-		case 11 : debug.print(STARTUP, "TGWDT_CPU_RESET \n");break;       /**<11, Time Group reset CPU*/
-		case 12 : debug.print(STARTUP, "SW_CPU_RESET \n");break;          /**<12, Software reset CPU*/
-		case 13 : debug.print(STARTUP, "RTCWDT_CPU_RESET \n");break;      /**<13, RTC Watch dog Reset CPU*/
-		case 14 : debug.print(STARTUP, "EXT_CPU_RESET \n");break;         /**<14, for APP CPU, reseted by PRO CPU*/
-		case 15 : debug.print(STARTUP, "RTCWDT_BROWN_OUT_RESET \n");break;/**<15, Reset when the vdd voltage is not stable*/
-		case 16 : debug.print(STARTUP, "RTCWDT_RTC_RESET \n");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
-		default : debug.print(STARTUP, "NO_MEAN\n");
-	}
-}
+// void print_reset_reason(RESET_REASON reason, int cpu)
+// {
+// 	debug.print(STARTUP, "Reboot reason (CPU%d): ", cpu);
+// 	switch ( reason)
+// 	{
+// 		case 1 :  debug.print(STARTUP, "POWERON_RESET \n");break;          /**<1, Vbat power on reset*/
+// 		case 3 :  debug.print(STARTUP, "SW_RESET \n");break;               /**<3, Software reset digital core*/
+// 		case 4 :  debug.print(STARTUP, "OWDT_RESET \n");break;             /**<4, Legacy watch dog reset digital core*/
+// 		case 5 :  debug.print(STARTUP, "DEEPSLEEP_RESET \n");break;        /**<5, Deep Sleep reset digital core*/
+// 		case 6 :  debug.print(STARTUP, "SDIO_RESET \n");break;             /**<6, Reset by SLC module, reset digital core*/
+// 		case 7 :  debug.print(STARTUP, "TG0WDT_SYS_RESET \n");break;       /**<7, Timer Group0 Watch dog reset digital core*/
+// 		case 8 :  debug.print(STARTUP, "TG1WDT_SYS_RESET \n");break;       /**<8, Timer Group1 Watch dog reset digital core*/
+// 		case 9 :  debug.print(STARTUP, "RTCWDT_SYS_RESET \n");break;       /**<9, RTC Watch dog Reset digital core*/
+// 		case 10 : debug.print(STARTUP, "INTRUSION_RESET \n");break;       /**<10, Instrusion tested to reset CPU*/
+// 		case 11 : debug.print(STARTUP, "TGWDT_CPU_RESET \n");break;       /**<11, Time Group reset CPU*/
+// 		case 12 : debug.print(STARTUP, "SW_CPU_RESET \n");break;          /**<12, Software reset CPU*/
+// 		case 13 : debug.print(STARTUP, "RTCWDT_CPU_RESET \n");break;      /**<13, RTC Watch dog Reset CPU*/
+// 		case 14 : debug.print(STARTUP, "EXT_CPU_RESET \n");break;         /**<14, for APP CPU, reseted by PRO CPU*/
+// 		case 15 : debug.print(STARTUP, "RTCWDT_BROWN_OUT_RESET \n");break;/**<15, Reset when the vdd voltage is not stable*/
+// 		case 16 : debug.print(STARTUP, "RTCWDT_RTC_RESET \n");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
+// 		default : debug.print(STARTUP, "NO_MEAN\n");
+// 	}
+// }
