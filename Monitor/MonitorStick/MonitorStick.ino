@@ -43,6 +43,8 @@ struct STICK_DATA {
 	bool vescOnline;
 };
 STICK_DATA stickdata;
+
+int currentLocalBatteryCharge = 0;
 /* ---------------------------------------------- */
 static BLEAddress *pServerAddress;
 static boolean doConnect = false;
@@ -91,7 +93,7 @@ void listener_Button(int eventCode, int eventPin, int eventParam) {
 		case button.EV_RELEASED:
 			Serial.println("EV_RELEASED");
             if (eventParam >= 2) {
-                pureDeepSleep();
+                deepSleep();
             }            
             else if (display_mode == MODE_BATTERY_VOLTAGE) {
                 display_mode = MODE_MOTOR_CURRENT;
@@ -117,6 +119,16 @@ void listener_Button(int eventCode, int eventPin, int eventParam) {
 }
 
 //--    
+
+class MyClientCallback : public BLEClientCallbacks {
+  void onConnect(BLEClient* pclient) {
+      lcdMessage("connected! (1)");
+  }
+
+  void onDisconnect(BLEClient* pclient) {
+    lcdMessage("disconnected!");
+  }
+};
 
 static void notifyCallback(
     BLERemoteCharacteristic* pBLERemoteCharacteristic,
@@ -161,6 +173,42 @@ static void notifyCallback(
     }
 }
 
+#define IP5306_ADDR           (117)
+#define IP5306_REG_READ0      (0x70)
+#define CHARGE_FULL_BIT       (   3)
+#define BOOST_OUT_BIT         (0x02)
+#define LIGHT_LOAD_BIT 		  (0x20)
+#define CHARGE_OUT_BIT        (0x10)
+#define BOOST_ENABLE_BIT      (0x80)
+
+bool isCharging() {
+	uint8_t data;
+	Wire.beginTransmission(IP5306_ADDR);
+	Wire.write(IP5306_REG_READ0);
+	Wire.endTransmission(false);
+	if (Wire.requestFrom(IP5306_ADDR, 1))
+	{
+		data = Wire.read();
+		return data & (1 << CHARGE_FULL_BIT);
+	}
+	return false;
+}
+
+int8_t getBatteryLevel() {
+    Wire.beginTransmission(0x75);
+    Wire.write(0x78);
+    if (Wire.endTransmission(false) == 0 && Wire.requestFrom(0x75, 1)) {
+        switch (Wire.read() & 0xF0) {
+        case 0xE0: return 25;
+        case 0xC0: return 50;
+        case 0x80: return 75;
+        case 0x00: return 100;
+        default: return 0;
+        }
+    }
+    return -1;
+}
+
 void setup() {
     // put your setup code here, to run once:
     Wire.begin(21, 22, 100000);
@@ -170,9 +218,14 @@ void setup() {
     Serial.begin(9600);
     Serial.println("\nStarting Arduino BLE Client application...");
 
-    u8g2.setFont(u8g2_font_4x6_tr);
-    
     setupPeripherals();
+
+    // if button held then we can shut down
+    button.serviceEvents();
+    while (button.isPressed()) {
+        button.serviceEvents();
+    }
+    button.serviceEvents();
     
     bleConnectToServer();
 }
@@ -182,6 +235,8 @@ long now = 0;
 void loop()
 {
     button.serviceEvents();
+
+    currentLocalBatteryCharge = getBatteryLevel();
 
     delay(200);
 }
@@ -256,9 +311,11 @@ bool bleConnectToServer() {
     BLEDevice::init("");
     lcdMessage("searching");
     delay(1000);
+    // pServerAddress = new BLEAddress("80:7d:3a:c4:50:9a");   
     pServerAddress = new BLEAddress("80:7d:3a:c5:6a:36");
     delay(1000);
     BLEClient* pClient = BLEDevice::createClient();
+    pClient->setClientCallbacks(new MyClientCallback());
     pClient->connect(*pServerAddress);
     Serial.println("Connected to server");
     lcdMessage("connected!");
@@ -281,6 +338,7 @@ void setupPeripherals() {
     digitalWrite(BuzzerPin, LOW);
     // delay(1500);
     // mpu9250_read();
+    u8g2.setFont(u8g2_font_4x6_tr);
 }
 
 #define BATTERY_WIDTH	100
@@ -312,8 +370,8 @@ void drawBattery(int percent) {
 }
 
 void deepSleep() {
-    digitalWrite(LedPin, LOW);
-    lcdMessage("sleeping");
+    digitalWrite(LedPin, LED_OFF);
+    u8g2.setPowerSave(1);
     delay(500);
     pureDeepSleep();
 }
