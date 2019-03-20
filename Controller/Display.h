@@ -251,15 +251,15 @@ void updateDisplay() {
 
 		vTaskDelay( 1 );
 
-	    if ( currentFailRatio == 1 ) {
-	        pushTextToMiddleOfSprite(&img_middle, "BOARD OFFLINE!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_RED);
-	        img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
-	    }
-	    else if ( false == esk8.boardPacket.vescOnline ) {
-	        pushTextToMiddleOfSprite(&img_middle, "VESC OFFLINE!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_RED);
-	        img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
-	    }
-	    else  {
+	    // if ( currentFailRatio == 1 ) {
+	    //     pushTextToMiddleOfSprite(&img_middle, "BOARD OFFLINE!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_RED);
+	    //     img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
+	    // }
+	    // else if ( false == esk8.boardPacket.vescOnline ) {
+	    //     pushTextToMiddleOfSprite(&img_middle, "VESC OFFLINE!", /*x*/0, /*y*/(240/2) - (img_middle.height()/2), TFT_RED);
+	    //     img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
+	    // }
+	    // else  {
 	    	// odometer
 	    	int32_t tripmeters = rotations_to_meters(esk8.boardPacket.odometer);
 			dtostrf(tripmeters/1000.0, 4, 1, value);
@@ -271,6 +271,6 @@ void updateDisplay() {
 			dtostrf(esk8.boardPacket.batteryVoltage, 4, 1, value);
 	    	populateMediumWidget( &img_middle, value, "BATTERY (v)", /*warning*/ warning);
 		    img_middle.pushSprite(0, (240/2) - (img_middle.height()/2));
-	    }
+	    // }
 	}
 }

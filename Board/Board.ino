@@ -72,8 +72,8 @@ long lastSentToController = 0;
 // #include "Esk8EspNow.h"
 
 //--------------------------------------------------------------------------------
-#define 	VESC_UART_RX		16		// orange - VESC 5
-#define 	VESC_UART_TX		17		// green - VESC 6
+#define 	VESC_UART_RX		17		// orange - VESC 5
+#define 	VESC_UART_TX		16		// green - VESC 6
 #define 	VESC_UART_BAUDRATE	19200	// old: 9600
 
 HardwareSerial Serial1(2);
@@ -169,7 +169,7 @@ void setup()
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
 	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP );
+	debug.setFilter( STARTUP | VESC_COMMS );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -181,6 +181,8 @@ void setup()
 
 	/** Define which ports to use as UART */
 	UART.setSerialPort(&Serial1);
+
+	// while(!Serial1) {;}
 
 	bool vescOnline = getVescValues();
 	debug.print(STARTUP, "%s\n", vescOnline ? "VESC Online!" : "ERROR: VESC Offline!");
@@ -297,7 +299,7 @@ bool getVescValues() {
     esk8.boardPacket.vescOnline = success;
 	if ( success ) {
 		esk8.boardPacket.batteryVoltage = UART.data.inpVoltage;
-		esk8.boardPacket.odometer = UART.data.tachometer;
+		esk8.boardPacket.odometer = UART.data.tachometerAbs/42;
 		esk8.boardPacket.areMoving = UART.data.rpm > 100;
 		Serial.printf("areMoving: %d\n", esk8.boardPacket.areMoving);
 
