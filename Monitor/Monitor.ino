@@ -67,16 +67,33 @@ Scheduler runner;
 
 bool ledOn;
 
+bool firstTime = false;
+
 void tGetFromVESC_callback();
 Task tGetFromVESC( GET_FROM_VESC_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback );
 void tGetFromVESC_callback() {
+
+	char message[100];
+	char battString[6];
 
 	if (getVescValues() == false) {
 		// vesc offline
 	}
 	else {
 		Blynk.virtualWrite(V0, stickdata.batteryVoltage);
+		if (firstTime == false) {
+			firstTime = true;
+			sendBlynkNotification();
+		}
 	}
+}
+
+void sendBlynkNotification() {
+	char buff[8]; // Buffer big enough for 7-character float
+	dtostrf(stickdata.batteryVoltage, 2, 1, battString); // Leave room for too large numbers!
+	sprintf(message, "Battery: %sv", battString);
+	Serial.printf("%s\n", message);
+	Blynk.notify(message);
 }
 
 /**************************************************************/
