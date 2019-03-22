@@ -21,14 +21,12 @@
 #include <Arduino.h>
 
 // TODO: Make vesc_serial a parameter of vesc_comm_init.
-#ifdef DEBUG
-    #define D(x) Serial.println(x)
-    #include "SoftwareSerial.h"
-    SoftwareSerial vesc_serial(13, 14); // RX, TX
-#else
-    #define D(x)
-    HardwareSerial &vesc_serial = Serial;
-#endif
+HardwareSerial vesc_serial(2);  // &vesc_serial = Serial1;
+
+// #include <SoftwareSerial.h>
+
+// SoftwareSerial vesc_serial(16, 17, false, 256);
+
 
 #define PACKET_GET_VALUES_TYPE 4
 #define PACKET_LENGTH_IDENTIFICATION_BYTE_SHORT 2
@@ -113,6 +111,7 @@ uint8_t vesc_comm_receive_packet(uint8_t *vesc_packet, uint16_t timeout) {
             if (bytes_read >= expected_packet_length(payload_length))
                 break;
         }
+        yield();
     }
     // read any left-over bytes without storing
     while (vesc_serial.available()) {
@@ -135,33 +134,33 @@ uint32_t get_long(uint8_t *packet, uint8_t index) {
 
 bool vesc_comm_is_expected_packet(uint8_t *vesc_packet, uint8_t packet_length) {
     if (packet_length < 3) {
-        D("packet too short (" + String(packet_length) + " bytes)");
+        //D("packet too short (" + String(packet_length) + " bytes)");
         return false;
     }
 
     if (vesc_packet[0] != PACKET_LENGTH_IDENTIFICATION_BYTE_SHORT) {
-        D("unexpected length id byte: expected " + String(PACKET_LENGTH_IDENTIFICATION_BYTE_SHORT) +
-          ", got " + String(vesc_packet[0]));
+        //D("unexpected length id byte: expected " + String(PACKET_LENGTH_IDENTIFICATION_BYTE_SHORT) +
+          //", got " + String(vesc_packet[0]));
         return false;
     }
 
     if (vesc_packet[2] != PACKET_GET_VALUES_TYPE) {
-        D("unexpected packet type: expected " + String(PACKET_GET_VALUES_TYPE) +
-          ", got " + String(vesc_packet[2]));
+        //D("unexpected packet type: expected " + String(PACKET_GET_VALUES_TYPE) +
+        //   ", got " + String(vesc_packet[2]));
         return false;
     }
 
     uint8_t payload_length = vesc_packet[1];
     if (packet_length != expected_packet_length(payload_length)) {
-        D("packet length (" + String(payload_length) + ") does not correspond to the payload length (" +
-          String(payload_length) + ")");
+        // D("packet length (" + String(payload_length) + ") does not correspond to the payload length (" +
+        //   String(payload_length) + ")");
         return false;
     }
 
     uint16_t crc = get_word(vesc_packet, payload_length + 2);
     uint16_t expected_crc = crc16(&vesc_packet[2], payload_length);
     if (crc != expected_crc) {
-        D("CRC error: expected " + String(expected_crc) + ", got " + String(crc));
+        // D("CRC error: expected " + String(expected_crc) + ", got " + String(crc));
         return false;
     }
 

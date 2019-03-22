@@ -2,7 +2,7 @@
 
 uint8_t vesc_packet[PACKET_MAX_LENGTH];
 
-#define DEBUG
+//#define DEBUG
 
 void setup() {
   Serial.begin(9600);
@@ -12,5 +12,7 @@ void setup() {
 
 void loop() {
   uint8_t bytes_read = vesc_comm_fetch_packet(vesc_packet);
-  delay(200);
+  float current_volts = vesc_comm_get_voltage(vesc_packet);
+  Serial.printf("voltage: %.1f\n", current_volts);
+  delay(1000);
 }
