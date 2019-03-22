@@ -1,9 +1,7 @@
 
 #include <OnlineStatusLib.h>
-#include <ESP8266VESC.h>
-#include <VescUart.h>	// https://github.com/SolidGeek/VescUart
-#include "datatypes.h"
 #include <debugHelper.h>
+#include "vesc_comm.h";
 // #include <rom/rtc.h>
 // #include <esp_int_wdt.h>
 // #include <esp_task_wdt.h>
@@ -15,6 +13,7 @@
 #include <ESPmDNS.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include <BlynkSimpleEsp32.h>
 
 /*--------------------------------------------------------------------------------*/
 
@@ -23,28 +22,24 @@ const char file_name[] = __FILE__;
 
 //--------------------------------------------------------------
 
-VescUart UART;
+uint8_t vesc_packet[PACKET_MAX_LENGTH];
 
-#define 	CONTROLLER_TIMEOUT							500
-#define 	CONTROLLER_CONSECUTIVE_TIMEOUTS_ALLOWANCE	1
-#define 	GET_VESC_DATA_AND_SEND_TO_CONTROLLER_INTERVAL	1000
-#define 	SEND_TO_VESC_INTERVAL						200
 #define 	GET_FROM_VESC_INTERVAL						1000
-
 
 struct STICK_DATA {
 	float batteryVoltage;
 	float motorCurrent;
 	bool moving;
 	bool vescOnline;
+	float ampHours;
 };
 STICK_DATA stickdata;
-
-float ampHours = 0.0;
 
 //--------------------------------------------------------------------------------
 
 char auth[] = "5db4749b3d1f4aa5846fc01dfaf2188a";
+
+#define BLYNK_PRINT Serial
 
 //--------------------------------------------------------------------------------
 #define	STARTUP 			1 << 0	// 1
@@ -61,10 +56,6 @@ debugHelper debug;
 // #define 	VESC_UART_RX		16		// orange
 // #define 	VESC_UART_TX		17		// green
 #define 	VESC_UART_BAUDRATE	115200	// old: 19200
-
-HardwareSerial VescSerial(2);
-
-#define INBUILT_LED	2
 
 //--------------------------------------------------------------
 
@@ -83,6 +74,9 @@ void tGetFromVESC_callback() {
 	if (getVescValues() == false) {
 		// vesc offline
 	}
+	else {
+		Blynk.virtualWrite(V0, stickdata.batteryVoltage);
+	}
 }
 
 /**************************************************************/
@@ -90,6 +84,7 @@ void tGetFromVESC_callback() {
 void vescOfflineCallback() {
 	debug.print(STATUS, "vescOfflineCallback();\n");
 }
+
 void vescOnlineCallback() {
 	debug.print(STATUS, "vescOnlineCallback();\n");
 }
@@ -112,43 +107,13 @@ void setup()
 
     Serial.println("Starting BLE work!");
 
-	pinMode(INBUILT_LED, OUTPUT);
+  	vesc_comm_init(VESC_UART_BAUDRATE);
 
-	VescSerial.begin(VESC_UART_BAUDRATE);
-	UART.setSerialPort(&VescSerial);
+	setupWifiOTA();
 
+	Blynk.begin(auth, ssid, pass);
+	
 	Serial.println("Ready");
-
-	// ArduinoOTA.setHostname("Monitor OTA");  // For OTA - Use your own device identifying name
-	// ArduinoOTA.begin();  // For OTA
-
-    // ArduinoOTA
-    //     .onStart([]() {
-    //         String type;
-    //         if (ArduinoOTA.getCommand() == U_FLASH)
-    //         type = "sketch";
-    //         else // U_SPIFFS
-    //         type = "filesystem";
-
-    //         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    //         Serial.println("Start updating " + type);
-    //     })
-    //     .onEnd([]() {
-    //         Serial.println("\nEnd");
-    //     })
-    //     .onProgress([](unsigned int progress, unsigned int total) {
-    //         Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-    //     })
-    //     .onError([](ota_error_t error) {
-    //         Serial.printf("Error[%u]: ", error);
-    //         if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    //         else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    //         else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    //         else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    //         else if (error == OTA_END_ERROR) Serial.println("End Failed");
-    //     });
-
-    // ArduinoOTA.begin();
 
 	debug.init();
 	debug.addOption(STARTUP, "STARTUP");
@@ -182,8 +147,12 @@ long now = 0;
 void loop() {
 
 	// esp_task_wdt_feed();
+	
+	ArduinoOTA.handle();
 
 	runner.execute();
+
+	Blynk.run();
 }
 //*************************************************************
 bool controllerOnline = true;
@@ -203,33 +172,76 @@ bool getVescValues() {
 		long tachometerAbs;
 	}; */
 
-    bool success = UART.getVescValues();
+    bool success = vesc_comm_fetch_packet(vesc_packet) > 0;
+
 	if ( success ) {
 
-		stickdata.batteryVoltage = UART.data.inpVoltage;
-		ampHours = UART.data.ampHours;
-		stickdata.moving = UART.data.tachometer > 100;
-		stickdata.motorCurrent = UART.data.avgMotorCurrent;
+		stickdata.batteryVoltage = vesc_comm_get_voltage(vesc_packet);
+		// ampHours = UART.data.ampHours;
+		stickdata.moving = vesc_comm_get_tachometer_abs(vesc_packet) > 100;
+		stickdata.motorCurrent = vesc_comm_get_motor_current(vesc_packet);	// UART.data.avgMotorCurrent;
+		stickdata.ampHours = vesc_comm_get_amphours_discharged(vesc_packet);
 		stickdata.vescOnline = true;
 
-		Serial.printf("inpVoltage: %.1f\n", UART.data.inpVoltage);
-		Serial.printf("ampHours: %.1f\n", UART.data.ampHours);
-		Serial.printf("rpm: %ul\n", UART.data.rpm);
+		debug.print(VESC_COMMS, "inpVoltage: %.1f\n", stickdata.batteryVoltage);
+		debug.print(VESC_COMMS, "ampHours: %.1f\n", stickdata.ampHours);
 		// bool moving = UART.data.rpm > 100;
-		bool accelerating = UART.data.avgMotorCurrent > 0.2;
-		Serial.printf("moving: %d accelerating: %d \n", stickdata.moving, accelerating);
-		Serial.printf("motor current: %.1f\n", UART.data.avgMotorCurrent);
-		Serial.printf("Odometer: %ul\n", UART.data.tachometerAbs/42);
+		// bool accelerating = UART.data.avgMotorCurrent > 0.2;
+		// Serial.printf("moving: %d accelerating: %d \n", stickdata.moving, accelerating);
+		// Serial.printf("motor current: %.1f\n", UART.data.avgMotorCurrent);
+		// Serial.printf("Odometer: %ul\n", UART.data.tachometerAbs/42);
 	}
 	else {
 		stickdata.vescOnline = false;
 		stickdata.batteryVoltage = 0.0;
 		stickdata.moving = false;
 		stickdata.motorCurrent = 0.0;
-
 		debug.print(VESC_COMMS, "vescOnline = false\n");	
 	}
     return success;
+}
+
+void setupWifiOTA() {
+
+	WiFi.mode(WIFI_STA);
+	WiFi.begin(ssid, password);
+	while (WiFi.waitForConnectResult() != WL_CONNECTED) {
+		Serial.println("Connection Failed! Rebooting...");
+		delay(5000);
+		ESP.restart();
+	}
+	debug.print(STARTUP, "Connected to Wifi\n");
+
+	ArduinoOTA.setHostname("Monitor OTA");  // For OTA - Use your own device identifying name
+	ArduinoOTA.begin();  // For OTA
+
+    ArduinoOTA
+        .onStart([]() {
+            String type;
+            if (ArduinoOTA.getCommand() == U_FLASH)
+            type = "sketch";
+            else // U_SPIFFS
+            type = "filesystem";
+
+            // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+            Serial.println("Start updating " + type);
+        })
+        .onEnd([]() {
+            Serial.println("\nEnd");
+        })
+        .onProgress([](unsigned int progress, unsigned int total) {
+            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+        })
+        .onError([](ota_error_t error) {
+            Serial.printf("Error[%u]: ", error);
+            if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+            else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+            else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+            else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+            else if (error == OTA_END_ERROR) Serial.println("End Failed");
+        });
+
+    ArduinoOTA.begin();
 }
 //--------------------------------------------------------------
 // void print_reset_reason(RESET_REASON reason, int cpu)
