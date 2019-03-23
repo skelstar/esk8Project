@@ -15,6 +15,15 @@
 #include <ArduinoOTA.h>
 #include <BlynkSimpleEsp32.h>
 
+// #include "FS.h";
+// #include "SPIFFS.h";
+// #include "ArduinoJson.h";
+
+#include <Preferences.h>;
+
+#define FORMAT_SPIFFS_IF_FAILED true
+
+
 /*--------------------------------------------------------------------------------*/
 
 const char compile_date[] = __DATE__ " " __TIME__;
@@ -34,6 +43,12 @@ struct STICK_DATA {
 	float ampHours;
 };
 STICK_DATA stickdata;
+
+struct FileData {
+	float totalAmpHoursUsed;
+	char* test;
+};
+FileData data;
 
 //--------------------------------------------------------------------------------
 
@@ -63,6 +78,11 @@ debugHelper debug;
 
 //--------------------------------------------------------------
 
+Preferences preferences;
+
+#define DATA_NAMESPACE 	"data"
+#define DATA_AMP_HOURS	"totalAmpHours"
+
 Scheduler runner;
 
 bool ledOn;
@@ -72,9 +92,6 @@ bool firstTime = false;
 void tGetFromVESC_callback();
 Task tGetFromVESC( GET_FROM_VESC_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback );
 void tGetFromVESC_callback() {
-
-	char message[100];
-	char battString[6];
 
 	if (getVescValues() == false) {
 		// vesc offline
@@ -89,7 +106,8 @@ void tGetFromVESC_callback() {
 }
 
 void sendBlynkNotification() {
-	char buff[8]; // Buffer big enough for 7-character float
+	char message[100];
+	char battString[6];
 	dtostrf(stickdata.batteryVoltage, 2, 1, battString); // Leave room for too large numbers!
 	sprintf(message, "Battery: %sv", battString);
 	Serial.printf("%s\n", message);
@@ -116,13 +134,13 @@ OnlineStatusLib vescStatus(
 
 bool deviceConnected = false;
 
+char* filename = "/data.txt";
+
 //--------------------------------------------------------------------------------
 
 void setup()
 {
 	Serial.begin(9600);
-
-    Serial.println("Starting BLE work!");
 
   	vesc_comm_init(VESC_UART_BAUDRATE);
 
@@ -142,7 +160,7 @@ void setup()
 	// debug.setFilter( STARTUP | STATUS | CONTROLLER_COMMS );
 	// debug.setFilter( STARTUP | CONTROLLER_COMMS | DEBUG );
 	// debug.setFilter( STARTUP | VESC_COMMS | CONTROLLER_COMMS | HARDWARE);
-	debug.setFilter( STARTUP | VESC_COMMS );
+	debug.setFilter( STARTUP );
 
     debug.print(STARTUP, "%s\n", file_name);
 	debug.print(STARTUP, "%s\n", compile_date);
@@ -155,6 +173,29 @@ void setup()
 	runner.startNow();
 	runner.addTask(tGetFromVESC);
 	tGetFromVESC.enable();
+
+	float counter = recallFloat(DATA_AMP_HOURS);
+	preferences.begin("my-app", false);
+	preferences.remove("counter");
+	preferences.end();
+	// float counter = preferences.getFloat("counter", 0);
+
+	debug.print(STARTUP, "check: %f\n", counter);
+	// preferences.clear();
+
+	counter += 0.1;
+	// preferences.putFloat("counter", counter);
+	storeFloat(DATA_AMP_HOURS, counter);
+
+	// preferences.end();
+
+    // if(!SPIFFS.begin(FORMAT_SPIFFS_IF_FAILED)){
+    //     Serial.println("SPIFFS Mount Failed");
+    //     return;
+    // }
+
+    // writeFile(SPIFFS, filename, "{ \"totalAmpHoursUsed\" : 1.23, \"test\": \"test1\" }");
+	// readFile(SPIFFS, filename);
 }
 
 //*************************************************************
@@ -284,3 +325,54 @@ void setupWifiOTA() {
 // 		default : debug.print(STARTUP, "NO_MEAN\n");
 // 	}
 // }
+
+void storeFloat(char* name, float value) {
+	Serial.printf("Writing %f to: %s\n", value, name);
+	preferences.begin(DATA_NAMESPACE, false);	// r/w
+	preferences.putFloat(name, value);
+	preferences.end();
+}
+
+float recallFloat(char* name) {
+	preferences.begin(DATA_NAMESPACE, false);	// r/w
+	float result = preferences.getFloat(name, 0.0);
+	Serial.printf("REcalled %f from %s\n", result, name);
+	preferences.end();
+	return result;
+}
+
+// //--------------------------------------------------------------
+// void readFile(fs::FS &fs, const char * path) {
+//     Serial.printf("Reading file: %s\r\n", path);
+
+//     File file = fs.open(path);
+//     if(!file || file.isDirectory()){
+//         Serial.println("- failed to open file for reading");
+//         return;
+//     }
+
+// 	StaticJsonDocument<512> doc;
+// 	DeserializationError error = deserializeJson(doc, file);
+// 	if (error) {
+// 		Serial.println(F("Failed to read file, using default configuration"));
+// 	}
+// 	else {
+// 		Serial.printf("file has: %.1f\n", doc["test"]);
+// 	}
+// }
+// //--------------------------------------------------------------
+// void writeFile(fs::FS &fs, const char * path, const char * message){
+//     Serial.printf("Writing file: %s\r\n", path);
+
+//     File file = fs.open(path, FILE_WRITE);
+//     if(!file){
+//         Serial.println("- failed to open file for writing");
+//         return;
+//     }
+//     if(file.print(message)){
+//         Serial.println("- file written");
+//     } else {
+//         Serial.println("- frite failed");
+//     }
+// }
+// //--------------------------------------------------------------
