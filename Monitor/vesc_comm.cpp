@@ -21,8 +21,8 @@
 #include <Arduino.h>
 
 // TODO: Make vesc_serial a parameter of vesc_comm_init.
-HardwareSerial vesc_serial(2);  // &vesc_serial = Serial1;
-
+// HardwareSerial vesc_serial(2);  // &vesc_serial = Serial1;
+HardwareSerial &vesc_serial = Serial;
 // #include <SoftwareSerial.h>
 
 // SoftwareSerial vesc_serial(16, 17, false, 256);
