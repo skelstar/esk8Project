@@ -9,6 +9,9 @@
 #define TFT_SCLK 5
 #define TFT_RST 9
 
+// https://trolsoft.ru/en/articles/rgb565-color-picker
+#define ST7735_DARK_GREY	0x6B4D
+
 Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_MOSI, TFT_SCLK, TFT_RST); 
 
 /*
@@ -228,10 +231,14 @@ void drawBattery(int percent, float voltage) {
 	tft.setTextColor(ST7735_RED);
 	//tft.print(voltage);
 
+	int pixelSize = 3;
+	int spacing = 2;
 	char buff[8];
 	char value[5];
 	dtostrf(voltage, 4, 1, value);
 	sprintf(buff, "%sv", value);
-	int x = 128/2 - (4 * 3) + (2 * 4) + 3;
-	tft_util_draw_number(&tft, buff, /*x*/x, /*y*/outsideY+BATTERY_HEIGHT + 2, ST7735_ORANGE, ST7735_BLACK, /*spacing*/2, /*pixel*/3);
+	int numberSize = (4 * pixelSize * 3) + (4 * spacing) + 3;
+	int x = 128/2 - numberSize/2;
+	int y = outsideY+BATTERY_HEIGHT + 2;
+	tft_util_draw_number(&tft, buff, x, y, ST7735_DARK_GREY, ST7735_BLACK, spacing, pixelSize);
 }
