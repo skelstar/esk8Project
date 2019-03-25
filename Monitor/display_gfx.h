@@ -191,13 +191,27 @@ void tft_util_draw_number(
 		}
     }
 }
+
+#define BATTERY_VOLTAGE_CUTOFF_START    37.4
+#define BATTERY_VOLTAGE_CUTOFF_END      34.1
+#define BATTERY_VOLTAGE_FULL            4.2 * 11
+
 //-----------------------------------------------------
-void drawBattery(int percent, float voltage) {
+void drawBattery(float voltage) {
+
+	uint8_t percent = ((voltage - BATTERY_VOLTAGE_CUTOFF_END) / 
+					(BATTERY_VOLTAGE_FULL - BATTERY_VOLTAGE_CUTOFF_END)) * 100;
+	if (percent > 100) {
+		percent = 100;
+	}
+
     // u8g2.clearBuffer();
 	int middleOffset = 0;
     int outsideX = (128-(BATTERY_WIDTH+BORDER_SIZE))/2; // includes batt knob
     int outsideY = (128-BATTERY_HEIGHT)/2 + middleOffset;
-	tft.fillScreen(ST7735_BLACK);	// clear screen
+	int16_t bgColour = voltage > BATTERY_VOLTAGE_CUTOFF_START ? ST7735_BLACK : ST7735_RED;
+	
+	tft.fillScreen(bgColour);	// clear screen
 	tft.fillRect(
 		outsideX, 
 		outsideY, 
@@ -217,19 +231,17 @@ void drawBattery(int percent, float voltage) {
 		outsideY + BORDER_SIZE, 
 		BATTERY_WIDTH - BORDER_SIZE*2, 
 		BATTERY_HEIGHT - BORDER_SIZE*2,
-		ST7735_BLACK
+		bgColour
 	);	// inside batt
     tft.fillRect(
         outsideX + BORDER_SIZE*2, 
         outsideY + BORDER_SIZE*2, 
-        (BATTERY_WIDTH - BORDER_SIZE*4)*percent/100, 
+        (BATTERY_WIDTH - BORDER_SIZE*4) * percent/100,
         BATTERY_HEIGHT - BORDER_SIZE*4,
 		ST7735_WHITE
     );	// capacity
     tft.setCursor(0, 100);
 	tft.setTextSize(2);
-	tft.setTextColor(ST7735_RED);
-	//tft.print(voltage);
 
 	int pixelSize = 3;
 	int spacing = 2;
@@ -240,5 +252,5 @@ void drawBattery(int percent, float voltage) {
 	int numberSize = (4 * pixelSize * 3) + (4 * spacing) + 3;
 	int x = 128/2 - numberSize/2;
 	int y = outsideY+BATTERY_HEIGHT + 2;
-	tft_util_draw_number(&tft, buff, x, y, ST7735_DARK_GREY, ST7735_BLACK, spacing, pixelSize);
+	tft_util_draw_number(&tft, buff, x, y, ST7735_DARK_GREY, bgColour, spacing, pixelSize);
 }

@@ -98,6 +98,8 @@ void tGetFromVESC_callback();
 Task tGetFromVESC( GET_FROM_VESC_INTERVAL, TASK_FOREVER, &tGetFromVESC_callback );
 void tGetFromVESC_callback() {
 
+	float battVoltsOld = vescdata.batteryVoltage;
+
 	if (getVescValues() == false) {
 		// vesc offline
 		if (millis() - lastReport > 5000) {
@@ -106,10 +108,15 @@ void tGetFromVESC_callback() {
 		}
 	}
 	else {
-		if (millis() - lastReport > 5000) {
-			lastReport = millis();
-			debugD("vesc online!\n");
+		bool updateDisplay = battVoltsOld != vescdata.batteryVoltage;
+		if ( updateDisplay ) {
+			debugD("updating display: %.1f %.1f \n", battVoltsOld, vescdata.batteryVoltage);
+			drawBattery( vescdata.batteryVoltage );
 		}
+		// if (millis() - lastReport > 5000) {
+		// 	lastReport = millis();
+		// 	debugD("vesc online!\n");
+		// }
 		if ( vescPoweringDown(vescdata.batteryVoltage) ) {
 			// store values (not batteryVoltage)
 			if ( storedValuesOnPowerdown == false ) {
@@ -216,7 +223,7 @@ void setup()
 	runner.addTask(tGetFromVESC);
 	tGetFromVESC.enable();
 
-	drawBattery(50, vescdata.batteryVoltage);
+	drawBattery(vescdata.batteryVoltage);
 }
 
 //*************************************************************
