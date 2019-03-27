@@ -17,10 +17,8 @@ float recallFloat(char* name) {
 	return result;
 }
 
-void storeValuesOnPowerdown(VESC_DATA data, bool appendAmpHours) {
-    float storedAmpHours = 0.0;
-    if ( appendAmpHours ) {
-        storedAmpHours = recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE);
-    }
+void storeValuesOnPowerdown(VESC_DATA data) {
+    float storedAmpHours = recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE);
     storeFloat(DATA_AMP_HOURS_USED_THIS_CHARGE, data.ampHours + storedAmpHours);
+	debugD("storing values on power down %.1f\n", data.ampHours + storedAmpHours);
 }

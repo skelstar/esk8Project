@@ -90,7 +90,7 @@ bool firstTime = false;
 float lastVoltsRead = 0.0;
 float lastStableVoltsRead = 0.0;
 bool interimUpdated = false;	// when not moving
-bool storedValuesOnPowerdown = false;
+bool alreadyStoreValues = false;
 bool appendAmpHoursOnPowerDown = false;
 long lastReport = 0;
 
@@ -110,18 +110,16 @@ void tGetFromVESC_callback() {
 	else {
 		bool updateDisplay = battVoltsOld != vescdata.batteryVoltage;
 		if ( updateDisplay ) {
-			debugD("updating display: %.1f %.1f \n", battVoltsOld, vescdata.batteryVoltage);
-			drawBattery( vescdata.batteryVoltage );
+			debugD("Total: %.1f\n", recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE));
+			// debugD("updating display: %.1f %.1f \n", battVoltsOld, vescdata.batteryVoltage);
+			drawBatteryTopScreen( vescdata.batteryVoltage );
+			drawAmpHoursUsed( vescdata.ampHours, 0.0 );
 		}
-		// if (millis() - lastReport > 5000) {
-		// 	lastReport = millis();
-		// 	debugD("vesc online!\n");
-		// }
 		if ( vescPoweringDown(vescdata.batteryVoltage) ) {
 			// store values (not batteryVoltage)
-			if ( storedValuesOnPowerdown == false ) {
-				storeValuesOnPowerdown(vescdata, appendAmpHoursOnPowerDown);
-				storedValuesOnPowerdown = true;
+			if ( alreadyStoreValues == false ) {
+				storeValuesOnPowerdown(vescdata);
+				alreadyStoreValues = true;
 				debugD("stored values on power down\n");
 				float tripAH = vescdata.ampHours;
 				float totalAH = recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE);
@@ -138,7 +136,6 @@ void tGetFromVESC_callback() {
 				if (firstTime == false) {
 					firstTime = true;
 					sendBlynkStartupNotification(vescdata.batteryVoltage);
-					appendAmpHoursOnPowerDown = vescdata.ampHours > 1;
 					// debug.print(STARTUP, "First time - Board ampHours: %.1f, stored ampHours: %.1f\n", vescdata.ampHours, recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE));
 				}
 			}
@@ -200,7 +197,7 @@ char* filename = "/data.txt";
 
 void setup()
 {
-	//// Serial.begin(9600);
+	// Serial.begin(9600);
 
   	vesc_comm_init(VESC_UART_BAUDRATE);
 
@@ -223,7 +220,7 @@ void setup()
 	runner.addTask(tGetFromVESC);
 	tGetFromVESC.enable();
 
-	drawBattery(vescdata.batteryVoltage);
+	drawBatteryTopScreen(vescdata.batteryVoltage);
 }
 
 //*************************************************************
@@ -261,6 +258,13 @@ bool getVescValues() {
     bool success = vesc_comm_fetch_packet(vesc_packet) > 0;
 
 	if ( success ) {
+
+		// debugD("%d (rpm) %.1f (Ah) %u (tacho) %u (tachoabs)\n",
+		// 	vesc_comm_get_rpm(vesc_packet),
+		// 	vesc_comm_get_amphours_discharged(vesc_packet),
+		// 	vesc_comm_get_tachometer(vesc_packet),
+		// 	vesc_comm_get_tachometer_abs(vesc_packet)
+		// );
 
 		vescdata.batteryVoltage = vesc_comm_get_voltage(vesc_packet);
 		vescdata.moving = vesc_comm_get_rpm(vesc_packet) > 50;

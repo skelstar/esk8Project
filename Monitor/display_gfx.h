@@ -40,7 +40,7 @@ void setupDisplay() {
 #define BORDER_SIZE 6
 #define KNOB_HEIGHT 20
 
-const bool FONT_DIGITS_3x5[12][5][3] = {
+const bool FONT_DIGITS_3x5[][5][3] = {
 	{
 			{1, 1, 1},
 			{1, 0, 1},
@@ -125,9 +125,15 @@ const bool FONT_DIGITS_3x5[12][5][3] = {
 			{1, 0, 1},
 			{1, 0, 1},
 			{0, 1, 0},
+	},      
+	{	// + == 12
+			{0, 0, 0},
+			{0, 1, 0},
+			{1, 1, 1},
+			{0, 1, 0},
+			{0, 0, 0},
 	}        
 };
-
 
 //-----------------------------------------------------
 void tft_util_draw_digit(
@@ -185,6 +191,9 @@ void tft_util_draw_number(
         } else if (ch == '%') {
             tft_util_draw_digit(tft, 9 + 1 , cursor_x, y, fg_color, bg_color, pixelSize);
             cursor_x += 3 * pixelSize + spacing;
+        } else if (ch == '+') {
+            tft_util_draw_digit(tft, 9 + 1 , cursor_x, y, fg_color, bg_color, pixelSize);
+            cursor_x += 3 * pixelSize + spacing;
         } else if (ch == 'v') {
             tft_util_draw_digit(tft, 11, cursor_x, y, fg_color, bg_color, pixelSize);
             cursor_x += 3 * pixelSize + spacing;
@@ -197,7 +206,25 @@ void tft_util_draw_number(
 #define BATTERY_VOLTAGE_FULL            4.2 * 11
 
 //-----------------------------------------------------
-void drawBattery(float voltage) {
+
+void drawAmpHoursUsed( float ampHours, float totalAmpHours ) {
+
+	int pixelSize = 3;
+	int spacing = 2;
+	char buff[20];
+	char ampHoursBuff[8];
+	char totalAmpHoursBuff[8];
+	dtostrf(ampHours, 6, 1, ampHoursBuff);
+	// dtostrf(totalAmpHours, 8, 0, totalAmpHoursBuff);
+	// sprintf(buff, "%s + %sAH", ampHoursBuff, totalAmpHoursBuff);
+	sprintf(buff, "%sAH", ampHoursBuff);
+	int numberSize = (6 * pixelSize * 3) + (6 * spacing) + 3;
+	int x = 0;	//128/2 - numberSize/2;
+	int y = 128 - 25;
+	tft_util_draw_number(&tft, buff, x, y, ST7735_ORANGE, ST7735_BLACK, spacing, pixelSize);
+}
+
+void drawBattery(float voltage, int startmiddley) {
 
 	uint8_t percent = ((voltage - BATTERY_VOLTAGE_CUTOFF_END) / 
 					(BATTERY_VOLTAGE_FULL - BATTERY_VOLTAGE_CUTOFF_END)) * 100;
@@ -208,7 +235,7 @@ void drawBattery(float voltage) {
     // u8g2.clearBuffer();
 	int middleOffset = 0;
     int outsideX = (128-(BATTERY_WIDTH+BORDER_SIZE))/2; // includes batt knob
-    int outsideY = (128-BATTERY_HEIGHT)/2 + middleOffset;
+    int outsideY = startmiddley;	//(128-BATTERY_HEIGHT)/2 + middleOffset;
 	int16_t bgColour = voltage > BATTERY_VOLTAGE_CUTOFF_START ? ST7735_BLACK : ST7735_RED;
 	
 	tft.fillScreen(bgColour);	// clear screen
@@ -253,4 +280,8 @@ void drawBattery(float voltage) {
 	int x = 128/2 - numberSize/2;
 	int y = outsideY+BATTERY_HEIGHT + 2;
 	tft_util_draw_number(&tft, buff, x, y, ST7735_DARK_GREY, bgColour, spacing, pixelSize);
+}
+
+void drawBatteryTopScreen(float voltage) {
+	drawBattery(voltage, 5);
 }
