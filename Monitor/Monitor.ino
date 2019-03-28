@@ -110,10 +110,11 @@ void tGetFromVESC_callback() {
 	else {
 		bool updateDisplay = battVoltsOld != vescdata.batteryVoltage;
 		if ( updateDisplay ) {
-			debugD("Total: %.1f\n", recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE));
+			// debugD("Total: %.1f\n", recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE));
 			// debugD("updating display: %.1f %.1f \n", battVoltsOld, vescdata.batteryVoltage);
 			drawBatteryTopScreen( vescdata.batteryVoltage );
-			drawAmpHoursUsed( vescdata.ampHours, 0.0 );
+			drawAmpHoursUsed( vescdata.ampHours );
+			drawTotalAmpHours( recallFloat(DATA_AMP_HOURS_USED_THIS_CHARGE) );
 		}
 		if ( vescPoweringDown(vescdata.batteryVoltage) ) {
 			// store values (not batteryVoltage)

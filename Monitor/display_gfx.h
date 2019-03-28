@@ -207,21 +207,33 @@ void tft_util_draw_number(
 
 //-----------------------------------------------------
 
-void drawAmpHoursUsed( float ampHours, float totalAmpHours ) {
-
+void drawMediumFloat(float value, int x, int y) {
 	int pixelSize = 3;
 	int spacing = 2;
 	char buff[20];
-	char ampHoursBuff[8];
-	char totalAmpHoursBuff[8];
-	dtostrf(ampHours, 6, 1, ampHoursBuff);
-	// dtostrf(totalAmpHours, 8, 0, totalAmpHoursBuff);
-	// sprintf(buff, "%s + %sAH", ampHoursBuff, totalAmpHoursBuff);
-	sprintf(buff, "%sAH", ampHoursBuff);
+	char valueBuff[8];
+	dtostrf(value, 6, 1, valueBuff);
+	sprintf(buff, "%s", valueBuff);
 	int numberSize = (6 * pixelSize * 3) + (6 * spacing) + 3;
-	int x = 0;	//128/2 - numberSize/2;
-	int y = 128 - 25;
 	tft_util_draw_number(&tft, buff, x, y, ST7735_ORANGE, ST7735_BLACK, spacing, pixelSize);
+}
+
+void drawAmpHoursUsed( float ampHours ) {
+	int y = 128 - 45;
+    tft.setTextColor(ST7735_ORANGE);
+	tft.setTextSize(2);
+    tft.setCursor(0, y);
+    tft.print("Trip: ");
+	drawMediumFloat( ampHours, 60, y );
+}
+
+void drawTotalAmpHours( float totalAmpHours ) {
+	int y = 128 - 25;
+    tft.setTextColor(ST7735_ORANGE);
+	tft.setTextSize(2);
+    tft.setCursor(0, y);
+    tft.print("Total: ");
+	drawMediumFloat( totalAmpHours, 60, y );
 }
 
 void drawBattery(float voltage, int startmiddley) {
