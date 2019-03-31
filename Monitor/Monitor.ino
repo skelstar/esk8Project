@@ -11,7 +11,7 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <BlynkSimpleEsp32.h>
-#include "RemoteDebug.h"        //https://github.com/JoaoLopesF/RemoteDebug
+// #include "RemoteDebug.h"        //https://github.com/JoaoLopesF/RemoteDebug
 #include <WiFiManager.h> // https://github.com/tzapu/WiFiManager DEVELOPER BRANCH
 
 // https://raw.githubusercontent.com/LilyGO/TTGO-TS/master/Image/TS%20V1.0.jpg
@@ -22,9 +22,6 @@
 
 const char compile_date[] = __DATE__ " " __TIME__;
 const char file_name[] = __FILE__;
-
-RemoteDebug Debug;
-#define HOST_NAME "remotedebug"
 
 //--------------------------------------------------------------
 
@@ -42,6 +39,7 @@ struct VESC_DATA {
 VESC_DATA vescdata;
 
 bool connectedToWifi = false;
+
 
 #define PREFS_NAMESPACE 			"data"
 #define PREFS_TOTAL_AMP_HOURS	"totalAmpHours"
@@ -116,8 +114,6 @@ void tGetFromVESC_callback() {
 	else {
 		bool updateDisplay = battVoltsOld != vescdata.batteryVoltage;
 		if ( updateDisplay ) {
-			// // debugD("Total: %.1f\n", recallFloat(PREFS_TOTAL_AMP_HOURS));
-			// // debugD("updating display: %.1f %.1f \n", battVoltsOld, vescdata.batteryVoltage);
 			drawBatteryTopScreen( vescdata.batteryVoltage, connectedToWifi );
 			drawAmpHoursUsed( vescdata.ampHours );
 			drawTotalAmpHours( recallFloat(PREFS_TOTAL_AMP_HOURS) );
@@ -127,7 +123,6 @@ void tGetFromVESC_callback() {
 			if ( alreadyStoreValues == false ) {
 				storeValuesOnPowerdown(vescdata);
 				alreadyStoreValues = true;
-				// debugD("stored values on power down\n");
 				float tripAH = vescdata.ampHours;
 				float totalAH = recallFloat(PREFS_TOTAL_AMP_HOURS);
 				sendBlynkPowerdownNotification(tripAH, totalAH);
@@ -145,7 +140,6 @@ void tGetFromVESC_callback() {
 				if (firstTime == false) {
 					firstTime = true;
 					sendBlynkStartupNotification(vescdata.batteryVoltage);
-					// debug.print(STARTUP, "First time - Board ampHours: %.1f, stored ampHours: %.1f\n", vescdata.ampHours, recallFloat(PREFS_TOTAL_AMP_HOURS));
 				}
 			}
 			else {
@@ -187,18 +181,16 @@ bool vescPoweringDown(float volts) {
 /**************************************************************/
 
 void vescOfflineCallback() {
-	// debug.print(STATUS, "vescOfflineCallback();\n");
 }
 
 void vescOnlineCallback() {
-	// debug.print(STATUS, "vescOnlineCallback();\n");
 }
 
 OnlineStatusLib vescStatus(
 	vescOfflineCallback, 
 	vescOnlineCallback, 
-	/*offlineNumConsecutiveTimesAllowance*/ 1, 
-	/*debug*/ false);
+	1 /*offlineNumConsecutiveTimesAllowance*/, 
+	false /*debug*/);
 
 /**************************************************************/
 
@@ -219,12 +211,6 @@ void setup()
 	setupWifiOTA();
 
 	if ( connectedToWifi ) {
-		String hostNameWifi = HOST_NAME;
-		hostNameWifi.concat(".local");
-		Debug.begin(HOST_NAME); // Initialize the WiFi server
-		Debug.setResetCmdEnabled(true); // Enable the reset command
-		Debug.showProfiler(true); // Profiler (Good to measure times, to optimize codes)
-		Debug.showColors(true); // Colors
 	}
 
 	setupDisplay();
@@ -242,12 +228,6 @@ void setup()
 	drawBatteryTopScreen(vescdata.batteryVoltage, connectedToWifi);
 
 	storeUInt8(PREFS_POWERED_DOWN, 0);
-	// if (legit_reset_reason(rtc_get_reset_reason(1), 1) == false) {
-	// 	char* reason = get_reset_reason(rtc_get_reset_reason(1), 1);
-	// 	tft.setCursor(0, 0);
-	// 	tft.print(reason);
-	// 	Blynk.notify(reason);
-	// }
 }
 
 //*************************************************************
@@ -257,7 +237,6 @@ long now = 0;
 void loop() {
 
 	if ( connectedToWifi ) {	
-		Debug.handle();
 		ArduinoOTA.handle();
 		Blynk.run();
 	}
@@ -309,7 +288,7 @@ bool getVescValues() {
 	}
     return success;
 }
-
+//--------------------------------------------------------------
 void setupWifiOTA() {
 
     //reset settings - wipe credentials for testing
@@ -377,30 +356,4 @@ char* get_reset_reason(RESET_REASON reason, int cpu)
 	}
 }
 
-bool legit_reset_reason(RESET_REASON reason, int cpu)
-{
-	// debug.print(STARTUP, "Reboot reason (CPU%d): ", cpu);
-	switch ( reason )
-	{
-		case 1 :          /**<1, Vbat power on reset*/
-		case 3 :               /**<3, Software reset digital core*/
-			return true;
-		default:
-			return false;
-		// case 4 :  // debugD("OWDT_RESET \n");break;             /**<4, Legacy watch dog reset digital core*/
-		// case 5 :  // debugD("DEEPSLEEP_RESET \n");break;        /**<5, Deep Sleep reset digital core*/
-		// case 6 :  // debugD("SDIO_RESET \n");break;             /**<6, Reset by SLC module, reset digital core*/
-		// case 7 :  // debugD("TG0WDT_SYS_RESET \n");break;       /**<7, Timer Group0 Watch dog reset digital core*/
-		// case 8 :  // debugD("TG1WDT_SYS_RESET \n");break;       /**<8, Timer Group1 Watch dog reset digital core*/
-		// case 9 :  // debugD("RTCWDT_SYS_RESET \n");break;       /**<9, RTC Watch dog Reset digital core*/
-		// case 10 : // debugD("INTRUSION_RESET \n");break;       /**<10, Instrusion tested to reset CPU*/
-		// case 11 : // debugD("TGWDT_CPU_RESET \n");break;       /**<11, Time Group reset CPU*/
-		// case 12 : // debugD("SW_CPU_RESET \n");break;          /**<12, Software reset CPU*/
-		// case 13 : // debugD("RTCWDT_CPU_RESET \n");break;      /**<13, RTC Watch dog Reset CPU*/
-		// case 14 : // debugD("EXT_CPU_RESET \n");break;         /**<14, for APP CPU, reseted by PRO CPU*/
-		// case 15 : // debugD("RTCWDT_BROWN_OUT_RESET \n");break;/**<15, Reset when the vdd voltage is not stable*/
-		// case 16 : // debugD("RTCWDT_RTC_RESET \n");break;      /**<16, RTC Watch dog reset digital core and rtc module*/
-		// default : // debugD("NO_MEAN\n");
-	}
-}
 
