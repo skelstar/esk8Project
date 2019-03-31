@@ -203,7 +203,7 @@ void tft_util_draw_number(
 
 #define BATTERY_VOLTAGE_CUTOFF_START    37.4
 #define BATTERY_VOLTAGE_CUTOFF_END      34.1
-#define BATTERY_VOLTAGE_FULL            4.2 * 11
+#define BATTERY_VOLTAGE_FULL            44.2
 
 //-----------------------------------------------------
 
@@ -236,7 +236,7 @@ void drawTotalAmpHours( float totalAmpHours ) {
 	drawMediumFloat( totalAmpHours, 60, y );
 }
 
-void drawBattery(float voltage, int startmiddley) {
+void drawBattery(float voltage, int startmiddley, bool connectedToWifi) {
 
 	uint8_t percent = ((voltage - BATTERY_VOLTAGE_CUTOFF_END) / 
 					(BATTERY_VOLTAGE_FULL - BATTERY_VOLTAGE_CUTOFF_END)) * 100;
@@ -292,8 +292,13 @@ void drawBattery(float voltage, int startmiddley) {
 	int x = 128/2 - numberSize/2;
 	int y = outsideY+BATTERY_HEIGHT + 2;
 	tft_util_draw_number(&tft, buff, x, y, ST7735_DARK_GREY, bgColour, spacing, pixelSize);
+
+	// wifi connected
+	uint8_t connectedSize = 5;
+	uint16_t colour = connectedToWifi == false ? ST7735_RED : ST7735_GREEN ;
+	tft.fillRect( 128-connectedSize, 0, connectedSize, connectedSize, colour );
 }
 
-void drawBatteryTopScreen(float voltage) {
-	drawBattery(voltage, 5);
+void drawBatteryTopScreen(float voltage, bool connectedToWifi) {
+	drawBattery(voltage, 5, connectedToWifi);
 }
