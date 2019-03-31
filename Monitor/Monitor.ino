@@ -25,6 +25,12 @@ const char file_name[] = __FILE__;
 
 //--------------------------------------------------------------
 
+#define MOTOR_POLE_PAIRS 7
+#define WHEEL_DIAMETER_MM 97
+#define MOTOR_PULLEY_TEETH 15
+#define WHEEL_PULLEY_TEETH 36	// https://hobbyking.com/en_us/gear-set-with-belt.html
+
+
 uint8_t vesc_packet[PACKET_MAX_LENGTH];
 
 #define 	GET_FROM_VESC_INTERVAL						500
@@ -35,6 +41,7 @@ struct VESC_DATA {
 	bool moving;
 	bool vescOnline;
 	float ampHours;
+	int32_t tripMeters;
 };
 VESC_DATA vescdata;
 
@@ -117,6 +124,7 @@ void tGetFromVESC_callback() {
 			drawBatteryTopScreen( vescdata.batteryVoltage, connectedToWifi );
 			drawAmpHoursUsed( vescdata.ampHours );
 			drawTotalAmpHours( recallFloat(PREFS_TOTAL_AMP_HOURS) );
+			drawTripMeter( vescdata.tripMeters );
 		}
 		if ( vescPoweringDown(vescdata.batteryVoltage) ) {
 			// store values (not batteryVoltage)
@@ -207,6 +215,7 @@ void setup()
 	// Serial.begin(9600);
 
   	vesc_comm_init(VESC_UART_BAUDRATE);
+	vescdata.tripMeters = 0;
 
 	setupWifiOTA();
 
@@ -279,6 +288,7 @@ bool getVescValues() {
 		vescdata.motorCurrent = vesc_comm_get_motor_current(vesc_packet);	// UART.data.avgMotorCurrent;
 		vescdata.ampHours = vesc_comm_get_amphours_discharged(vesc_packet);
 		vescdata.vescOnline = true;
+		vescdata.tripMeters = rotations_to_meters( vesc_comm_get_tachometer(vesc_packet) / 6 );
 	}
 	else {
 		vescdata.vescOnline = false;
@@ -355,5 +365,11 @@ char* get_reset_reason(RESET_REASON reason, int cpu)
 		default : return "NO_MEAN";
 	}
 }
+//--------------------------------------------------------------
+int32_t rotations_to_meters(int32_t rotations) {
+    float gear_ratio = float(WHEEL_PULLEY_TEETH) / float(MOTOR_PULLEY_TEETH);
+    return (rotations / MOTOR_POLE_PAIRS / gear_ratio) * WHEEL_DIAMETER_MM * PI / 1000;
+}
+
 
 

@@ -207,7 +207,7 @@ void tft_util_draw_number(
 
 //-----------------------------------------------------
 
-void drawMediumFloat(float value, int x, int y) {
+void drawMediumFloat(float value, int x, int y, uint16_t colour) {
 	int pixelSize = 3;
 	int spacing = 2;
 	char buff[20];
@@ -215,16 +215,27 @@ void drawMediumFloat(float value, int x, int y) {
 	dtostrf(value, 6, 1, valueBuff);
 	sprintf(buff, "%s", valueBuff);
 	int numberSize = (6 * pixelSize * 3) + (6 * spacing) + 3;
-	tft_util_draw_number(&tft, buff, x, y, ST7735_ORANGE, ST7735_BLACK, spacing, pixelSize);
+	tft_util_draw_number(&tft, buff, x, y, colour, ST7735_BLACK, spacing, pixelSize);
 }
+
+// void drawMediumInt(int32_t value, int x, int y, unit16_t colour) {
+// 	int pixelSize = 3;
+// 	int spacing = 2;
+// 	char buff[20];
+// 	char valueBuff[8];
+// 	memset(buff, 0, sizeof(buff));
+// 	snprintf(buff, sizeof(buff)-1, "%u");
+// 	int numberSize = (6 * pixelSize * 3) + (6 * spacing) + 3;
+// 	tft_util_draw_number(&tft, buff, x, y, colour, ST7735_BLACK, spacing, pixelSize);
+// }
 
 void drawAmpHoursUsed( float ampHours ) {
 	int y = 128 - 45;
     tft.setTextColor(ST7735_ORANGE);
 	tft.setTextSize(2);
     tft.setCursor(0, y);
-    tft.print("Trip: ");
-	drawMediumFloat( ampHours, 60, y );
+    tft.print("Amps: ");
+	drawMediumFloat( ampHours, 60, y, ST7735_ORANGE );
 }
 
 void drawTotalAmpHours( float totalAmpHours ) {
@@ -233,7 +244,17 @@ void drawTotalAmpHours( float totalAmpHours ) {
 	tft.setTextSize(2);
     tft.setCursor(0, y);
     tft.print("Total: ");
-	drawMediumFloat( totalAmpHours, 60, y );
+	drawMediumFloat( totalAmpHours, 60, y, ST7735_ORANGE );
+}
+
+void drawTripMeter( int32_t tripMetres ) {
+	int y = 128 - 65;
+    tft.setTextColor(ST7735_GREEN);
+	tft.setTextSize(2);
+    tft.setCursor(0, y);
+    tft.print("Trip: ");
+	float kms = tripMetres/1000.0;
+	drawMediumFloat( kms, 60, y, ST7735_GREEN );
 }
 
 void drawBattery(float voltage, int startmiddley, bool connectedToWifi) {
