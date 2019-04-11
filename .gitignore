@@ -5,3 +5,4 @@
 .vscode/ipch/8ebc871fd2f02c2f/VESC_COMMS_TEST.ipch
 .vscode/ipch/41261015c530ec96/SOFTWARESERIAL.ipch
 .vscode/ipch/1eeb94e39220dc51/MONITORSTICK.ipch
+*.ipch
