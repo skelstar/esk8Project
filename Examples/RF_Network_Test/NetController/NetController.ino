@@ -1,174 +1,59 @@
-#include <SPI.h>
 #include <RF24Network.h>
-#include <RF24.h> 
-
-#include <TaskScheduler.h>
-
-#include <debugHelper.h>
-#include <esk8Lib.h>
-
-//--------------------------------------------------------------------------------
-
-#define	STARTUP 		1 << 0
-#define DEBUG 			1 << 1
-#define COMMUNICATION 	1 << 2
-#define HARDWARE		1 << 3
-#define ONLINE_STATUS	1 << 5
-#define TIMING			1 << 6
-
-debugHelper debug;
-
-esk8Lib esk8;
-
-//--------------------------------------------------------------
-
-portMUX_TYPE mmux = portMUX_INITIALIZER_UNLOCKED;
-
-//--------------------------------------------------------------
+#include <RF24.h>
+#include <SPI.h>
 
 // TTGO-TQ
 // #define SPI_CE        15
 // #define SPI_CS        13
 // #define NRF24_POWER_PIN        2
 // M5Stack
-#define SPI_CE        5 
-#define SPI_CS        13
+// #define SPI_CE        5 
+// #define SPI_CS        13
 // DEV board
-// #define SPI_CE        33    	// white/purple
-// #define SPI_CS        26  	// green
-
-#define ROLE_MASTER    		0
-#define ROLE_BOARD    		1
-#define ROLE_HUD    		2
+#define SPI_CE        33    	// white/purple
+#define SPI_CS        26  	// green
 
 RF24 radio(SPI_CE, SPI_CS);    // ce pin, cs pin
 RF24Network network(radio); 
 
-int radioNumber = ROLE_MASTER;
+const uint16_t board_node = 00;
+const uint16_t controller_node = 01;
+const uint16_t passive_node = 02;
 
-byte counter = 0;
-int commsCount = 0;
+const unsigned long interval = 200; //ms  // How often to send 'hello world to the other unit
 
-uint16_t  this_node = ROLE_MASTER;
-int sendPacketInterval = 200;
+unsigned long last_sent;             // When did we last send?
+unsigned long packets_sent;          // How many have we sent already
 
-//--------------------------------------------------------------------------------
+struct payload_t {                  // Structure of our payload
+  unsigned long ms;
+  unsigned long counter;
+};
 
-const char compile_date[] = __DATE__ " " __TIME__;
 
-//--------------------------------------------------------------
-
-void packetAvailableCallback( uint16_t from ) {
-	
-	reportComms('r');
+void setup(void)
+{
+  Serial.begin(9600);
+  Serial.println("\nready\n");
+ 
+  SPI.begin();
+  radio.begin();
+  network.begin(/*channel*/ 90, /*node address*/ controller_node);
 }
-
-/**************************************************************
-					SETUP
-**************************************************************/
-void setup() {
-
-	Serial.begin(9600);
-
-	debug.init();
-	debug.addOption(STARTUP, "STARTUP");
-	debug.addOption(DEBUG, "DEBUG");
-	debug.addOption(HARDWARE, "HARDWARE");
-	debug.addOption(COMMUNICATION, "COMMUNICATION");
-	debug.addOption(ONLINE_STATUS, "ONLINE_STATUS");
-	debug.addOption(TIMING, "TIMING");
-	//debug.setFilter( STARTUP | COMMUNICATION | ONLINE_STATUS | TIMING );
-	debug.setFilter( STARTUP | DEBUG | ONLINE_STATUS );
-	//debug.setFilter( STARTUP );
-
-	debug.print(STARTUP, "%s \n", compile_date);
-    debug.print(STARTUP, "esk8Project/NetController.ino \n");
-    debug.print(STARTUP, "Sending every %dms \n", sendPacketInterval);
-
-    pinMode(39, INPUT_PULLUP);
-
-	setupRadio();
-
-	xTaskCreatePinnedToCore (
-		codeForEncoderTask,	// function
-		"Task_Encoder",		// name
-		10000,			// stack
-		NULL,			// parameter
-		1,				// priority
-		NULL,	// handle
-		0
-	);				// port	
-}
-/**************************************************************
-					LOOP
-**************************************************************/
-
-long now = 0;
-long now2 = 0;
-
 void loop() {
-
-	network.update();
-
-	esk8.service();
-
-	bool timeToTx = millis() - now > sendPacketInterval;
-	if ( timeToTx ) {
-		now = millis();
-		esk8.sendPacketToBoard();
-		reportComms('+');
-
-		esk8.controllerPacket.id++;
+  
+  network.update();                          // Check the network regularly
+  
+  unsigned long now = millis();              // If it's time to send a message, send it!
+  if ( now - last_sent >= interval  )
+  {
+    last_sent = now;
+    Serial.print(".");
+    payload_t payload = { millis(), packets_sent++ };
+    RF24NetworkHeader header(/*to node*/ board_node);
+    bool ok = network.write(header,&payload,sizeof(payload));
+    if (!ok) {
+      Serial.printf("failed. (%u)\n", payload.counter);
 	}
-
-	bool timeToUpdateHUD = millis() - now2 > 1200;
-	if ( timeToUpdateHUD ) {
-		now2 = millis();
-		esk8.hudPacket.controllerState = counter++;
-		esk8.sendPacketToHUD();
-		reportComms('h');
-	}
-
-	int btn_a = digitalRead(39);
-
-	if ( btn_a == 0 ) {
-		esk8.controllerPacket.id++;
-		Serial.printf("^");
-		commsCount++;
-	}
-
-	vTaskDelay( 10 );
-}
-/**************************************************************
-					TASK 0
-**************************************************************/
-void codeForEncoderTask( void *parameter ) {
-
-	#define TX_INTERVAL 200
-	long nowMs = 0;
-	
-	for (;;) {
-
-
-		vTaskDelay( 10 );
-	}
-
-	vTaskDelete(NULL);
-}
-//**************************************************************
-
-void setupRadio() {
-	SPI.begin();                                           // Bring up the RF network
-
-	radio.begin();
-
-	esk8.begin(&radio, &network, esk8.RF24_CONTROLLER, packetAvailableCallback);
-}
-
-void reportComms(char c) {
-	Serial.printf("%c", c);
-	if (commsCount++ > 30) {
-		commsCount = 0;
-		Serial.printf("\n");
-	}
+  }
 }
